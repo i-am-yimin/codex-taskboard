@@ -1,0 +1,12 @@
+services:
+  app:
+    healthcheck:
+      timeout: 30s
+      start_period: 180s
+      start_interval: 15s
+      interval: 15s
+      retries: 40
+  db:
+    healthcheck:
+      timeout: 15s
+      retries: 60

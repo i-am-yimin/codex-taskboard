@@ -1,0 +1,15 @@
+.git
+node_modules
+.env
+.env.*
+!.env.example
+.data
+.artifacts
+dist
+**/target
+**/resources
+apps/desktop/runtime
+apps/desktop/binaries
+test-results
+playwright-report
+coverage

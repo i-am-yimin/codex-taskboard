@@ -1,0 +1,564 @@
+/* Material tokens keep the glass treatment independent of layout and task logic. */
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  --canvas: #eef2f7;
+  --ink: #202735;
+  --muted: #5e697a;
+  --accent: #4267c8;
+  --glass: rgb(255 255 255 / 56%);
+  --glass-solid: #f4f6fa;
+  --card: rgb(255 255 255 / 76%);
+  --field: rgb(255 255 255 / 50%);
+  --edge: rgb(255 255 255 / 85%);
+  --divider: rgb(43 59 84 / 9%);
+  --hover: rgb(255 255 255 / 82%);
+  --tint: rgb(70 108 192 / 9%);
+  --glass-shadow: 0 8px 30px rgb(36 55 86 / 5%), inset 0 1px 0 rgb(255 255 255 / 75%);
+  --card-shadow: 0 3px 16px rgb(36 55 86 / 4%), inset 0 1px 0 rgb(255 255 255 / 80%);
+  color: var(--ink);
+  background: var(--canvas);
+}
+:root[data-theme='dark'] {
+  --canvas: #151b27;
+  --ink: #eaf0fa;
+  --muted: #a7b5cc;
+  --accent: #a9c2ff;
+  --glass: rgb(37 47 65 / 68%);
+  --glass-solid: #222c3e;
+  --card: rgb(41 52 72 / 80%);
+  --field: rgb(17 26 42 / 38%);
+  --edge: rgb(223 235 255 / 13%);
+  --divider: rgb(217 229 250 / 11%);
+  --hover: rgb(74 92 123 / 52%);
+  --tint: rgb(145 177 255 / 14%);
+  --glass-shadow: 0 12px 32px rgb(0 0 0 / 15%), inset 0 1px 0 rgb(226 237 255 / 9%);
+  --card-shadow: 0 4px 18px rgb(0 0 0 / 9%), inset 0 1px 0 rgb(226 237 255 / 9%);
+}
+body {
+  background:
+    radial-gradient(ellipse at 12% 7%, rgb(154 185 236 / 25%), transparent 52%),
+    radial-gradient(ellipse at 92% 62%, rgb(179 166 224 / 18%), transparent 56%),
+    radial-gradient(ellipse at 40% 98%, rgb(173 205 216 / 19%), transparent 48%), var(--canvas);
+  background-attachment: fixed;
+}
+:root[data-theme='dark'] body {
+  background:
+    radial-gradient(ellipse at 5% 5%, rgb(62 96 157 / 26%), transparent 52%),
+    radial-gradient(ellipse at 95% 72%, rgb(99 76 142 / 18%), transparent 56%), var(--canvas);
+  background-attachment: fixed;
+}
+
+/* One navigation level; glass is strongest on controls and floating panels. */
+:root .rail {
+  display: none;
+}
+:root .workspace {
+  background: transparent;
+}
+:root .topbar {
+  height: 64px;
+  margin: 18px var(--page-gutter) 0;
+  padding: 0 18px;
+  border: 1px solid var(--edge);
+  border-radius: 24px;
+  background: var(--glass);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(24px) saturate(145%);
+  -webkit-backdrop-filter: blur(24px) saturate(145%);
+  z-index: 8;
+}
+:root .space-switcher {
+  font-weight: 600;
+  border-radius: 16px;
+}
+:root .space-switcher:hover {
+  background: var(--hover);
+}
+:root .space-switcher i {
+  border-radius: 9px;
+}
+:root .page-head {
+  padding-top: 36px;
+}
+:root .page-head h1 {
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+:root .eyebrow {
+  color: var(--muted);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+:root .page-head .eyebrow {
+  display: none;
+}
+:root .connection {
+  color: var(--muted);
+}
+:root .connection.offline {
+  color: #b86b24;
+}
+:root .icon-button {
+  border-radius: 50%;
+}
+:root .icon-button:hover {
+  color: var(--accent);
+  background: var(--tint);
+}
+:root .menu {
+  top: calc(100% + 10px);
+  left: 0;
+  color: var(--ink);
+  padding: 10px;
+  border-radius: 22px;
+  border-color: var(--edge);
+  background: var(--glass-solid);
+  box-shadow: var(--glass-shadow);
+}
+.space-switcher-wrap {
+  position: relative;
+}
+:root .menu button {
+  border-radius: 12px;
+  padding: 12px;
+}
+:root .menu button:hover {
+  background: var(--tint);
+}
+:root .menu hr {
+  border-color: var(--divider);
+}
+:root .search,
+:root .filter,
+:root .button.ghost {
+  color: var(--ink);
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: var(--glass);
+  box-shadow: var(--card-shadow);
+  backdrop-filter: blur(16px) saturate(130%);
+  -webkit-backdrop-filter: blur(16px) saturate(130%);
+}
+:root .search {
+  padding: 0 18px;
+}
+:root .search input {
+  background: transparent;
+}
+:root .toolbar select {
+  padding-left: 16px;
+  padding-right: 12px;
+  font-weight: 500;
+}
+:root select option {
+  color: var(--ink);
+  background: var(--glass-solid);
+}
+:root .button {
+  border-radius: 999px;
+  font-weight: 550;
+}
+:root .button.primary {
+  background: #4268cb;
+  border: 1px solid rgb(255 255 255 / 22%);
+  color: #fff;
+  box-shadow:
+    0 4px 12px rgb(49 83 163 / 15%),
+    inset 0 1px 0 rgb(255 255 255 / 20%);
+}
+:root .button.primary:hover {
+  background: #355bbd;
+}
+:root .button.ghost:hover {
+  background: var(--hover);
+}
+:root .demo-bar {
+  padding: 0;
+  margin-bottom: 24px;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+:root .demo-bar > svg {
+  display: none;
+}
+:root .column-head {
+  border: 0;
+  color: var(--muted);
+  height: 42px;
+}
+:root .column-head b {
+  font-weight: 550;
+  color: var(--ink);
+}
+:root .column-head em,
+:root .result-count,
+:root .task-no {
+  color: var(--muted);
+}
+:root .column-body {
+  padding-top: 10px;
+}
+:root .task-card {
+  border: 1px solid var(--edge);
+  border-radius: 22px;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+  color: var(--ink);
+}
+:root .task-card:hover,
+:root .task-card:focus-visible {
+  background: var(--hover);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  box-shadow:
+    0 10px 26px rgb(42 62 102 / 9%),
+    inset 0 1px 0 var(--edge);
+}
+:root .task-title {
+  font-weight: 550;
+}
+:root .task-title > svg:not(.blocked) {
+  opacity: 0.45;
+}
+:root .tag {
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--tint);
+}
+:root .avatar {
+  background: var(--tint);
+  color: var(--accent);
+  font-weight: 550;
+}
+:root .add-inline {
+  color: var(--muted);
+}
+:root .add-inline:hover {
+  color: var(--accent);
+}
+:root .column.is-over .column-body {
+  background: var(--tint);
+  border-radius: 22px;
+}
+:root .list-view {
+  background: var(--card);
+  border-color: var(--edge);
+  border-radius: 22px;
+  box-shadow: var(--card-shadow);
+}
+:root .list-header {
+  background: transparent;
+  color: var(--muted);
+}
+:root .list-header,
+:root .list-row {
+  border-color: var(--divider);
+}
+:root .list-row:hover {
+  background: var(--hover);
+}
+
+/* Denser frosting behind editable content preserves contrast in both themes. */
+:root .drawer,
+:root .settings,
+:root .modal {
+  color: var(--ink);
+  background: var(--glass);
+  border: 1px solid var(--edge);
+  box-shadow:
+    0 20px 60px rgb(20 34 60 / 14%),
+    inset 0 1px 0 var(--edge);
+  backdrop-filter: blur(36px) saturate(140%);
+  -webkit-backdrop-filter: blur(36px) saturate(140%);
+}
+:root .drawer {
+  top: 12px;
+  right: 12px;
+  height: calc(100dvh - 24px);
+  width: min(580px, calc(100vw - 24px));
+  border-radius: 28px;
+}
+:root .settings {
+  height: calc(100dvh - 24px);
+  margin: 12px 12px 12px auto;
+  width: min(960px, calc(100vw - 24px));
+  border-radius: 28px;
+  overflow: hidden;
+}
+:root .modal {
+  border-radius: 28px;
+}
+:root .modal-backdrop,
+:root .settings-overlay {
+  background: rgb(28 40 63 / 14%);
+  backdrop-filter: blur(5px);
+}
+:root .title-editor {
+  color: var(--ink);
+  font-weight: 600;
+}
+:root .detail-section,
+:root .settings > header,
+:root .settings-nav,
+:root .space-actions {
+  border-color: var(--divider);
+}
+:root .form-label {
+  font-weight: 550;
+}
+:root input,
+:root textarea,
+:root select {
+  color: var(--ink);
+  background: var(--field);
+  border-color: var(--divider);
+  border-radius: 12px;
+}
+:root input:focus,
+:root textarea:focus,
+:root select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--tint);
+}
+:root input::placeholder,
+:root textarea::placeholder {
+  color: var(--muted);
+}
+:root .detail-section > input {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+}
+:root .description-editor {
+  color: var(--ink);
+}
+:root .muted,
+:root .task-id,
+:root .activity small {
+  color: var(--muted);
+}
+:root .text-button {
+  color: var(--accent);
+  font-weight: 550;
+}
+:root .settings-nav button {
+  border-radius: 14px;
+  color: var(--muted);
+}
+:root .settings-nav button.active,
+:root .segmented button.selected {
+  background: var(--tint);
+  color: var(--accent);
+  font-weight: 600;
+}
+:root .segmented {
+  background: var(--field);
+  border: 1px solid var(--divider);
+  border-radius: 999px;
+  padding: 4px;
+  gap: 4px;
+}
+:root .segmented button {
+  border: 0;
+  border-radius: 999px;
+}
+:root .connection-card,
+:root .execution-card,
+:root .markdown-preview,
+:root .inline-space-form {
+  background: var(--field);
+  border-color: var(--divider);
+  color: var(--ink);
+  border-radius: 18px;
+}
+:root .connection-card p,
+:root .execution-card p {
+  color: var(--muted);
+}
+:root .comment-box {
+  background: var(--field);
+  border-color: var(--divider);
+  border-radius: 16px;
+}
+:root .comment-box input {
+  background: transparent;
+}
+:root .comment-box button {
+  color: var(--accent);
+}
+:root .conflict-box,
+:root .callout {
+  color: var(--accent);
+  background: var(--tint);
+  border-color: var(--divider);
+  border-radius: 18px;
+}
+:root .toast {
+  color: var(--ink);
+  background: var(--glass-solid);
+  border: 1px solid var(--edge);
+  border-radius: 20px;
+  box-shadow: var(--glass-shadow);
+}
+:root .toast button,
+:root .toast svg:first-child {
+  color: var(--muted);
+}
+:root .onboarding {
+  background: transparent;
+}
+:root .onboard-side {
+  background: transparent;
+  color: var(--ink);
+}
+:root .onboard-side .brand,
+:root .onboard-side .eyebrow {
+  color: var(--accent);
+}
+:root .onboard-copy > p:last-child {
+  color: var(--muted);
+}
+:root .onboard-main {
+  background: transparent;
+}
+:root .onboard-card {
+  background: var(--glass);
+  border-color: var(--edge);
+  border-radius: 28px;
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(24px);
+}
+:root .onboard-card:has(.desktop-server-setup) {
+  width: min(460px, 100%);
+  padding: 24px;
+}
+:root .desktop-server-setup {
+  margin: 22px 0 4px;
+  padding: 17px;
+  border: 1px solid var(--divider);
+  border-radius: 18px;
+  background: var(--tint);
+}
+:root .desktop-server-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+:root .desktop-server-heading .eyebrow {
+  margin: 0 0 3px;
+}
+:root .desktop-server-heading h3 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: -0.02em;
+}
+:root .desktop-server-setup > .muted {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+:root .desktop-server-setup .form-label {
+  margin-top: 14px;
+  font-size: 12px;
+}
+:root .desktop-server-save {
+  margin-top: 12px;
+}
+:root .desktop-server-note,
+:root .desktop-server-ok {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+:root .desktop-server-note {
+  color: var(--muted);
+}
+:root .desktop-server-ok {
+  color: var(--accent);
+}
+:root .desktop-server-retry {
+  margin-left: auto;
+  min-height: 30px;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+:root .mini-cards span {
+  background: var(--glass);
+  border-color: var(--edge);
+}
+
+@media (max-width: 560px) {
+  :root .topbar {
+    margin: 12px 16px 0;
+    padding: 0 12px;
+    height: 60px;
+    border-radius: 20px;
+  }
+  :root .drawer {
+    top: 6px;
+    right: 6px;
+    width: calc(100vw - 12px);
+    height: calc(100dvh - 12px);
+    border-radius: 24px;
+  }
+  :root .settings {
+    margin: 6px;
+    height: calc(100dvh - 12px);
+    width: calc(100vw - 12px);
+    border-radius: 24px;
+  }
+  :root .settings-nav {
+    gap: 4px;
+  }
+  :root .space-switcher {
+    padding: 8px 4px;
+    gap: 8px;
+  }
+  :root .topbar-right {
+    gap: 4px;
+  }
+  :root .connection {
+    font-size: 11px;
+  }
+}
+@supports not (backdrop-filter: blur(1px)) {
+  :root .topbar,
+  :root .drawer,
+  :root .settings,
+  :root .modal,
+  :root .onboard-card {
+    background: var(--glass-solid);
+  }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root {
+    --glass: var(--glass-solid);
+    --card: var(--glass-solid);
+    --field: var(--glass-solid);
+    --edge: var(--divider);
+  }
+  :root .topbar,
+  :root .drawer,
+  :root .settings,
+  :root .modal,
+  :root .search,
+  :root .filter,
+  :root .button.ghost,
+  :root .onboard-card {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  body {
+    background: var(--canvas);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root .task-card {
+    transition: none;
+  }
+}

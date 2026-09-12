@@ -1,0 +1,16 @@
+# CI-only override. It deliberately omits Caddy: this validates the container
+# application and database lifecycle, not a public HTTPS domain.
+services:
+  app:
+    image: ${TASKBOARD_TEST_IMAGE:-codex-taskboard-deployment-test}
+    build:
+      # Compose resolves all override paths from the first Compose file's
+      # directory (the repository root), not this override's directory.
+      context: .
+    ports:
+      - '127.0.0.1:${DEPLOYMENT_TEST_PORT:-47832}:47830'
+    environment:
+      PUBLIC_ORIGIN: http://127.0.0.1:${DEPLOYMENT_TEST_PORT:-47832}
+      SESSION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  caddy:
+    profiles: [disabled]

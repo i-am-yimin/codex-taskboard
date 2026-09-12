@@ -1,0 +1,15 @@
+# Disposable internal-CA HTTPS acceptance override. It never publishes 80/443.
+services:
+  app:
+    image: ${TASKBOARD_TEST_IMAGE:-codex-taskboard-deployment-test}
+    environment:
+      PUBLIC_ORIGIN: https://${DOMAIN}:${HTTPS_TEST_PORT:-48443}
+  caddy:
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN}
+      HTTPS_TEST_PORT: ${HTTPS_TEST_PORT:-48443}
+    ports: !override
+      - '127.0.0.1:${HTTPS_TEST_HTTP_PORT:-48080}:80'
+      - '127.0.0.1:${HTTPS_TEST_PORT:-48443}:443'
+    volumes:
+      - ./deploy/Caddyfile.https-test:/etc/caddy/Caddyfile:ro

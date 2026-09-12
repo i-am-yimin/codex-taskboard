@@ -1,0 +1,9 @@
+{
+  "name": "@taskboard/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@taskboard/core": "workspace:*"
+  }
+}

@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.data/
+.artifacts/
+test-results/
+playwright-report/
+coverage/
+target/
+apps/desktop/resources/
+apps/desktop/runtime/
+apps/desktop/binaries/
+*.log
+*.tsbuildinfo

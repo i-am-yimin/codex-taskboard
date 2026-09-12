@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title id="title">Codex Taskboard</title>
+  <defs>
+    <linearGradient id="board" x1="32" y1="24" x2="224" y2="232" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6d8ff5"/>
+      <stop offset="1" stop-color="#3858bb"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="62" fill="url(#board)"/>
+  <rect x="40" y="48" width="176" height="160" rx="28" fill="#edf3ff" fill-opacity=".95"/>
+  <rect x="61" y="73" width="37" height="110" rx="12" fill="#bdcdfb"/>
+  <rect x="110" y="73" width="37" height="72" rx="12" fill="#7894ed"/>
+  <rect x="159" y="73" width="37" height="91" rx="12" fill="#4b68c7"/>
+  <circle cx="79.5" cy="101" r="7" fill="#fff"/>
+  <circle cx="128.5" cy="101" r="7" fill="#fff"/>
+  <circle cx="177.5" cy="101" r="7" fill="#fff"/>
+  <path d="M119 168h18v14h-18z" fill="#7894ed"/>
+  <path d="M119 155h18v8h-18z" fill="#4b68c7"/>
+</svg>

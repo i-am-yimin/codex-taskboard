@@ -1,0 +1,52 @@
+name: codex-taskboard
+services:
+  db:
+    image: postgres:17.6-bookworm
+    environment:
+      POSTGRES_DB: taskboard
+      POSTGRES_USER: taskboard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U taskboard -d taskboard"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  app:
+    image: ghcr.io/i-am-yimin/codex-taskboard:${TASKBOARD_VERSION:-0.1.0}
+    build: .
+    environment:
+      DATABASE_URL: postgres://taskboard:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/taskboard
+      SESSION_KEY: ${SESSION_KEY:?Set SESSION_KEY}
+      PUBLIC_ORIGIN: https://${DOMAIN:?Set DOMAIN}
+      HOST: 0.0.0.0
+      PORT: 47830
+      TRUST_PROXY: '1'
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+  caddy:
+    image: caddy:2.10.2-alpine
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN}
+      # Keep service-to-service proxying inside Compose even when the Docker
+      # client injects an outbound proxy for certificate retrieval.
+      NO_PROXY: app,db,localhost,127.0.0.1,::1,${NO_PROXY:-}
+      no_proxy: app,db,localhost,127.0.0.1,::1,${no_proxy:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:

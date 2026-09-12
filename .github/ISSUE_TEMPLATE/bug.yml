@@ -1,0 +1,20 @@
+name: 缺陷报告
+description: 报告可复现的问题
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题与复现步骤
+      description: 请说明预期行为和实际行为，不要附带凭据或真实任务正文。
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: 系统、看板版本与 Codex 版本
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 已去除敏感信息的日志或截图

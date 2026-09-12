@@ -1,0 +1,11 @@
+http://{$DOMAIN} {
+  redir https://{$DOMAIN}:{$HTTPS_TEST_PORT}{uri} permanent
+}
+
+{$DOMAIN} {
+  tls internal
+  encode zstd gzip
+  reverse_proxy app:47830 {
+    flush_interval -1
+  }
+}

@@ -1,0 +1,10 @@
+node_modules
+dist
+pnpm-lock.yaml
+.data
+.artifacts
+apps/desktop/runtime
+apps/desktop/binaries
+**/target
+test-results
+playwright-report
