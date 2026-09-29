@@ -2,9 +2,17 @@
 
 更新日期：2026-09-29。工作分支：`codex/initial-implementation`。下方保留早期审计、实现和实机验证记录。
 
-**本记录不是首版发布通过证明。浏览器协作、隔离 HTTP Compose 恢复演练及内部 CA HTTPS 演练已验证；Codex 内嵌、Windows 安装器和发布门禁仍未通过验收。** 2026-09-09 的开发预览快照保留在后半部分；当前提交、推送和换机步骤见根目录 [交接文档](../HANDOFF.md)。本项目仍未打标签或发布正式 Release。
+**本记录不是首版发布通过证明。浏览器协作、部分 Codex 内嵌和 Windows 安装版流程、隔离 HTTP Compose 恢复演练及内部 CA HTTPS 演练已验证；G1–G4 的完整门槛仍未通过。** 2026-09-09 的开发预览快照保留在后半部分；当前提交、推送和换机步骤见根目录 [交接文档](../HANDOFF.md)。本项目仍未打标签或发布正式 Release。
 
 下一轮逐项通过条件见 [闭环验收计划](closure-acceptance.md)。该计划不改变下述历史结果。
+
+## 2026-09-29：安装版窄窗口与双设备续验（进行中）
+
+固定提交 `6c8e41afd1b5a620fe8eb30c5aa0c398caf5f997` 的 [CI #36549295157](https://github.com/i-am-yimin/codex-taskboard/actions/runs/36549295157) 中 `verify`、`container`、`windows-desktop` 均成功。Windows ZIP SHA-256 为 `77F141A5BBBA4072E1AF58128693797476741E271A4E93A1B508839DFDE5CF11`，未签名 NSIS 安装器 SHA-256 为 `33CC267AE22197739423E22C645A3728A7C0376FCB27CEDFABFA88ACFAB2035D`。旧版经托盘退出后伴随服务及端口释放；新版静默安装到独立测试目录退出 0，随包 Node 和 CLI 运行。用户在新版独立 Codex 中登录并打开目标项目；只读核对确认项目与本机仓库映射唯一对应、编辑器为空。侧栏“任务看板”已展开，真实 iframe 宽 935px 和 715px 时状态列重排、筛选器可见且无横向溢出，截图在 `.artifacts/acceptance/2026-09-29-ci-6c8e41a/`。
+
+用户将 Codex 缩到系统允许的约 480px 总宽后，侧栏占 290px，iframe 仅约 185px；旧安装版虽然没有横向溢出，但标题和按钮逐字换行，判定可读性不合格。本轮工作树增加 360px 以下的嵌入布局，并把列表视图改为单列任务详情。独立 Chrome 演示页在 185px 的看板与列表截图分别为同目录下的 `compact-185-board.png`、`compact-185-list.png`；两者可读，文档及列表的 `scrollWidth` 均未超过 `clientWidth`。Playwright 响应式回归新增 185px 检查且通过；TypeScript、所改测试的 ESLint、Web 构建均退出 0。此为源码和独立浏览器结果，**修复后的 CI 安装包与真实 Codex 最窄窗口仍待复验**。
+
+第二台 Windows `codex-server` 已收到同一安装器，用户确认 SHA-256 匹配，安装后看到 Taskboard 服务器地址和登录页。第二台桌面程序的 HTTPS 连接、登录、仓库映射及任务全流程仍待验收。此前本机 CLI 原子领取 TB-3 成功，版本 1→2；并发第二次领取得到版本冲突，服务器和本机桌面均显示“进行中”，但第二台 Edge 初次观察时未自动移动，故状态变更的实时同步尚不能判通过。G1–G4 继续保持未通过。
 
 ## 2026-09-29：侧栏开关、响应式布局与跨设备接入续验（进行中）
 

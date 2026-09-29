@@ -20,7 +20,9 @@ test('onboarding is reachable and demonstration is explicitly labelled', async (
   await expect(page.getByText('空间设置', { exact: true })).toBeVisible();
 });
 
-test('embedded board reflows without horizontal scrolling as its host resizes', async ({ page }) => {
+test('embedded board reflows without horizontal scrolling as its host resizes', async ({
+  page,
+}) => {
   await page.goto('/?demo=1&embedded=1');
   await expect(page.locator('.board .column')).toHaveCount(4);
 
@@ -29,6 +31,7 @@ test('embedded board reflows without horizontal scrolling as its host resizes', 
     [935, 2],
     [640, 2],
     [420, 4],
+    [185, 4],
   ]) {
     await page.setViewportSize({ width, height: 820 });
     const layout = await page.locator('.board').evaluate((board) => {
@@ -52,11 +55,37 @@ test('embedded board reflows without horizontal scrolling as its host resizes', 
     expect(layout.rows, `status columns did not wrap at ${width}px`).toBeGreaterThanOrEqual(
       minimumRows,
     );
-    if (width === 420) {
-      const filterWidths = await page.locator('.toolbar select').evaluateAll((filters) =>
-        filters.map((filter) => filter.getBoundingClientRect().width),
+    if (width <= 420) {
+      const filterWidths = await page
+        .locator('.toolbar select')
+        .evaluateAll((filters) => filters.map((filter) => filter.getBoundingClientRect().width));
+      expect(filterWidths.every((filterWidth) => filterWidth >= Math.min(120, width - 20))).toBe(
+        true,
       );
-      expect(filterWidths.every((filterWidth) => filterWidth >= 120)).toBe(true);
+    }
+    if (width === 185) {
+      const compact = await page.evaluate(() => {
+        const title = document.querySelector('.page-head h1')!;
+        const actions = [...document.querySelectorAll('.head-actions .button')];
+        return {
+          documentWidth: document.documentElement.scrollWidth,
+          titleLines: Math.round(
+            title.getBoundingClientRect().height / parseFloat(getComputedStyle(title).lineHeight),
+          ),
+          actionLines: actions.map((action) => {
+            const label = [...action.childNodes].find(
+              (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
+            );
+            if (!label) return 0;
+            const range = document.createRange();
+            range.selectNodeContents(label);
+            return range.getClientRects().length;
+          }),
+        };
+      });
+      expect(compact.documentWidth).toBeLessThanOrEqual(width);
+      expect(compact.titleLines).toBe(1);
+      expect(compact.actionLines.every((lines) => lines === 1)).toBe(true);
     }
   }
 

@@ -1620,3 +1620,121 @@ h3 {
     font-size: 12px;
   }
 }
+@media (max-width: 360px) {
+  .app-shell.embedded .topbar {
+    height: auto;
+    min-height: 48px;
+    gap: 4px;
+    padding: 6px 10px;
+  }
+  .app-shell.embedded .space-switcher-wrap {
+    min-width: 0;
+    flex: 1;
+  }
+  .app-shell.embedded .space-switcher {
+    width: 100%;
+    min-width: 0;
+    gap: 4px;
+    padding: 4px;
+    font-size: 12px;
+  }
+  .app-shell.embedded .space-switcher span {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .app-shell.embedded .space-switcher svg,
+  .app-shell.embedded .space-switcher i {
+    flex: none;
+  }
+  .app-shell.embedded .topbar-right {
+    flex: none;
+    gap: 2px;
+  }
+  .app-shell.embedded .connection {
+    font-size: 0;
+  }
+  .app-shell.embedded .topbar-right .icon-button {
+    width: 28px;
+    height: 28px;
+  }
+  .app-shell.embedded .page-head {
+    display: block;
+    padding: 12px 10px;
+  }
+  .app-shell.embedded .page-head .eyebrow {
+    display: none;
+  }
+  .app-shell.embedded .page-head h1 {
+    font-size: 20px;
+    white-space: nowrap;
+  }
+  .app-shell.embedded .head-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .app-shell.embedded .head-actions .button {
+    width: 100%;
+    min-height: 34px;
+    padding: 0 6px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .app-shell.embedded .toolbar {
+    gap: 6px;
+    padding: 0 10px 12px;
+  }
+  .app-shell.embedded .search {
+    min-width: 0;
+    height: 36px;
+    padding: 0 8px;
+  }
+  .app-shell.embedded .toolbar select {
+    flex: 1 1 100%;
+    width: 100%;
+    padding: 7px 8px;
+  }
+  .app-shell.embedded .board {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .app-shell.embedded .task-card {
+    padding: 12px;
+  }
+  .app-shell.embedded .task-title {
+    gap: 4px;
+    font-size: 13px;
+  }
+  .app-shell.embedded .list-view {
+    margin-left: 10px;
+    margin-right: 10px;
+  }
+  .app-shell.embedded .list-header {
+    display: none;
+  }
+  .app-shell.embedded .list-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 12px;
+  }
+  .app-shell.embedded .list-row > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .app-shell.embedded .list-row > span:first-child {
+    display: block;
+  }
+  .app-shell.embedded .list-row b {
+    display: block;
+    margin-bottom: 4px;
+  }
+  .app-shell.embedded .drawer-content,
+  .app-shell.embedded .settings-content {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
