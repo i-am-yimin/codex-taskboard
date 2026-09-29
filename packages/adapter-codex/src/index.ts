@@ -296,23 +296,12 @@ export function boardEmbedScript(
     host.style.cssText = sidebar
       ? 'position:absolute;inset:0;display:none;flex-direction:column;min-width:0;background:var(--background,#fff);z-index:2147483000'
       : 'width:380px;min-width:280px;border-left:1px solid rgba(127,127,127,.22);background:var(--background,#fff);z-index:2147483000';
-    const close = document.createElement('button');
-    close.type = 'button';
-    close.textContent = '返回 Codex';
-    close.style.cssText = 'border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:13px;padding:6px 10px;cursor:pointer';
-    const toolbar = sidebar ? document.createElement('div') : null;
-    if (toolbar) {
-      toolbar.setAttribute('data-taskboard-toolbar', owner);
-      toolbar.style.cssText = 'box-sizing:border-box;display:flex;align-items:center;justify-content:flex-start;flex:none;height:40px;padding:0 12px;border-bottom:1px solid rgba(127,127,127,.18)';
-      toolbar.append(close);
-    }
     const frame = document.createElement('iframe');
     frame.title = '任务看板';
     frame.src = ${JSON.stringify(boardUrl)};
     frame.style.cssText = sidebar
       ? 'border:0;width:100%;flex:1;min-height:0'
       : 'border:0;width:100%;height:100%';
-    if (toolbar) host.append(toolbar);
     host.append(frame);
     (content || root).append(host);
     const entry = sidebar ? document.createElement('button') : null;
@@ -321,6 +310,7 @@ export function boardEmbedScript(
       entry.setAttribute('data-taskboard-entry', owner);
       entry.setAttribute('aria-label', '任务看板');
       entry.setAttribute('aria-pressed', 'false');
+      entry.title = '打开任务看板';
       entry.style.cssText = 'box-sizing:border-box;display:flex;flex:none;align-items:center;gap:10px;width:100%;height:32px;padding:0 12px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;font-size:14px;text-align:left;cursor:pointer';
       const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       icon.setAttribute('aria-hidden', 'true');
@@ -352,8 +342,9 @@ export function boardEmbedScript(
     return new Promise((resolve) => {
       let finished = false;
       const ownsFocus = () => host.contains(document.activeElement) || document.activeElement === entry;
-      const hide = () => { host.style.display = 'none'; if (entry) { entry.style.background = 'transparent'; entry.setAttribute('aria-pressed', 'false'); entry.focus(); } };
-      const show = () => { host.style.display = sidebar ? 'flex' : 'block'; if (entry) { entry.style.background = 'rgba(127,127,127,.14)'; entry.setAttribute('aria-pressed', 'true'); } close.focus(); };
+      const hide = () => { host.style.display = 'none'; if (entry) { entry.style.background = 'transparent'; entry.setAttribute('aria-pressed', 'false'); entry.title = '打开任务看板'; entry.focus(); } };
+      const show = () => { host.style.display = sidebar ? 'flex' : 'block'; if (entry) { entry.style.background = 'rgba(127,127,127,.14)'; entry.setAttribute('aria-pressed', 'true'); entry.title = '再次点击返回 Codex'; entry.focus(); } };
+      const toggle = () => { if (host.style.display === 'none') show(); else hide(); };
       const onKey = (event) => { if (event.key === 'Escape' && host.style.display !== 'none' && ownsFocus()) hide(); };
       const teardown = () => {
         const restore = ownsFocus() && installFocus && installFocus !== entry && installFocus.isConnected ? installFocus : null;
@@ -391,8 +382,7 @@ export function boardEmbedScript(
       window[cleanupKey] = cleanup;
       window.addEventListener('message', onMessage);
       document.addEventListener('keydown', onKey);
-      close.addEventListener('click', hide);
-      entry && entry.addEventListener('click', show);
+      entry && entry.addEventListener('click', toggle);
       frame.addEventListener('load', challenge);
       const challengeTimer = setInterval(challenge, 100);
       const timeout = setTimeout(() => finish({ installed: false, reason: 'board-ready-timeout' }, true), ${timeoutMs});

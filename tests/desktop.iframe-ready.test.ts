@@ -248,9 +248,11 @@ describe('iframe readiness in real Chromium', () => {
       expect(
         await page.locator('[data-taskboard-owned="7"]').evaluate((node) => node.style.display),
       ).toBe('flex');
-      const toolbarBox = await page.locator('[data-taskboard-toolbar="7"]').boundingBox();
       const frameBox = await page.locator('[data-taskboard-owned="7"] iframe').boundingBox();
-      expect(toolbarBox!.y + toolbarBox!.height).toBeLessThanOrEqual(frameBox!.y);
+      expect(frameBox!.y).toBe(overlayBox!.y);
+      expect(await page.locator('[data-taskboard-entry="7"]').getAttribute('aria-pressed')).toBe(
+        'true',
+      );
       await page.keyboard.press('Escape');
       expect(
         await page.locator('[data-taskboard-owned="7"]').evaluate((node) => node.style.display),
@@ -277,8 +279,11 @@ describe('iframe readiness in real Chromium', () => {
         node.focus();
       });
       expect(await page.evaluate('document.activeElement?.tagName')).toBe('IFRAME');
-      await page.getByRole('button', { name: '返回 Codex', exact: true }).click();
+      await page.locator('[data-taskboard-entry="7"]').click();
       expect(await page.locator('[data-taskboard-owned="7"]').isVisible()).toBe(false);
+      expect(await page.locator('[data-taskboard-entry="7"]').getAttribute('aria-pressed')).toBe(
+        'false',
+      );
       expect(
         await page.evaluate('document.activeElement?.getAttribute("data-taskboard-entry")'),
       ).toBe('7');
