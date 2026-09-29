@@ -1,5 +1,6 @@
 import { CheckCircle2, Cloud, LoaderCircle, LockKeyhole } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { companionKey, companionOrigin } from './companionBridge';
 
 type UpstreamState = {
   upstream: string;
@@ -9,12 +10,10 @@ type UpstreamState = {
 
 type Envelope = { data?: UpstreamState; error?: { message?: string } };
 
-const bridgeUrl = 'http://127.0.0.1:47831/v1/browser/upstream';
-
 async function bridge(method: 'GET' | 'POST', upstream?: string): Promise<UpstreamState> {
-  const capability = await window.__TAURI__?.core?.invoke<string>('bridge_capability');
+  const capability = await companionKey();
   if (!capability) throw new Error('桌面连接尚未准备好，请稍后重试。');
-  const response = await fetch(bridgeUrl, {
+  const response = await fetch(`${companionOrigin()}/v1/browser/upstream`, {
     method,
     headers: {
       'x-taskboard-companion-key': capability,

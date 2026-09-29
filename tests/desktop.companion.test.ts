@@ -1,16 +1,50 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { createCompanion } from '../apps/companion/src/main.ts';
 import { SecretStore } from '../apps/companion/src/secret.ts';
 
 describe('companion loopback boundary', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
-  it('requires the local bridge key and rejects untrusted origins', async () => {
+  it('serves the bundled demo URL with its query string', async () => {
+    const runtime = await createCompanion({
+      dataDirectory: await mkdtemp(join(tmpdir(), 'taskboard-demo-')),
+      embeddedWebRoot: resolve('apps/desktop/runtime/web'),
+      port: 0,
+    });
+    try {
+      const path = new URL(runtime.embeddedUrl).pathname;
+      const demo = await runtime.app.inject({ method: 'GET', url: `${path}?demo=1` });
+      expect(demo.statusCode).toBe(200);
+      expect(demo.headers['content-type']).toContain('text/html');
+    } finally { await runtime.stop(); }
+  });
+  it('does not enable Codex injection from an environment flag alone', { timeout: 60000 }, async () => {
+    vi.stubEnv('TASKBOARD_MANAGED_CODEX', 'true');
+    vi.stubEnv('TASKBOARD_CODEX_VERSION', '26.901.5280.0');
+    const runtime = await createCompanion({
+      dataDirectory: await mkdtemp(join(tmpdir(), 'taskboard-')),
+      port: 0,
+    });
+    try {
+      const headers = { 'x-taskboard-companion-key': runtime.clientKey };
+      const probe = await runtime.app.inject({ method: 'GET', url: '/v1/codex/probe', headers });
+      expect(probe.json().data).toMatchObject({
+        embedded: false,
+        reason: '桌面适配器未由启动器启用',
+      });
+      const install = await runtime.app.inject({ method: 'POST', url: '/v1/codex/install', headers });
+      expect(install.statusCode).toBe(409);
+    } finally {
+      await runtime.stop();
+    }
+  });
+  it('requires the local bridge key and rejects untrusted origins', { timeout: 60000 }, async () => {
     const runtime = await createCompanion({
       dataDirectory: await mkdtemp(join(tmpdir(), 'taskboard-')),
       port: 0,

@@ -1,4 +1,11 @@
 import type { ApiFault, Board, Space, Task, TaskDetail, User } from './types';
+import { companionKey, companionOrigin, hasLocalCompanion } from './companionBridge';
+export {
+  companionKey,
+  companionOrigin,
+  embeddedCapability,
+  hasLocalCompanion,
+} from './companionBridge';
 
 const base = import.meta.env.VITE_API_BASE ?? '/api/v1';
 export class ApiError extends Error implements ApiFault {
@@ -23,7 +30,7 @@ export async function request<T>(
   if (init.version !== undefined) headers['If-Match'] = String(init.version);
   if (init.method && init.method !== 'GET')
     headers['Idempotency-Key'] = init.idempotencyKey ?? idempotencyKey();
-  const desktop = typeof window !== 'undefined' && Boolean(window.__TAURI__?.core?.invoke);
+  const desktop = hasLocalCompanion();
   if (desktop) {
     const key = await companionKey();
     if (!key) throw new ApiError('COMPANION_UNAVAILABLE', '桌面伴随服务未准备好', 0);
@@ -31,7 +38,7 @@ export async function request<T>(
   }
   let response: Response;
   try {
-    response = await fetch(`${desktop ? 'http://127.0.0.1:47831/api/v1' : base}${path}`, {
+    response = await fetch(`${desktop ? `${companionOrigin()}/api/v1` : base}${path}`, {
       method: init.method ?? 'GET',
       headers,
       credentials: desktop ? 'omit' : 'include',
@@ -57,10 +64,10 @@ export async function request<T>(
 export const api = {
   me: () => request<User>('/me'),
   login: async (body: { email: string; password: string; deviceName: string }) => {
-    if (typeof window === 'undefined' || !window.__TAURI__?.core?.invoke)
+    if (!hasLocalCompanion())
       return request<{ user: User }>('/auth/login', { method: 'POST', body });
     const key = await companionKey();
-    const response = await fetch('http://127.0.0.1:47831/v1/browser/login', {
+    const response = await fetch(`${companionOrigin()}/v1/browser/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-taskboard-companion-key': key ?? '' },
       body: JSON.stringify(body),
@@ -75,10 +82,9 @@ export const api = {
     return payload.data;
   },
   logout: async () => {
-    if (typeof window === 'undefined' || !window.__TAURI__?.core?.invoke)
-      return request<void>('/auth/logout', { method: 'POST' });
+    if (!hasLocalCompanion()) return request<void>('/auth/logout', { method: 'POST' });
     const key = await companionKey();
-    await fetch('http://127.0.0.1:47831/v1/browser/logout', {
+    await fetch(`${companionOrigin()}/v1/browser/logout`, {
       method: 'POST',
       headers: { 'x-taskboard-companion-key': key ?? '' },
     });
@@ -144,14 +150,6 @@ export const api = {
     }),
 };
 
-declare global {
-  interface Window {
-    __TAURI__?: { core?: { invoke<T>(command: string): Promise<T> } };
-  }
-}
-async function companionKey() {
-  return window.__TAURI__?.core?.invoke<string>('bridge_capability');
-}
 /** The renderer only receives a short-lived local bridge capability, never a remote server token. */
 export async function openCodexDraft(body: {
   taskId: string;
@@ -166,7 +164,7 @@ export async function openCodexDraft(body: {
       '未检测到桌面伴随服务，请先在浏览器中使用看板。',
       0,
     );
-  const response = await fetch('http://127.0.0.1:47831/v1/codex/open-draft', {
+  const response = await fetch(`${companionOrigin()}/v1/codex/open-draft`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-taskboard-companion-key': key },
     body: JSON.stringify(body),

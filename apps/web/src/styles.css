@@ -1061,6 +1061,16 @@ h3 {
 .connection-card .button {
   margin-left: auto;
 }
+.connection-card .row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+.connection-card .row-actions .button {
+  margin-left: 0;
+}
 .logout {
   margin-top: 28px;
   color: #b65454;

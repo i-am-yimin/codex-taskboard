@@ -1,3 +1,5 @@
+import { companionKey, companionOrigin } from './companionBridge';
+
 export type BoardEventHandlers = {
   ready(): void;
   board(): void;
@@ -10,18 +12,21 @@ export type BoardEventHandlers = {
  * therefore reads the companion SSE response with fetch, keeping the remote
  * browser session and its credential inside the loopback companion.
  */
-export function subscribeDesktopBoardEvents(spaceId: string, handlers: BoardEventHandlers): () => void {
+export function subscribeDesktopBoardEvents(
+  spaceId: string,
+  handlers: BoardEventHandlers,
+): () => void {
   const controller = new AbortController();
   let stopped = false;
   void (async () => {
     try {
-      const key = await window.__TAURI__?.core?.invoke<string>('bridge_capability');
+      const key = await companionKey();
       if (!key || stopped) {
         if (!stopped) handlers.error();
         return;
       }
       const response = await fetch(
-        `http://127.0.0.1:47831/api/v1/spaces/${encodeURIComponent(spaceId)}/events`,
+        `${companionOrigin()}/api/v1/spaces/${encodeURIComponent(spaceId)}/events`,
         {
           headers: { 'x-taskboard-companion-key': key, accept: 'text/event-stream' },
           credentials: 'omit',

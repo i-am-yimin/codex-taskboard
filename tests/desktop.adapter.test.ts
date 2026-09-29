@@ -174,7 +174,7 @@ describe('Codex desktop adapter safety boundary', () => {
       );
     });
     const adapter = new CodexDesktopAdapter({
-      managedProcess: true,
+      owner: { verify: async () => true },
       appVersion: '26.901.5280.0',
       endpoint: `http://127.0.0.1:${new URL(cdp.url).port}`,
       targetBinding: {
@@ -225,7 +225,7 @@ describe('Codex desktop adapter safety boundary', () => {
     });
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -270,7 +270,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -322,7 +322,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -380,7 +380,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -583,7 +583,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -631,7 +631,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -678,7 +678,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -736,7 +736,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -816,7 +816,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -904,7 +904,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -999,7 +999,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -1023,7 +1023,7 @@ describe('Codex desktop adapter safety boundary', () => {
         expect.objectContaining({
           expression: expect.stringContaining('taskboard:ready-challenge'),
         }),
-        6_000,
+        20_000,
       ),
     );
     await expect(adapter.install()).rejects.toThrow('lifecycle is already active');
@@ -1038,6 +1038,111 @@ describe('Codex desktop adapter safety boundary', () => {
       embedded: false,
       reason: expect.stringContaining('启动器管理'),
     });
+  });
+  it('rejects an expired launcher owner before probing CDP', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const adapter = new CodexDesktopAdapter({
+      owner: { verify: async () => false },
+      appVersion: '26.901.5280.0',
+      endpoint: 'http://127.0.0.1:1',
+    });
+    await expect(adapter.probe()).resolves.toMatchObject({
+      embedded: false,
+      reason: expect.stringContaining('归属已失效'),
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('does not report an embedded host when ownership expires during CDP probing', async () => {
+    let checks = 0;
+    const adapter = new CodexDesktopAdapter({
+      owner: { verify: async () => ++checks === 1 },
+      appVersion: '26.901.5280.0',
+      endpoint: 'http://127.0.0.1:1',
+    });
+    vi.stubGlobal(
+      'fetch',
+      async () => new Response(JSON.stringify({ webSocketDebuggerUrl: 'ws://127.0.0.1:1/devtools/browser/test' })),
+    );
+    await expect(adapter.probe()).resolves.toMatchObject({
+      embedded: false,
+      reason: expect.stringContaining('归属已失效'),
+    });
+    expect(checks).toBe(2);
+  });
+  it('bounds an owner check that never responds', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new CodexDesktopAdapter({
+        owner: { verify: () => new Promise<boolean>(() => undefined) },
+        appVersion: '26.901.5280.0',
+      });
+      const result = adapter.probe();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(result).resolves.toMatchObject({
+        embedded: false,
+        reason: expect.stringContaining('归属已失效'),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('does not treat a newer installed Codex version as verified compatibility', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const adapter = new CodexDesktopAdapter({
+      owner: { verify: async () => true },
+      appVersion: '26.918.0.0',
+      endpoint: 'http://127.0.0.1:1',
+    });
+    await expect(adapter.probe()).resolves.toMatchObject({
+      embedded: false,
+      reason: expect.stringContaining('版本未在受支持清单'),
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('closes CDP before any protocol command if launcher ownership expires during connection', async () => {
+    let owned = true;
+    const send = vi.fn();
+    const close = vi.fn();
+    const page = {
+      id: 'target',
+      type: 'page',
+      url: 'app://codex',
+      webSocketDebuggerUrl: 'ws://127.0.0.1:1/devtools/page/target',
+    };
+    vi.stubGlobal(
+      'fetch',
+      async (input: RequestInfo | URL) =>
+        new Response(
+          JSON.stringify(
+            String(input).endsWith('/version')
+              ? { webSocketDebuggerUrl: page.webSocketDebuggerUrl }
+              : [page],
+          ),
+        ),
+    );
+    const adapter = new CodexDesktopAdapter(
+      {
+        owner: { verify: async () => owned },
+        appVersion: '26.901.5280.0',
+        endpoint: 'http://127.0.0.1:1',
+        targetBinding: {
+          targetId: page.id,
+          exactPageUrl: page.url,
+          pageWebSocketUrl: page.webSocketDebuggerUrl,
+        },
+        shellMarker: '[shell]',
+        boardUrl: 'http://127.0.0.1:4173',
+      },
+      async () => {
+        owned = false;
+        return { send, close };
+      },
+    );
+    await expect(adapter.install()).rejects.toThrow('ownership');
+    expect(send).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
   });
   it('fails closed without a target binding before connecting', async () => {
     const connector = vi.fn();
@@ -1061,7 +1166,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         shellMarker: '[shell]',
@@ -1108,7 +1213,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -1155,7 +1260,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -1217,7 +1322,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -1264,7 +1369,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -1301,7 +1406,7 @@ describe('Codex desktop adapter safety boundary', () => {
     );
     const adapter = new CodexDesktopAdapter(
       {
-        managedProcess: true,
+        owner: { verify: async () => true },
         appVersion: '26.901.5280.0',
         endpoint: 'http://127.0.0.1:1',
         targetBinding: {
@@ -1320,7 +1425,7 @@ describe('Codex desktop adapter safety boundary', () => {
 
   it('refuses to install without observed DOM markers', async () => {
     const adapter = new CodexDesktopAdapter({
-      managedProcess: true,
+      owner: { verify: async () => true },
       appVersion: '26.901.5280.0',
       endpoint: 'http://127.0.0.1:1',
     });
@@ -1328,14 +1433,14 @@ describe('Codex desktop adapter safety boundary', () => {
   });
 
   it('never claims automatic draft support before injection', async () => {
-    const adapter = new CodexDesktopAdapter({ managedProcess: true, appVersion: '26.901.5280.0' });
+    const adapter = new CodexDesktopAdapter({ owner: { verify: async () => true }, appVersion: '26.901.5280.0' });
     await expect(
       adapter.openDraft({ taskId: 'a', spaceId: 'b', projectPath: 'C:/workspace', prompt: 'x' }),
     ).rejects.toThrow('DRAFT_UNAVAILABLE');
   });
   it('does not touch a populated or mismatched composer when project identity is unverified', async () => {
     const adapter = new CodexDesktopAdapter({
-      managedProcess: true,
+      owner: { verify: async () => true },
       appVersion: '26.901.5280.0',
       composerMarker: '[data-observed-composer]',
     });

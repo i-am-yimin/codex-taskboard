@@ -36,8 +36,16 @@ test.describe('real PostgreSQL browser collaboration', () => {
     if (test.info().project.name === 'compact') await page.screenshot({ path: 'docs/screenshots/empty-state.png' });
     await page.getByRole('button', { name: '新建任务', exact: true }).click();
     await page.getByLabel('任务标题', { exact: true }).fill('同步前的标题');
-    await page.getByRole('button', { name: '创建任务', exact: true }).click();
-    await expect(page.getByText('同步前的标题', { exact: true })).toBeVisible({ timeout: 2000 });
+    await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          /\/api\/v1\/spaces\/[^/]+\/tasks$/.test(new URL(response.url()).pathname) &&
+          response.status() === 201,
+      ),
+      page.getByRole('button', { name: '创建任务', exact: true }).click(),
+    ]);
+    await expect(page.getByText('同步前的标题', { exact: true })).toBeVisible({ timeout: 10000 });
     const secondContext = await browser.newContext();
     const second = await secondContext.newPage();
     try {
@@ -47,7 +55,15 @@ test.describe('real PostgreSQL browser collaboration', () => {
       await second.getByText('同步前的标题', { exact: true }).click();
       await page.getByRole('textbox', { name: '任务标题' }).fill('保留这份中文草稿');
       await second.getByRole('textbox', { name: '任务标题' }).fill('另一台设备已保存');
-      await second.getByRole('button', { name: '保存任务', exact: true }).click();
+      await Promise.all([
+        second.waitForResponse(
+          (response) =>
+            response.request().method() === 'PATCH' &&
+            /\/api\/v1\/tasks\/[^/]+$/.test(new URL(response.url()).pathname) &&
+            response.status() === 200,
+        ),
+        second.getByRole('button', { name: '保存任务', exact: true }).click(),
+      ]);
       await expect(
         page.locator('.task-card').getByText('另一台设备已保存', { exact: true }),
       ).toBeVisible({ timeout: 2000 });

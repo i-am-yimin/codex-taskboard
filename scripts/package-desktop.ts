@@ -23,6 +23,8 @@ function withinWorkspace(path: string): boolean {
 async function main(): Promise<void> {
   if (!(await exists(companion)) || !(await exists(taskctl)))
     throw new Error('缺少 dist/companion.js 或 dist/taskctl.js。先运行 pnpm build。');
+  if (!(await exists(join(root, 'dist', 'web', 'index.html'))))
+    throw new Error('缺少 dist/web/index.html。先运行 pnpm build。');
   if (!(await exists(node)))
     throw new Error(
       '缺少用于 Windows 安装包的 node.exe。设置 TASKBOARD_BUNDLED_NODE 为已审核的 Node 22 runtime。',
@@ -32,6 +34,7 @@ async function main(): Promise<void> {
   await rm(runtime, { recursive: true, force: true, maxRetries: 5, retryDelay: 250 });
   await mkdir(runtime, { recursive: true });
   await cp(node, join(runtime, 'node.exe'));
+  await cp(join(root, 'dist', 'web'), join(runtime, 'web'), { recursive: true });
   // Build a self-contained Node runtime: source workspace imports must not point
   // to TypeScript files or developer pnpm links after this installer is copied.
   await writeFile(join(runtime, 'package.json'), '{"type":"commonjs"}\n', 'utf8');

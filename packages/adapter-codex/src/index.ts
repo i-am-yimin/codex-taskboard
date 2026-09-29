@@ -5,18 +5,46 @@ import type {
   LocalProject,
 } from '@taskboard/core';
 import { randomBytes } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import WebSocket from 'ws';
+import { resolveCodexProject } from './project-identity.ts';
 
 /** The only desktop version this adapter knows how to inspect. A successful CDP
  * connection is deliberately not enough to mark a user's Codex installation as
  * supported: the host DOM must be observed through an explicit marker. */
-export const SUPPORTED_CODEX_VERSIONS = ['26.901.5280.0'] as const;
+export const SUPPORTED_CODEX_VERSIONS = ['26.901.5280.0', '26.917.9434.0', '26.924.1866.0'] as const;
+
+/** Version-specific markers confirmed on an isolated host. Native launch support
+ * has a separate gate: recognizing a host does not prove process ownership. */
+export function codexHostMarkers(version: string) {
+  if (!SUPPORTED_CODEX_VERSIONS.includes(version as (typeof SUPPORTED_CODEX_VERSIONS)[number]))
+    throw new Error('Unsupported Codex host version');
+  return {
+    shellMarker: 'div:has(>aside.app-shell-left-panel)',
+    sidebarMarker: version === '26.924.1866.0'
+      ? '.app-shell-left-panel nav:not([data-app-navigation-rail])'
+      : '.app-shell-left-panel nav',
+    contentMarker: version === '26.924.1866.0'
+      ? 'main[data-app-shell-main-surface]'
+      : '.app-shell-left-panel + div',
+    composerMarker: '[contenteditable="true"][role="textbox"]',
+    modalMarker: '[role="dialog"]',
+  };
+}
+const OWNER_VERIFY_TIMEOUT_MS = 10_000;
+
+export interface ManagedCodexOwner {
+  /** Rechecks the launcher-held process and loopback listener before host mutation. */
+  verify(): Promise<boolean>;
+}
 
 export interface CodexCdpConfig {
   endpoint?: string;
   appVersion?: string;
+  /** Private launcher session directory, never supplied by the web renderer. */
+  codexHome?: string;
   boardUrl?: string;
-  managedProcess?: boolean;
+  owner?: ManagedCodexOwner;
   /** CSP bypass is never implicit and is only valid for the launcher process. */
   allowCspBypass?: boolean;
   /** Explicitly permits the guarded reload required to apply a CSP change. */
@@ -219,8 +247,8 @@ export async function connectCdp(
   };
 }
 
-const HANDSHAKE_TIMEOUT_MS = 5_000;
-const HANDSHAKE_COMMAND_TIMEOUT_MS = 6_000;
+const HANDSHAKE_TIMEOUT_MS = 15_000;
+const HANDSHAKE_COMMAND_TIMEOUT_MS = 20_000;
 // Real Codex reloads can replace the document immediately but mount the shell
 // substantially later; this is separate from the iframe readiness handshake.
 const CSP_RELOAD_HOST_READY_TIMEOUT_MS = 90_000;
@@ -354,6 +382,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
   private recovery?: Promise<void>;
   private lastLifecycleError?: string;
   private installing?: Promise<void>;
+  private draftInProgress = false;
   private readonly cleanupTasks = new WeakMap<object, Promise<void>>();
 
   private hostReadyTimeoutMs(): number {
@@ -371,6 +400,29 @@ export class CodexDesktopAdapter implements AgentAdapter {
     private readonly connector?: CdpConnector,
   ) {}
 
+  private async hasOwner(): Promise<boolean> {
+    if (!this.config.owner) return false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return (
+        (await Promise.race([
+          this.config.owner.verify(),
+          new Promise<boolean>((resolve) => {
+            timeout = setTimeout(() => resolve(false), OWNER_VERIFY_TIMEOUT_MS);
+          }),
+        ])) === true
+      );
+    } catch {
+      return false;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  }
+
+  private async assertOwner(): Promise<void> {
+    if (!(await this.hasOwner())) throw new Error('Codex launcher ownership is missing or expired');
+  }
+
   async probe(): Promise<AdapterCapabilities> {
     if (this.lastLifecycleError)
       return {
@@ -380,13 +432,21 @@ export class CodexDesktopAdapter implements AgentAdapter {
         thread: false,
         reason: this.lastLifecycleError,
       };
-    if (!this.config.managedProcess)
+    if (!this.config.owner)
       return {
         embedded: false,
         projects: false,
         draft: false,
         thread: false,
         reason: '仅探测由 Taskboard 启动器管理的 Codex 实例',
+      };
+    if (!(await this.hasOwner()))
+      return {
+        embedded: false,
+        projects: false,
+        draft: false,
+        thread: false,
+        reason: 'Codex 启动器进程归属已失效',
       };
     if (
       !this.config.appVersion ||
@@ -404,6 +464,14 @@ export class CodexDesktopAdapter implements AgentAdapter {
     }
     try {
       const version = await fetchCdpVersion(this.config.endpoint);
+      if (!(await this.hasOwner()))
+        return {
+          embedded: false,
+          projects: false,
+          draft: false,
+          thread: false,
+          reason: 'Codex 启动器进程归属已失效',
+        };
       if (!version.webSocketDebuggerUrl)
         return {
           embedded: false,
@@ -415,10 +483,10 @@ export class CodexDesktopAdapter implements AgentAdapter {
       return {
         embedded: this.observed,
         projects: false,
-        draft: false,
+        draft: Boolean(this.config.codexHome && this.config.targetBinding),
         thread: false,
         reason: this.observed
-          ? '尚未验证项目身份和空白编辑器；草稿自动填充已禁用'
+          ? '草稿填写前将重新验证项目身份和空白编辑器'
           : '尚未观察到已验证的 Codex 页面标记',
       };
     } catch {
@@ -456,6 +524,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
     const binding = this.config.targetBinding;
     if (!binding) throw new Error('缺少启动器提供的精确 Codex CDP 目标绑定');
     const pages = await fetchCdpPages(this.config.endpoint);
+    await this.assertOwner();
     const matches = pages.filter((item) => item.id === binding.targetId);
     if (matches.length !== 1) throw new Error('Codex CDP 目标绑定不唯一');
     const page =
@@ -491,6 +560,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
     this.connection = connection;
     this.session = session;
     try {
+      await this.assertOwner();
       const target = await connection.send<{
         targetInfo?: { targetId?: string; type?: string; url?: string };
       }>('Target.getTargetInfo');
@@ -506,7 +576,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
       if (generation !== this.generation)
         throw new Error('Codex adapter installation was cancelled');
       if (this.config.allowCspBypass) {
-        if (!this.config.managedProcess) throw new Error('CSP bypass 仅限受管理实例');
+        await this.assertOwner();
         if (!this.config.allowCspReload)
           throw new Error('CSP bypass requires explicit guarded reload opt-in');
         if (this.config.allowCspReload)
@@ -526,6 +596,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
       }
       const shellMarker = this.config.shellMarker;
       if (!shellMarker || !board) throw new Error('缺少已验证的 Codex DOM 标记或看板地址');
+      await this.assertOwner();
       session.injectionAttempted = true;
       const result = await this.evaluate<{ installed?: boolean }>(
         connection,
@@ -597,6 +668,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
       } else this.assertCurrentSession(session);
     };
     assertIdentity();
+    await this.assertOwner();
     const target = await session.connection.send<{
       targetInfo?: { targetId?: string; type?: string; url?: string };
     }>('Target.getTargetInfo');
@@ -613,6 +685,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
     assertIdentity();
     await this.assertReloadSafe(session.connection, exactPageUrl);
     assertIdentity();
+    await this.assertOwner();
     await session.connection.send('Page.reload');
     const deadline = Date.now() + this.hostReadyTimeoutMs();
     let sawShell = false;
@@ -662,6 +735,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
     if (!binding) return;
     this.recovery = (async () => {
       try {
+        await this.assertOwner();
         const target = await connection.send<{
           targetInfo?: { targetId?: string; type?: string; url?: string };
         }>('Target.getTargetInfo');
@@ -705,6 +779,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
         );
         if (!shellReady) throw new Error('Codex shell did not become ready after reload');
         if (generation !== this.generation || connection !== this.connection) return;
+        await this.assertOwner();
         const result = await this.evaluate<{ installed?: boolean }>(
           connection,
           boardEmbedScript(
@@ -829,10 +904,105 @@ export class CodexDesktopAdapter implements AgentAdapter {
     return [];
   }
   async openDraft(request: DraftRequest): Promise<void> {
-    void request;
-    // A selector can identify a composer but cannot prove its project identity or
-    // that it has no unsent text. Do not overwrite a user's active Codex draft.
-    throw new Error('DRAFT_UNAVAILABLE: 当前版本未验证项目身份和空白编辑器；请手动粘贴任务草稿');
+    if (this.draftInProgress) throw new Error('DRAFT_UNAVAILABLE: 草稿填写正在进行');
+    this.draftInProgress = true;
+    try {
+      await this.fillSafeDraft(request);
+    } finally {
+      this.draftInProgress = false;
+    }
+  }
+
+  private async fillSafeDraft(request: DraftRequest): Promise<void> {
+    const binding = this.config.targetBinding;
+    const home = this.config.codexHome;
+    if (!binding || !home || !this.config.appVersion ||
+      !SUPPORTED_CODEX_VERSIONS.includes(this.config.appVersion as (typeof SUPPORTED_CODEX_VERSIONS)[number]))
+      throw new Error('DRAFT_UNAVAILABLE: 缺少已验证的启动器会话或 Codex 版本');
+    if (typeof request.prompt !== 'string' || !request.prompt.trim() || request.prompt.length > 120_000)
+      throw new Error('DRAFT_UNAVAILABLE: 草稿内容无效');
+    // Restore the host CSP while the editor is still empty. An unsent draft
+    // must never force cleanup to reload and discard the user's text.
+    if (this.session) await this.dispose();
+    let requestedPath: string;
+    try { requestedPath = realpathSync.native(request.projectPath); }
+    catch { throw new Error('DRAFT_UNAVAILABLE: 请求的项目目录不存在'); }
+    await this.assertOwner();
+    const pages = await fetchCdpPages(this.config.endpoint);
+    if (pages.filter((page) => page.id === binding.targetId && page.type === 'page' &&
+      page.url === binding.exactPageUrl && page.webSocketDebuggerUrl === binding.pageWebSocketUrl).length !== 1)
+      throw new Error('DRAFT_UNAVAILABLE: Codex 页面绑定已变化');
+    await this.assertOwner();
+    const connection = await (this.connector ?? ((url: string) => connectCdp(url, this.config.cdpTimeoutMs ?? 3_000)))(binding.pageWebSocketUrl);
+    try {
+      await this.assertOwner();
+      const target = await connection.send<{ targetInfo?: { targetId?: string; type?: string; url?: string } }>('Target.getTargetInfo');
+      if (target.targetInfo?.targetId !== binding.targetId || target.targetInfo.type !== 'page' ||
+        target.targetInfo.url !== binding.exactPageUrl)
+        throw new Error('DRAFT_UNAVAILABLE: Codex 页面绑定已变化');
+      const state = await this.evaluate<{ selectedIds?: string[]; labels?: string[]; composerLabels?: string[]; editorEmpty?: boolean; modal?: boolean; overlayVisible?: boolean }>(
+        connection,
+        `(() => { if (location.href !== ${JSON.stringify(binding.exactPageUrl)}) return null;
+          const selected = [...document.querySelectorAll('[data-app-action-sidebar-project-id][aria-current="page"]')];
+          const editors = [...document.querySelectorAll('[contenteditable="true"][role="textbox"]')];
+          const editor = editors.length === 1 ? editors[0] : null;
+          const overlay = document.querySelector('[data-taskboard-owned]');
+          return { selectedIds: selected.map(el => el.getAttribute('data-app-action-sidebar-project-id')),
+            labels: selected.map(el => el.getAttribute('data-app-action-sidebar-project-label')),
+            composerLabels: [...document.querySelectorAll('[data-composer-navigation-target="workspace-project"]')].map(el => el.getAttribute('aria-label')),
+            editorEmpty: !!editor && !editor.textContent.trim() && editor.children.length === 1 &&
+              editor.firstElementChild.tagName === 'P' && editor.firstElementChild.children.length === 1 &&
+              editor.firstElementChild.firstElementChild.tagName === 'BR',
+            modal: !!document.querySelector('[role="dialog"]'),
+            overlayVisible: !!overlay && getComputedStyle(overlay).display !== 'none' }; })()`,
+      );
+      const id = state?.selectedIds?.length === 1 ? state.selectedIds[0] : undefined;
+      const project = id ? resolveCodexProject(home, id) : undefined;
+      if (!project || (process.platform === 'win32' ? project.path.toLowerCase() !== requestedPath.toLowerCase() : project.path !== requestedPath) ||
+        state.labels?.length !== 1 || state.labels[0] !== project.name ||
+        state.composerLabels?.length !== 1 || state.composerLabels[0] !== `切换项目：${project.name}` ||
+        !state.editorEmpty || state.modal || state.overlayVisible)
+        throw new Error('DRAFT_UNAVAILABLE: 项目身份、空白编辑器或页面状态未通过验证');
+      await this.assertOwner();
+      const current = await connection.send<{ targetInfo?: { targetId?: string; type?: string; url?: string } }>('Target.getTargetInfo');
+      if (current.targetInfo?.targetId !== binding.targetId || current.targetInfo.type !== 'page' ||
+        current.targetInfo.url !== binding.exactPageUrl)
+        throw new Error('DRAFT_UNAVAILABLE: Codex 页面绑定已变化');
+      await this.assertOwner();
+      const result = await this.evaluate<{ inserted?: boolean; exactText?: boolean; projectStillSelected?: boolean }>(
+        connection,
+        `(() => {
+          if (location.href !== ${JSON.stringify(binding.exactPageUrl)} || document.querySelector('[role="dialog"]')) return { inserted: false };
+          const selected = [...document.querySelectorAll('[data-app-action-sidebar-project-id][aria-current="page"]')];
+          const labels = [...document.querySelectorAll('[data-composer-navigation-target="workspace-project"]')];
+          const editors = [...document.querySelectorAll('[contenteditable="true"][role="textbox"]')];
+          const editor = editors[0];
+          const overlay = document.querySelector('[data-taskboard-owned]');
+          if (selected.length !== 1 || selected[0].getAttribute('data-app-action-sidebar-project-id') !== ${JSON.stringify(id)} ||
+            selected[0].getAttribute('data-app-action-sidebar-project-label') !== ${JSON.stringify(project.name)} ||
+            labels.length !== 1 || labels[0].getAttribute('aria-label') !== ${JSON.stringify(`切换项目：${project.name}`)} ||
+            editors.length !== 1 || editor.textContent.trim() || editor.children.length !== 1 ||
+            editor.firstElementChild.tagName !== 'P' || editor.firstElementChild.children.length !== 1 ||
+            editor.firstElementChild.firstElementChild.tagName !== 'BR' ||
+            (overlay && getComputedStyle(overlay).display !== 'none')) return { inserted: false };
+          editor.focus();
+          const inserted = document.execCommand('insertText', false, ${JSON.stringify(request.prompt)});
+          // Codex stores pasted newlines as separate <p> nodes. textContent drops the
+          // separators, so compare the actual paragraph sequence with the prompt.
+          const paragraphs = [...editor.children];
+          const exactText = editor.childNodes.length === paragraphs.length && paragraphs.length > 0 &&
+            paragraphs.every(paragraph => paragraph.tagName === 'P' &&
+              (paragraph.children.length === 0 ||
+                (paragraph.children.length === 1 && paragraph.firstElementChild.tagName === 'BR' &&
+                  !paragraph.textContent))) &&
+            paragraphs.map(paragraph => paragraph.textContent ?? '').join('\\n') === ${JSON.stringify(request.prompt)};
+          return { inserted, exactText,
+            projectStillSelected: selected[0].isConnected && selected[0].getAttribute('aria-current') === 'page' };
+        })()`,
+      );
+      if (!result.inserted || !result.exactText || !result.projectStillSelected)
+        throw new Error('DRAFT_UNCONFIRMED: 草稿未能在目标项目中完整显示；请检查独立 Codex 窗口');
+    } finally { connection.close(); }
   }
   async openThread(_threadId: string): Promise<void> {
     throw new Error('THREAD_UNAVAILABLE: 当前适配器不猜测 Codex 内部会话路由');

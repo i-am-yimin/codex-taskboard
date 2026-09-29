@@ -1,19 +1,21 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { createHash, randomBytes } from 'node:crypto';
-import { basename, join } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import { z } from 'zod';
 import { taskPrompt, type Task } from '@taskboard/core';
-import { CodexDesktopAdapter } from '@taskboard/adapter-codex';
+import { CodexDesktopAdapter, codexHostMarkers } from '@taskboard/adapter-codex';
 import type { AgentAdapter, DraftRequest } from '@taskboard/core';
 import { CompanionStore, defaultDataDirectory, normalizeUpstream } from './store.ts';
 import { SecretStore } from './secret.ts';
 import { CompanionError, RemoteTransport, validateNormalizedUpstream } from './remote.ts';
+import { LauncherControl } from './launcher-control.ts';
 
 const PORT = 47831;
 const allowedOrigins = new Set(
   (
     process.env.TASKBOARD_ALLOWED_ORIGINS ??
-    'http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:47830,http://localhost:47830,tauri://localhost,http://tauri.localhost'
+    'http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:47830,http://localhost:47830,http://127.0.0.1:47831,tauri://localhost,http://tauri.localhost'
   )
     .split(',')
     .map((value) => value.trim())
@@ -34,11 +36,14 @@ export interface CompanionOptions {
   allowedOrigins?: Set<string>;
   clientKey?: string;
   adapter?: AgentAdapter;
+  launcherControl?: LauncherControl;
+  embeddedWebRoot?: string;
 }
 export interface CompanionRuntime {
   app: FastifyInstance;
   port: number;
   clientKey: string;
+  embeddedUrl: string;
   stop(): Promise<void>;
 }
 
@@ -62,6 +67,11 @@ function allowOrigin(origin: string | undefined, origins: Set<string>): boolean 
 }
 
 export async function createCompanion(options: CompanionOptions = {}): Promise<CompanionRuntime> {
+  const control = options.launcherControl ?? LauncherControl.fromEnvironment();
+  const embeddedKey = randomBytes(32).toString('base64url');
+  const embeddedBase = `/embedded/${embeddedKey}/`;
+  const embeddedWebRoot = options.embeddedWebRoot ?? join(dirname(process.argv[1] ?? ''), 'web');
+  let embeddedPort = options.port ?? PORT;
   const directory = options.dataDirectory ?? defaultDataDirectory();
   const store = new CompanionStore(directory);
   await store.load();
@@ -95,20 +105,48 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
   const cliKeyStore = new SecretStore(join(directory, 'cli-key.dpapi'));
   const cliKey = (await cliKeyStore.read()) ?? randomBytes(32).toString('base64url');
   if (!(await cliKeyStore.read())) await cliKeyStore.write(cliKey);
-  const adapter =
-    options.adapter ??
-    (process.env.TASKBOARD_MANAGED_CODEX === 'true'
-      ? new CodexDesktopAdapter({
-          managedProcess: true,
-          appVersion: process.env.TASKBOARD_CODEX_VERSION,
-          endpoint: process.env.TASKBOARD_CDP_ENDPOINT,
-          boardUrl: process.env.TASKBOARD_BOARD_URL,
-          shellMarker: process.env.TASKBOARD_CODEX_SHELL_MARKER,
-          composerMarker: process.env.TASKBOARD_CODEX_COMPOSER_MARKER,
-          allowCspBypass: process.env.TASKBOARD_ALLOW_CSP_BYPASS === 'true',
-        })
-      : undefined);
-  const origins = options.allowedOrigins ?? allowedOrigins;
+  // Only a launcher-owned session can supply an adapter. Environment variables
+  // are diagnostics, never proof that an arbitrary Codex process belongs to us.
+  let adapter = options.adapter;
+  let controlSessionId: string | undefined;
+  let retirementError: string | undefined;
+  const currentAdapter = async (): Promise<AgentAdapter | undefined> => {
+    if (options.adapter || !control) return adapter;
+    if (retirementError) return undefined;
+    const session = await control.session().catch(() => undefined);
+    if (session?.id === controlSessionId && adapter) return adapter;
+    if (adapter) {
+      try {
+        await adapter.dispose();
+      } catch {
+        retirementError = 'Codex 页面恢复未确认；受管理会话已撤销';
+      }
+    }
+    adapter = undefined;
+    controlSessionId = undefined;
+    if (retirementError) return undefined;
+    if (!session) return undefined;
+    adapter = new CodexDesktopAdapter({
+      endpoint: session.endpoint,
+      appVersion: session.version,
+      codexHome: session.codexHome,
+      boardUrl: `http://127.0.0.1:${embeddedPort}${embeddedBase}`,
+      targetBinding: {
+        targetId: session.targetId,
+        exactPageUrl: session.exactPageUrl,
+        pageWebSocketUrl: session.pageWebSocketUrl,
+      },
+      owner: { verify: () => control.verify(session) },
+      ...codexHostMarkers(session.version),
+      allowCspBypass: true,
+      allowCspReload: true,
+      cdpTimeoutMs: 15_000,
+      hostReadyTimeoutMs: 120_000,
+    });
+    controlSessionId = session.id;
+    return adapter;
+  };
+  const origins = new Set(options.allowedOrigins ?? allowedOrigins);
   const app = Fastify({
     logger: { level: process.env.LOG_LEVEL ?? 'warn' },
     trustProxy: false,
@@ -187,6 +225,9 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     });
   };
   app.addHook('onRequest', async (request, reply) => {
+    const requestPath = request.url.split('?', 1)[0];
+    const embeddedResource =
+      requestPath === embeddedBase || requestPath.startsWith(`${embeddedBase}assets/`);
     const origin = request.headers.origin;
     if (!allowOrigin(origin, origins))
       return reply
@@ -200,17 +241,31 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
       )
       .header('access-control-allow-methods', 'GET,POST,PATCH,DELETE,OPTIONS');
     if (request.method === 'OPTIONS') return reply.code(204).send();
+    if (embeddedResource && request.method === 'GET') {
+      if (closing)
+        return reply
+          .code(503)
+          .send({ error: { code: 'SHUTTING_DOWN', message: '伴随服务正在关闭' } });
+      return;
+    }
     const supplied = request.headers['x-taskboard-companion-key'];
     const browserSurface =
       request.url.startsWith('/api/v1/') || request.url.startsWith('/v1/browser/');
-    if (browserSurface && supplied !== clientKey)
+    const embeddedAction =
+      request.url === '/v1/codex/open-draft' || request.url === '/v1/codex/open-thread';
+    if (browserSurface && supplied !== clientKey && supplied !== embeddedKey)
       return reply.code(supplied === cliKey ? 403 : 401).send({
         error: {
           code: supplied === cliKey ? 'LOCAL_SURFACE_DENIED' : 'LOCAL_AUTH_REQUIRED',
           message: 'CLI 不能访问浏览器会话代理',
         },
       });
-    if (!browserSurface && supplied !== clientKey && supplied !== cliKey)
+    if (
+      !browserSurface &&
+      supplied !== clientKey &&
+      supplied !== cliKey &&
+      !(embeddedAction && supplied === embeddedKey)
+    )
       return reply
         .code(401)
         .send({ error: { code: 'LOCAL_AUTH_REQUIRED', message: '本机伴随服务认证失败' } });
@@ -236,6 +291,29 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
   app.setErrorHandler((error, _request, reply) => {
     const result = localError(error);
     reply.code(result.status).send(result.body);
+  });
+  const embeddedHeaders = (reply: import('fastify').FastifyReply) =>
+    reply
+      .header('cache-control', 'no-store')
+      .header('referrer-policy', 'no-referrer')
+      .header('x-content-type-options', 'nosniff')
+      .header(
+        'content-security-policy',
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-src 'none'; base-uri 'none'",
+      );
+  app.get(embeddedBase, async (_request, reply) => {
+    const html = await readFile(join(embeddedWebRoot, 'index.html'), 'utf8');
+    return embeddedHeaders(reply)
+      .type('text/html; charset=utf-8')
+      .send(html.replaceAll('"/assets/', `"${embeddedBase}assets/`));
+  });
+  app.get(`${embeddedBase}assets/:file`, async (request, reply) => {
+    const file = (request.params as { file: string }).file;
+    if (!/^[A-Za-z0-9_.-]+\.(?:js|css)$/.test(file)) return reply.code(404).send();
+    const data = await readFile(join(embeddedWebRoot, 'assets', file));
+    return embeddedHeaders(reply)
+      .type(file.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8')
+      .send(data);
   });
   app.get('/health', async () => ({
     data: {
@@ -436,22 +514,33 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     return { data: await store.saveDraft(body.taskId, body.body) };
   });
   app.get('/v1/drafts', async () => ({ data: store.drafts() }));
-  app.get('/v1/codex/probe', async () => ({
-    data: adapter
-      ? await adapter.probe()
-      : {
-          embedded: false,
-          projects: false,
-          draft: false,
-          thread: false,
-          reason: '桌面适配器未由启动器启用',
-        },
-  }));
+  app.get('/v1/codex/probe', async () => {
+    const current = await currentAdapter();
+    return {
+      data: retirementError
+        ? { embedded: false, projects: false, draft: false, thread: false, reason: retirementError }
+        : current
+          ? await current.probe()
+          : {
+              embedded: false,
+              projects: false,
+              draft: false,
+              thread: false,
+              reason: '桌面适配器未由启动器启用',
+            },
+    };
+  });
   app.post('/v1/codex/install', async () => {
-    if (!(adapter instanceof CodexDesktopAdapter))
+    const current = await currentAdapter();
+    if (retirementError) throw new CompanionError('RESTORATION_UNCONFIRMED', retirementError, 409);
+    if (!(current instanceof CodexDesktopAdapter))
       throw new CompanionError('ADAPTER_UNAVAILABLE', '当前设备没有可安装的 Codex 适配器', 409);
-    await adapter.install();
-    return { data: await adapter.probe() };
+    try { await current.install(); }
+    catch (error) {
+      throw new CompanionError('CODEX_INSTALL_REFUSED',
+        error instanceof Error ? error.message : 'Codex 内嵌安装失败', 409);
+    }
+    return { data: await current.probe() };
   });
   app.post('/v1/codex/open-draft', async (request) => {
     const requestBody = z
@@ -471,18 +560,21 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
           fallback: '请先在此设备映射仓库目录，然后手动在 Codex 项目中粘贴任务草稿。',
         },
       };
-    if (!adapter)
+    const current = await currentAdapter();
+    if (!current)
       return {
         data: { opened: false, fallback: '桌面适配器未启用；请在 Codex 中手动粘贴任务草稿。' },
       };
     try {
-      await adapter.openDraft({ ...requestBody, projectPath } satisfies DraftRequest);
+      await current.openDraft({ ...requestBody, projectPath } satisfies DraftRequest);
       return { data: { opened: true } };
-    } catch {
+    } catch (error) {
       return {
         data: {
           opened: false,
-          fallback: '当前 Codex 页面未验证，未执行自动填充。请手动粘贴任务草稿。',
+          fallback: error instanceof Error && error.message.startsWith('DRAFT_UNCONFIRMED')
+            ? '草稿状态未确认，请先检查独立 Codex 窗口，不要重复填入。'
+            : '当前 Codex 项目、空白编辑器或页面归属未通过验证；草稿未写入。请手动检查。',
         },
       };
     }
@@ -492,9 +584,10 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
       .object({ threadId: z.string().min(1).max(512) })
       .strict()
       .parse(request.body);
-    if (!adapter) return { data: { opened: false, fallback: '桌面适配器未启用。' } };
+    const current = await currentAdapter();
+    if (!current) return { data: { opened: false, fallback: '桌面适配器未启用。' } };
     try {
-      await adapter.openThread(body.threadId);
+      await current.openThread(body.threadId);
       return { data: { opened: true } };
     } catch {
       return { data: { opened: false, fallback: '无法验证 Codex 会话路由。' } };
@@ -711,10 +804,13 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
   });
   const address = await app.listen({ host: '127.0.0.1', port: options.port ?? PORT });
   const port = Number(new URL(address).port);
+  origins.add(`http://127.0.0.1:${port}`);
+  embeddedPort = port;
   return {
     app,
     port,
     clientKey,
+    embeddedUrl: `http://127.0.0.1:${port}${embeddedBase}`,
     stop,
   };
 }

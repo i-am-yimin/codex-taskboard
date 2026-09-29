@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { request } from './api';
+import { companionKey, companionOrigin } from './companionBridge';
 
 type Device = {
   id: string;
@@ -19,6 +20,8 @@ export function ConnectionSettings({
   onLogout: () => void;
 }) {
   const [diagnosis, setDiagnosis] = useState('尚未检测桌面连接');
+  const [launching, setLaunching] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const [repository, setRepository] = useState('');
   const [directory, setDirectory] = useState('');
   const devices = useQuery({
@@ -26,9 +29,9 @@ export function ConnectionSettings({
     queryFn: () => (demo ? Promise.resolve<Device[]>([]) : request<Device[]>('/devices')),
   });
   async function local<T>(path: string, body?: unknown): Promise<T> {
-    const key = await window.__TAURI__?.core?.invoke<string>('bridge_capability');
+    const key = await companionKey();
     if (!key) throw new Error('需要 Windows 启动器提供本机连接；当前可使用浏览器看板。');
-    const response = await fetch(`http://127.0.0.1:47831${path}`, {
+    const response = await fetch(`${companionOrigin()}${path}`, {
       method: body === undefined ? 'GET' : 'POST',
       headers: {
         'x-taskboard-companion-key': key,
@@ -44,11 +47,32 @@ export function ConnectionSettings({
     try {
       const result = await local<{ draft: boolean; reason?: string }>('/v1/codex/probe');
       setDiagnosis(
-        result.draft ? '已验证草稿能力' : (result.reason ?? '尚未验证当前 Codex 的项目草稿能力'),
+        result.draft ? '已连接受管理 Codex；填写前会核对项目与空白编辑器' : (result.reason ?? '尚未验证当前 Codex 的项目草稿能力'),
       );
     } catch (error) {
       setDiagnosis(error instanceof Error ? error.message : '检测失败');
     }
+  }
+  async function launchManagedCodex() {
+    const invoke = window.__TAURI__?.core?.invoke;
+    if (!invoke) return;
+    setLaunching(true);
+    try {
+      setDiagnosis(await invoke<string>('start_managed_codex'));
+    } catch (error) {
+      setDiagnosis(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLaunching(false);
+    }
+  }
+  async function installCodexBoard() {
+    setInstalling(true);
+    try {
+      const result = await local<{ embedded: boolean; reason?: string }>('/v1/codex/install', {});
+      setDiagnosis(result.embedded ? '独立 Codex 侧栏看板已接入' : (result.reason ?? '看板接入未确认'));
+    } catch (error) {
+      setDiagnosis(error instanceof Error ? error.message : '看板接入失败');
+    } finally { setInstalling(false); }
   }
   return (
     <>
@@ -57,11 +81,23 @@ export function ConnectionSettings({
         <div>
           <b>Codex 桌面接入</b>
           <p>{diagnosis}</p>
-          <small>任务草稿能力需独立实机验证。</small>
+          <small>草稿只填入已验证项目的空白编辑器，发送由你确认。</small>
         </div>
-        <button className="button ghost" onClick={diagnose}>
-          检测连接
-        </button>
+        <div className="row-actions">
+          {window.__TAURI__?.core?.invoke && (
+            <>
+              <button className="button ghost" disabled={launching} onClick={launchManagedCodex}>
+                {launching ? '启动中…' : '启动独立 Codex'}
+              </button>
+              <button className="button ghost" disabled={installing} onClick={installCodexBoard}>
+                {installing ? '接入中…' : '接入 Codex 侧栏'}
+              </button>
+            </>
+          )}
+          <button className="button ghost" onClick={diagnose}>
+            检测连接
+          </button>
+        </div>
       </div>
       <p className="muted">
         {demo

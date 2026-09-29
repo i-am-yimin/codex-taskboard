@@ -10,8 +10,8 @@ const url = process.env.TEST_DATABASE_URL;
 const suite = url ? describe : describe.skip;
 
 suite('server API', () => {
-  const db = createDatabase(url);
-  const app = buildApp({ db, sessionSecret: 'f'.repeat(64) });
+  let db: ReturnType<typeof createDatabase>;
+  let app: ReturnType<typeof buildApp>;
   const password = 'a-long-test-password';
   let cookie = '';
   let userId = '';
@@ -19,6 +19,10 @@ suite('server API', () => {
   let taskId = '';
 
   beforeAll(async () => {
+    if (!url || !new URL(url).pathname.endsWith('_test'))
+      throw new Error('Server integration tests require a separate *_test database');
+    db = createDatabase(url);
+    app = buildApp({ db, sessionSecret: 'f'.repeat(64) });
     await migrate(db);
     userId = randomUUID();
     await db.query(
@@ -44,7 +48,8 @@ suite('server API', () => {
     cookie = Array.isArray(setCookie) ? setCookie[0] : setCookie!;
   });
   afterAll(async () => {
-    await app.close();
+    if (app) await app.close();
+    if (db) await db.end();
   });
   type InjectResult = { statusCode: number; json(): any };
   const request = (

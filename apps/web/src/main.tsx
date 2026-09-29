@@ -45,7 +45,15 @@ import {
 } from 'lucide-react';
 import { ConnectionSettings } from './ConnectionSettings';
 import { DesktopServerSetup } from './DesktopServerSetup';
-import { api, ApiError, cacheBoard, clearAccountCache, readCachedBoard } from './api';
+import {
+  api,
+  ApiError,
+  cacheBoard,
+  clearAccountCache,
+  embeddedCapability,
+  hasLocalCompanion,
+  readCachedBoard,
+} from './api';
 import {
   clearOfflineSnapshot,
   removeOfflineBoard,
@@ -65,7 +73,7 @@ const query = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
 });
 const isDemo = new URLSearchParams(location.search).get('demo') === '1';
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+if (import.meta.env.PROD && !embeddedCapability() && 'serviceWorker' in navigator) {
   navigator.serviceWorker
     .register('/sw.js')
     .then(() => navigator.serviceWorker.ready)
@@ -268,7 +276,7 @@ function App() {
         setOfflineSession(null);
       });
     };
-    if (window.__TAURI__?.core?.invoke) {
+    if (hasLocalCompanion()) {
       let stopped = false;
       let retry = 0;
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1565,7 +1573,7 @@ function Onboarding({ error }: { error?: string }) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(error ?? '');
-  const desktop = Boolean(window.__TAURI__?.core?.invoke);
+  const desktop = hasLocalCompanion();
   const [desktopReady, setDesktopReady] = useState(!desktop);
   const login = async (e: React.FormEvent) => {
     e.preventDefault();

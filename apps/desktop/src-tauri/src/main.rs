@@ -1,12 +1,20 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(windows)]
+mod managed_codex;
+#[cfg(windows)]
+mod owned_process;
+#[cfg(windows)]
+mod package_launch;
+#[cfg(windows)]
+mod private_pipe;
 mod ready;
 
 use rand::{distributions::Alphanumeric, Rng};
 use std::{
     fs,
     process::{Child, Command},
-    sync::Mutex,
+    sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
@@ -17,6 +25,13 @@ use tauri::{Manager, RunEvent};
 struct Companion {
     child: Mutex<Option<Child>>,
     bridge_key: String,
+    control_key: String,
+}
+
+#[derive(Default)]
+struct ManagedCodexState {
+    #[cfg(windows)]
+    child: Arc<Mutex<Option<managed_codex::ManagedCodex>>>,
 }
 
 impl Drop for Companion {
@@ -35,12 +50,22 @@ const READY_TIMEOUT: Duration = Duration::from_secs(30);
 const READY_POLL: Duration = Duration::from_millis(150);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
-fn diagnostic_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    let data = std::env::var_os("APPDATA")
+fn taskboard_data_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    if let Some(override_path) = std::env::var_os("TASKBOARD_DATA_DIR") {
+        let path = std::path::PathBuf::from(override_path);
+        if !path.is_absolute() {
+            return Err("TASKBOARD_DATA_DIR 必须是绝对路径".into());
+        }
+        return Ok(path);
+    }
+    Ok(std::env::var_os("APPDATA")
         .map(std::path::PathBuf::from)
         .map(|path| path.join("CodexTaskboard"))
-        .unwrap_or(app.path().app_data_dir().map_err(|e| e.to_string())?);
-    Ok(data.join("launcher-diagnostic.txt"))
+        .unwrap_or(app.path().app_data_dir().map_err(|e| e.to_string())?))
+}
+
+fn diagnostic_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(taskboard_data_dir(app)?.join("launcher-diagnostic.txt"))
 }
 
 fn record_startup_failure(app: &tauri::AppHandle, message: &str) {
@@ -76,7 +101,12 @@ fn show_startup_failure(message: &str) {
 #[cfg(not(windows))]
 fn show_startup_failure(_message: &str) {}
 
-fn start_companion(app: &tauri::AppHandle, bridge_key: &str) -> Result<Child, String> {
+fn start_companion(
+    app: &tauri::AppHandle,
+    bridge_key: &str,
+    control_port: u16,
+    control_key: &str,
+) -> Result<Child, String> {
     let resources = app.path().resource_dir().map_err(|e| e.to_string())?;
     let node = resources.join("runtime").join("node.exe");
     let entry = resources.join("runtime").join("companion.js");
@@ -86,14 +116,13 @@ fn start_companion(app: &tauri::AppHandle, bridge_key: &str) -> Result<Child, St
         );
     }
     let mut command = Command::new(node);
-    let canonical_data = std::env::var_os("APPDATA")
-        .map(std::path::PathBuf::from)
-        .map(|path| path.join("CodexTaskboard"))
-        .unwrap_or(app.path().app_data_dir().map_err(|e| e.to_string())?);
+    let canonical_data = taskboard_data_dir(app)?;
     command
         .arg(entry)
         .env("TASKBOARD_DATA_DIR", canonical_data)
         .env("TASKBOARD_CLIENT_KEY", bridge_key)
+        .env("TASKBOARD_CODEX_CONTROL_PORT", control_port.to_string())
+        .env("TASKBOARD_CODEX_CONTROL_KEY", control_key)
         .env("TASKBOARD_RUNTIME_COMPANION", "1");
     #[cfg(windows)]
     {
@@ -147,6 +176,46 @@ fn bridge_capability(state: tauri::State<'_, Companion>) -> String {
     state.bridge_key.clone()
 }
 
+#[tauri::command]
+fn start_managed_codex(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, ManagedCodexState>,
+) -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        let mut child = state
+            .child
+            .lock()
+            .map_err(|_| "Codex ownership lock poisoned")?;
+        if let Some(existing) = child.as_mut() {
+            if existing.verify() {
+                return Ok("受管理 Codex 已在运行".into());
+            }
+            if existing.is_running() {
+                if existing.target.is_none() {
+                    existing.await_binding()?;
+                    return Ok("受管理 Codex 已启动；登录并选中项目后，可接入 Codex 侧栏".into());
+                }
+                return Err("原有 Codex 页面或监听归属已变化，已拒绝启动第二个实例".into());
+            }
+            *child = None;
+        }
+        let data = taskboard_data_dir(&app)?;
+        let launched = managed_codex::launch(&data)?;
+        *child = Some(launched);
+        child
+            .as_mut()
+            .expect("new Codex child retained")
+            .await_binding()?;
+        Ok("受管理 Codex 已启动；登录并选中项目后，可接入 Codex 侧栏".into())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, state);
+        Err("受管理 Codex 启动仅支持 Windows".into())
+    }
+}
+
 fn show_main(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -155,6 +224,10 @@ fn show_main(app: &tauri::AppHandle) {
 }
 
 fn main() {
+    #[cfg(windows)]
+    if let Some(code) = package_launch::dispatch_helper() {
+        std::process::exit(code);
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_main(app)
@@ -166,10 +239,28 @@ fn main() {
                 .take(48)
                 .map(char::from)
                 .collect(),
+            control_key: rand::thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(48)
+                .map(char::from)
+                .collect(),
         })
+        .manage(ManagedCodexState::default())
         .setup(|app| {
             let key = app.state::<Companion>().bridge_key.clone();
-            let mut child = match start_companion(&app.handle(), &key) {
+            #[cfg(windows)]
+            let control_port = managed_codex::start_control(
+                app.state::<ManagedCodexState>().child.clone(),
+                app.state::<Companion>().control_key.clone(),
+            )?;
+            #[cfg(not(windows))]
+            let control_port = 0;
+            let mut child = match start_companion(
+                &app.handle(),
+                &key,
+                control_port,
+                &app.state::<Companion>().control_key,
+            ) {
                 Ok(child) => child,
                 Err(error) => {
                     record_startup_failure(&app.handle(), &error);
@@ -219,7 +310,10 @@ fn main() {
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![bridge_capability])
+        .invoke_handler(tauri::generate_handler![
+            bridge_capability,
+            start_managed_codex
+        ])
         .build(tauri::generate_context!())
         .expect("error while running Codex Taskboard")
         .run(|app, event| {

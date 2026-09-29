@@ -1,12 +1,14 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type BrowserContext, type Page } from '@playwright/test';
 import { createServer, type Server } from 'node:http';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { createServer as createNetServer } from 'node:net';
 import {
   CodexDesktopAdapter,
+  codexHostMarkers,
   connectCdp,
   type CdpConnection,
   type CdpConnector,
@@ -29,6 +31,7 @@ let cdpEndpoint: string;
 let profileDirectory: string;
 let activeAdapter: CodexDesktopAdapter | undefined;
 let delayComposerOnNextLoad = false;
+let projectFixtureId: string | undefined;
 const pageErrors: string[] = [];
 
 function listen(server: Server): Promise<string> {
@@ -92,7 +95,7 @@ function adapter(
 ): CodexDesktopAdapter {
   activeAdapter = new CodexDesktopAdapter(
     {
-      managedProcess: true,
+      owner: { verify: async () => true },
       appVersion: '26.901.5280.0',
       endpoint: cdpEndpoint,
       boardUrl: `${boardOrigin}/board`,
@@ -149,12 +152,19 @@ beforeAll(async () => {
   host = createServer((_request, response) => {
     const delayComposer = delayComposerOnNextLoad;
     delayComposerOnNextLoad = false;
+    const projectRow = projectFixtureId
+      ? `<div data-app-action-sidebar-project-id="${projectFixtureId}" data-app-action-sidebar-project-label="repo" aria-current="page"></div>`
+      : '';
+    const projectButton = projectFixtureId
+      ? '<button data-composer-navigation-target="workspace-project" aria-label="切换项目：repo"></button>'
+      : '';
+    const emptyParagraph = projectFixtureId ? '<p><br></p>' : '';
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
     response.setHeader('Content-Security-Policy', "frame-src 'self'");
     response.end(`<!doctype html><html><body><script>
       const mount = () => {
-        document.body.innerHTML = '<main id="codex-shell"><nav id="codex-sidebar"></nav><section id="codex-content"></section></main>';
-        const composer = () => document.querySelector('#codex-content').innerHTML = '<div id="codex-composer" contenteditable="true" role="textbox"></div>';
+        document.body.innerHTML = '<main id="codex-shell"><nav id="codex-sidebar">${projectRow}</nav><section id="codex-content"></section></main>';
+        const composer = () => document.querySelector('#codex-content').innerHTML = '<div id="codex-composer" contenteditable="true" role="textbox">${emptyParagraph}</div>${projectButton}';
         ${delayComposer ? 'setTimeout(composer, 450);' : 'composer();'}
       };
       setTimeout(mount, ${delayComposer ? 0 : 250});
@@ -190,6 +200,7 @@ afterEach(async () => {
     await activeAdapter?.dispose().catch(() => undefined);
   } finally {
     activeAdapter = undefined;
+    projectFixtureId = undefined;
     await page.goto(`${hostOrigin}/`);
     await waitForShell();
   }
@@ -210,6 +221,101 @@ afterAll(async () => {
 });
 
 describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () => {
+  it('selects the project navigation and visible content in the redesigned host', async () => {
+    await page.setContent(`<div><aside class="app-shell-left-panel">
+      <nav data-app-navigation-rail="true" aria-label="应用导航"></nav>
+      <nav role="navigation" aria-label="首页" id="projects"></nav>
+    </aside><div role="status" style="position:absolute;left:-1px;width:1px;height:1px"></div>
+    <main data-app-shell-main-surface="default" id="content"></main></div>`);
+    const markers = codexHostMarkers('26.924.1866.0');
+    await expect(page.locator(markers.shellMarker).count()).resolves.toBe(1);
+    await expect(page.locator(markers.sidebarMarker).evaluateAll(elements => elements.map(el => el.id)))
+      .resolves.toEqual(['projects']);
+    await expect(page.locator(markers.contentMarker).evaluateAll(elements => elements.map(el => el.id)))
+      .resolves.toEqual(['content']);
+    expect(() => codexHostMarkers('99.0.0.0')).toThrow('Unsupported');
+  });
+  it('fills only a verified empty project editor and preserves existing text on refusal', { timeout: 45000 }, async () => {
+    const home = await mkdtemp(join(tmpdir(), 'taskboard-draft-browser-'));
+    const root = join(home, 'repo');
+    await mkdir(root);
+    const id = 'f3f87941-d392-45d9-8c05-d7fdf1f134b1';
+    const database = new DatabaseSync(join(home, 'state_5.sqlite'));
+    let databaseClosed = false;
+    try {
+      database.exec('CREATE TABLE projects (id TEXT, name TEXT); CREATE TABLE project_idempotency_keys (key TEXT, project_id TEXT); CREATE TABLE project_roots (project_id TEXT, path TEXT)');
+      database.prepare('INSERT INTO projects VALUES (?, ?)').run('local', 'repo');
+      database.prepare('INSERT INTO project_idempotency_keys VALUES (?, ?)').run(id, 'local');
+      database.prepare('INSERT INTO project_roots VALUES (?, ?)').run('local', root);
+      database.close();
+      databaseClosed = true;
+      await page.evaluate((projectId) => {
+        document.querySelector('#codex-sidebar')!.innerHTML = `<div data-app-action-sidebar-project-id="${projectId}" data-app-action-sidebar-project-label="repo" aria-current="page"></div>`;
+        document.querySelector('#codex-content')!.insertAdjacentHTML('beforeend', '<button data-composer-navigation-target="workspace-project" aria-label="切换项目：repo"></button>');
+        document.querySelector('#codex-composer')!.innerHTML = '<p><br></p>';
+      }, id);
+      const target = await boundPage();
+      const instance = new CodexDesktopAdapter({
+        owner: { verify: async () => true }, appVersion: '26.917.9434.0', codexHome: home,
+        endpoint: cdpEndpoint,
+        targetBinding: { targetId: target.id, exactPageUrl: `${hostOrigin}/`, pageWebSocketUrl: target.webSocketDebuggerUrl },
+      });
+      activeAdapter = instance;
+      const request = { taskId: 'task', spaceId: 'space', projectPath: root,
+        prompt: 'safe draft only\n\nsecond paragraph\n\nfinal paragraph' };
+      await expect(instance.openDraft({ ...request, projectPath: home })).rejects.toThrow('DRAFT_UNAVAILABLE');
+      await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div role="dialog" id="test-modal"></div>'));
+      await expect(instance.openDraft(request)).rejects.toThrow('DRAFT_UNAVAILABLE');
+      await page.locator('#test-modal').evaluate((element) => element.remove());
+      expect(await page.locator('#codex-composer').textContent()).toBe('');
+      await instance.openDraft(request);
+      expect(await page.locator('#codex-composer > p').allTextContents())
+        .toEqual(['safe draft only', '', 'second paragraph', '', 'final paragraph']);
+      await expect(instance.openDraft({ ...request, prompt: 'overwrite' })).rejects.toThrow('DRAFT_UNAVAILABLE');
+      expect(await page.locator('#codex-composer > p').allTextContents())
+        .toEqual(['safe draft only', '', 'second paragraph', '', 'final paragraph']);
+    } finally {
+      if (!databaseClosed) database.close();
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+  it('restores CSP before filling a draft from an installed board', { timeout: 45000 }, async () => {
+    const home = await mkdtemp(join(tmpdir(), 'taskboard-installed-draft-'));
+    const root = join(home, 'repo');
+    await mkdir(root);
+    const id = 'f3f87941-d392-45d9-8c05-d7fdf1f134b1';
+    const database = new DatabaseSync(join(home, 'state_5.sqlite'));
+    database.exec('CREATE TABLE projects (id TEXT, name TEXT); CREATE TABLE project_idempotency_keys (key TEXT, project_id TEXT); CREATE TABLE project_roots (project_id TEXT, path TEXT)');
+    database.prepare('INSERT INTO projects VALUES (?, ?)').run('local', 'repo');
+    database.prepare('INSERT INTO project_idempotency_keys VALUES (?, ?)').run(id, 'local');
+    database.prepare('INSERT INTO project_roots VALUES (?, ?)').run('local', root);
+    database.close();
+    try {
+      projectFixtureId = id;
+      await page.reload();
+      await waitForShell();
+      const target = await boundPage();
+      const instance = new CodexDesktopAdapter({
+        owner: { verify: async () => true }, appVersion: '26.917.9434.0', codexHome: home,
+        endpoint: cdpEndpoint, boardUrl: `${boardOrigin}/board`,
+        targetBinding: { targetId: target.id, exactPageUrl: `${hostOrigin}/`, pageWebSocketUrl: target.webSocketDebuggerUrl },
+        shellMarker: '#codex-shell', sidebarMarker: '#codex-sidebar', contentMarker: '#codex-content',
+        composerMarker: '#codex-composer', modalMarker: '[role="dialog"]',
+        allowCspBypass: true, allowCspReload: true, cdpTimeoutMs: 5_000,
+      });
+      activeAdapter = instance;
+      await instance.install();
+      expect(await page.locator('[data-taskboard-owned]').count()).toBe(1);
+      expect(await cspBlocksBoard()).toBe(false);
+      const before = await documentOrigin();
+      await instance.openDraft({ taskId: 'task', spaceId: 'space', projectPath: root, prompt: 'leave this unsent' });
+      expect(await documentOrigin()).not.toBe(before);
+      expect(await page.locator('[data-taskboard-owned]').count()).toBe(0);
+      expect(await page.locator('#codex-composer').textContent()).toBe('leave this unsent');
+      expect(await cspBlocksBoard()).toBe(true);
+      expect(await page.locator('#codex-composer').textContent()).toBe('leave this unsent');
+    } finally { await rm(home, { recursive: true, force: true }); }
+  });
   it('applies bypass only through a guarded reload, restores CSP after disposal, and recovers on external reload', async () => {
     expect(await cspBlocksBoard()).toBe(true);
     const beforeInstall = await documentOrigin();
