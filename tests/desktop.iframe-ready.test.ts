@@ -218,7 +218,7 @@ describe('iframe readiness in real Chromium', () => {
     await isolated(async (page) => {
       await page.evaluate(() => {
         document.querySelector('#shell')!.innerHTML =
-          '<div id="native-root" style="display:flex;width:900px;height:600px;position:relative"><nav id="native-nav" style="width:220px"></nav><section id="native-content" style="position:static;flex:1;min-width:0"><input id="native-editor"></section></div>';
+          '<div id="native-root" style="display:flex;width:900px;height:600px;position:relative"><nav id="native-nav" style="width:220px;display:flex;flex-direction:column"><div id="native-header" style="flex-shrink:0;padding:0 8px"><button>新聊天</button></div><div id="native-scroll" style="flex:1;min-height:0"></div></nav><section id="native-content" style="position:static;flex:1;min-width:0"><input id="native-editor"></section></div>';
       });
       await page.locator('#native-editor').focus();
       const expression = boardEmbedScript(
@@ -235,6 +235,8 @@ describe('iframe readiness in real Chromium', () => {
       await page.evaluate(`window.__nativeReady = (${expression})`);
       expect(await page.locator('[data-taskboard-entry="7"]').count()).toBe(1);
       expect(await page.evaluate('window.__nativeReady')).toEqual({ installed: true });
+      expect(await page.locator('#native-header [data-taskboard-entry="7"]').count()).toBe(1);
+      expect(await page.locator('[data-taskboard-entry="7"]').getAttribute('aria-label')).toBe('任务看板');
       await page.locator('[data-taskboard-entry="7"]').click();
       const navBox = await page.locator('#native-nav').boundingBox();
       const contentBox = await page.locator('#native-content').boundingBox();
@@ -245,7 +247,10 @@ describe('iframe readiness in real Chromium', () => {
       );
       expect(
         await page.locator('[data-taskboard-owned="7"]').evaluate((node) => node.style.display),
-      ).toBe('block');
+      ).toBe('flex');
+      const toolbarBox = await page.locator('[data-taskboard-toolbar="7"]').boundingBox();
+      const frameBox = await page.locator('[data-taskboard-owned="7"] iframe').boundingBox();
+      expect(toolbarBox!.y + toolbarBox!.height).toBeLessThanOrEqual(frameBox!.y);
       await page.keyboard.press('Escape');
       expect(
         await page.locator('[data-taskboard-owned="7"]').evaluate((node) => node.style.display),

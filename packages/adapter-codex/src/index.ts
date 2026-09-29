@@ -294,31 +294,66 @@ export function boardEmbedScript(
     host.id = 'taskboard-codex-sidebar';
     host.setAttribute('data-taskboard-owned', owner);
     host.style.cssText = sidebar
-      ? 'position:absolute;inset:0;display:none;background:var(--background,#fff);z-index:2147483000'
+      ? 'position:absolute;inset:0;display:none;flex-direction:column;min-width:0;background:var(--background,#fff);z-index:2147483000'
       : 'width:380px;min-width:280px;border-left:1px solid rgba(127,127,127,.22);background:var(--background,#fff);z-index:2147483000';
     const close = document.createElement('button');
     close.type = 'button';
     close.textContent = '返回 Codex';
-    close.style.cssText = 'position:absolute;top:12px;right:12px;z-index:1';
+    close.style.cssText = 'border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:13px;padding:6px 10px;cursor:pointer';
+    const toolbar = sidebar ? document.createElement('div') : null;
+    if (toolbar) {
+      toolbar.setAttribute('data-taskboard-toolbar', owner);
+      toolbar.style.cssText = 'box-sizing:border-box;display:flex;align-items:center;justify-content:flex-start;flex:none;height:40px;padding:0 12px;border-bottom:1px solid rgba(127,127,127,.18)';
+      toolbar.append(close);
+    }
     const frame = document.createElement('iframe');
     frame.title = '任务看板';
     frame.src = ${JSON.stringify(boardUrl)};
-    frame.style.cssText = 'border:0;width:100%;height:100%';
+    frame.style.cssText = sidebar
+      ? 'border:0;width:100%;flex:1;min-height:0'
+      : 'border:0;width:100%;height:100%';
+    if (toolbar) host.append(toolbar);
     host.append(frame);
-    if (sidebar) host.append(close);
     (content || root).append(host);
     const entry = sidebar ? document.createElement('button') : null;
     if (entry) {
       entry.type = 'button';
-      entry.textContent = '任务看板';
       entry.setAttribute('data-taskboard-entry', owner);
-      sidebar.append(entry);
+      entry.setAttribute('aria-label', '任务看板');
+      entry.setAttribute('aria-pressed', 'false');
+      entry.style.cssText = 'box-sizing:border-box;display:flex;flex:none;align-items:center;gap:10px;width:100%;height:32px;padding:0 12px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;font-size:14px;text-align:left;cursor:pointer';
+      const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      icon.setAttribute('aria-hidden', 'true');
+      icon.setAttribute('viewBox', '0 0 16 16');
+      icon.setAttribute('width', '16');
+      icon.setAttribute('height', '16');
+      icon.style.flex = 'none';
+      for (const x of [2, 6, 10]) {
+        const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bar.setAttribute('x', String(x));
+        bar.setAttribute('y', '3');
+        bar.setAttribute('width', '3');
+        bar.setAttribute('height', x === 6 ? '7' : '10');
+        bar.setAttribute('rx', '1');
+        bar.setAttribute('fill', 'currentColor');
+        icon.append(bar);
+      }
+      const label = document.createElement('span');
+      label.textContent = '任务看板';
+      entry.append(icon, label);
+      // The observed native shell has a fixed header above a scrolling list.
+      // Keep this entry in that header so it cannot fall below the viewport.
+      const header = sidebar.firstElementChild;
+      const scrollArea = header && header.nextElementSibling;
+      if (header && scrollArea && getComputedStyle(header).flexShrink === '0' && getComputedStyle(scrollArea).flexGrow !== '0')
+        header.append(entry);
+      else sidebar.prepend(entry);
     }
     return new Promise((resolve) => {
       let finished = false;
       const ownsFocus = () => host.contains(document.activeElement) || document.activeElement === entry;
-      const hide = () => { host.style.display = 'none'; entry && entry.focus(); };
-      const show = () => { host.style.display = 'block'; close.focus(); };
+      const hide = () => { host.style.display = 'none'; if (entry) { entry.style.background = 'transparent'; entry.setAttribute('aria-pressed', 'false'); entry.focus(); } };
+      const show = () => { host.style.display = sidebar ? 'flex' : 'block'; if (entry) { entry.style.background = 'rgba(127,127,127,.14)'; entry.setAttribute('aria-pressed', 'true'); } close.focus(); };
       const onKey = (event) => { if (event.key === 'Escape' && host.style.display !== 'none' && ownsFocus()) hide(); };
       const teardown = () => {
         const restore = ownsFocus() && installFocus && installFocus !== entry && installFocus.isConnected ? installFocus : null;
