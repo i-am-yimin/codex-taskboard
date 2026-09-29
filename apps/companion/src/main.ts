@@ -10,6 +10,7 @@ import { CompanionStore, defaultDataDirectory, normalizeUpstream } from './store
 import { SecretStore } from './secret.ts';
 import { CompanionError, RemoteTransport, validateNormalizedUpstream } from './remote.ts';
 import { LauncherControl } from './launcher-control.ts';
+import { watchDesktopParent } from './parent-lifetime.ts';
 
 const PORT = 47831;
 const allowedOrigins = new Set(
@@ -857,11 +858,21 @@ if (
   ['main.ts', 'companion.js'].includes(basename(process.argv[1] ?? ''))
 ) {
   createCompanion()
-    .then((runtime) =>
+    .then((runtime) => {
+      if (process.env.TASKBOARD_RUNTIME_COMPANION === '1') {
+        watchDesktopParent(process.env.TASKBOARD_DESKTOP_PARENT_PID, () => {
+          const deadline = setTimeout(() => process.exit(1), 5000);
+          deadline.unref();
+          void runtime.stop().then(
+            () => process.exit(0),
+            () => process.exit(1),
+          );
+        });
+      }
       process.stdout.write(
         JSON.stringify({ event: 'ready', port: runtime.port, pid: process.pid }) + '\n',
-      ),
-    )
+      );
+    })
     .catch((error) => {
       process.stderr.write(`${error instanceof Error ? error.stack : error}\n`);
       process.exitCode = 1;

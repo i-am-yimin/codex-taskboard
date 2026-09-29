@@ -123,6 +123,7 @@ fn start_companion(
         .env("TASKBOARD_CLIENT_KEY", bridge_key)
         .env("TASKBOARD_CODEX_CONTROL_PORT", control_port.to_string())
         .env("TASKBOARD_CODEX_CONTROL_KEY", control_key)
+        .env("TASKBOARD_DESKTOP_PARENT_PID", std::process::id().to_string())
         .env("TASKBOARD_RUNTIME_COMPANION", "1");
     #[cfg(windows)]
     {
