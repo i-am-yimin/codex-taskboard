@@ -24,7 +24,7 @@
 
 使用随包 CLI 的本机凭据调用伴随服务的 Codex 探测和接入入口：探测明确返回 `embedded/projects/draft/thread=false`，原因是当前宿主版本尚未完成页面验收；侧栏接入返回 HTTP 409 `ADAPTER_UNAVAILABLE`，未触发页面注入。合成任务的未映射仓库草稿请求返回 `opened=false` 和手动粘贴提示。CLI 凭据访问浏览器会话代理返回 HTTP 403 `LOCAL_SURFACE_DENIED`。这证明当前安装版对**未验收版本**与**未映射仓库**的拒绝路径生效，不代替项目不匹配、非空编辑器及清理恢复等其他 G1 拒绝场景。响应摘要保存在忽略目录 `.artifacts/acceptance/2026-09-29-ci-185103d/unsupported-host-refusal.json`，未保存凭据。
 
-验收记录提交 `e439b67f897a5df10af41dec4453b21b1c3d7e08` 的 [CI 运行 #5](https://github.com/i-am-yimin/codex-taskboard/actions/runs/36517851534) 中容器和 Windows 作业通过，`verify` 在离线流程已报告通过后的测试库清理阶段失败：`DROP DATABASE ... WITH (FORCE)` 与连接池关闭竞态，PostgreSQL 强制断开的空闲连接发出未处理的 `error`。本轮源码已改为等待数据库会话实际断开再执行普通 `DROP DATABASE`，并为服务端连接池增加空闲连接错误处理。本机 `pnpm typecheck`、`pnpm lint`、`pnpm check`、独立数据库 117/117 和 `pnpm test:offline` 均通过；修复提交仍须核对自己的 Linux CI。
+验收记录提交 `e439b67f897a5df10af41dec4453b21b1c3d7e08` 的 [CI 运行 #5](https://github.com/i-am-yimin/codex-taskboard/actions/runs/36517851534) 中容器和 Windows 作业通过，`verify` 在离线流程已报告通过后的测试库清理阶段失败：`DROP DATABASE ... WITH (FORCE)` 与连接池关闭竞态，PostgreSQL 强制断开的空闲连接发出未处理的 `error`。修复提交 `cf031ceb09203ee502185b0a6e38ca08ef6567b7` 等待数据库会话实际断开再执行普通 `DROP DATABASE`，并为服务端连接池增加空闲连接错误处理。本机 `pnpm typecheck`、`pnpm lint`、`pnpm check`、独立数据库 117/117 和 `pnpm test:offline` 均通过；该提交的 [CI 运行 #6](https://github.com/i-am-yimin/codex-taskboard/actions/runs/36518881812) 中三个作业全部通过。CI #6 安装器产物 ZIP SHA-256 为 `52437A5C8807B3BA3EFA56A9FDB4AE97DD22FEDC5CB60215A56F1A378E67E0F3`，内含未签名 NSIS 安装器 24,631,647 字节，SHA-256 为 `026C85980799E00829A3ADB959AAF0B98E085D9DDEBC97AEC8A10639999F09C7`；此新包尚未安装，现有宿主实机结果仍对应 `185103d` 包。
 
 本轮本机没有 Docker 或已安装的 WSL 发行版，不能据此完成 G4 的 Compose 恢复与 HTTPS 复演；当前 CI 容器通过也不等于发布门槛通过。原始安装包和隔离数据均留在忽略目录 `.artifacts/acceptance/`。
 
