@@ -6,6 +6,24 @@
 
 下一轮逐项通过条件见 [闭环验收计划](closure-acceptance.md)。该计划不改变下述历史结果。
 
+## 2026-09-29：新机器续验与安装版任务闭环
+
+固定提交 `cac30bbd37e155b1e3b5ba200642248cceb832ab` 使用 Node `24.19.0` 和 pnpm `10.28.0`。`pnpm install --frozen-lockfile`、`pnpm check`、`pnpm test:db`、`pnpm test:e2e`、`pnpm test:offline` 及编译后的 migrate/admin 入口检查均退出 0。无数据库套件为 101 通过、15 项按预期跳过；独立 PostgreSQL 为 116/116，浏览器 6/6，离线冷重启、草稿保留、只读、重连和撤权通过。同一提交的 [CI 运行 #3](https://github.com/i-am-yimin/codex-taskboard/actions/runs/36513524961) 中 `verify`、`container`、`windows-desktop` 全部通过。新机器的 G0 基础门槛通过；后续源码提交仍须核对自身 CI。
+
+干净安装首次执行 `pnpm check` 失败：伴随服务测试依赖尚未生成的 `apps/desktop/runtime/web/index.html`。测试已改为自建临时嵌入网页。浏览器 E2E 原来会覆盖三张受版本控制的文档截图，已改写至 Playwright 测试输出目录，原图恢复。修复后上述检查通过，工作树不再被 E2E 截图污染。
+
+该 CI 的 `windows-installer-ci.zip` SHA-256 为 `A353F290DEED1A8D1787B2C1D1529D0C087EBCBC4C94C2F7D6CCA52153EF059C`；其中 NSIS 安装器 24,633,363 字节，SHA-256 为 `CED5A78D1AB0E8EE24D7C8B90B22A76D385CAD6923A99D452D7303E98888620D`，未签名。静默安装到 `.artifacts/acceptance/2026-09-29-installed/` 退出 0，安装目录含原生程序、随包 Node `22.16.0`、伴随服务、CLI、Web 及卸载器。通过 `TASKBOARD_DATA_DIR` 指向忽略的隔离测试目录；原 `%APPDATA%\CodexTaskboard` 在测试前不存在且未使用。
+
+已安装窗口连接项目独立 PostgreSQL 上的本机测试服务，并以合成账号登录。界面创建空间与任务、修改任务后显示保存回执，数据库版本从 1 增至 2；关闭窗口后原生进程和随包 Node 仍存活，`127.0.0.1:47831` 归随包 Node，重新启动单实例可恢复窗口及任务。随包 CLI 在同一隔离目录登录、列表和读取，版本 2 原子领取得到版本 3；第二次按旧版本领取返回 `VERSION_CONFLICT`、退出码 23；提交验收得到版本 4。安装版实时显示“待验收”，界面验收后显示“已完成”。这些结果证明本机已安装程序与 CLI 的单设备真实服务任务闭环，不能替代两台设备验收。托盘菜单直接恢复、托盘正常退出、端口释放、卸载及重装仍待验证，G2 保持未通过。
+
+本机安装的 Codex 为 `26.924.2738.0`。旧安装版从“启动独立 Codex”明确返回“当前 Codex 安装包版本未通过受管理宿主验收”，没有启动进程。另用独立 profile 直接运行该版本时，可执行文件、独立目录及 `127.0.0.1:9223` 监听者一致，但 `/json/list` 始终为空、无渲染进程；确认无页面后关闭测试 PID，端口释放。此直接启动不计为 G1 成功。提交 `185103da0fff2a048494bd415ee76931b9c26f60` 增加当前版本的**隔离启动**清单，伴随服务对未验收版本仍拒绝侧栏注入和草稿；本机 `pnpm check` 为 102 通过、15 项数据库用例按预期跳过，带独立数据库的完整 Vitest 为 117/117。重新安装产物的包上下文启动结果见下文，G1 保持未通过。
+
+该提交的 [CI 运行 #4](https://github.com/i-am-yimin/codex-taskboard/actions/runs/36516023551) 中 `verify`、`container`、`windows-desktop` 全部通过。`windows-installer-ci.zip` SHA-256 为 `736FBA55F34F57667A5F5D1B799326CCD128B6857F42B53670F86711349A3201`；内含未签名 NSIS 安装器 24,630,633 字节，SHA-256 为 `020B89FDA119F7B49F48B31CA13AB9166D4C53DB19BA31579770B6A3A1B83224`。静默安装到新的隔离目录退出 0，安装后的原生程序和随包 Node 启动，`127.0.0.1:47831` 归随包 Node；沿用隔离数据后，窗口仍显示上一版完成的测试任务。随包 Node `22.16.0` 及 CLI 帮助入口运行成功。为切换版本，仅在核对旧安装目录后强制结束旧测试进程；这不计为托盘正常退出。
+
+新安装版点击“启动独立 Codex”后出现“受管理 Codex 已启动”的反馈，并显示独立 Codex 登录窗口。原生启动器创建 MSIX `26.924.2738.0` 的 `ChatGPT.exe` PID 27276，命令行使用位于隔离测试数据目录的 `--user-data-dir`；`127.0.0.1:59504` 的监听 PID 同为 27276。CDP 列表只有一个 `app://-/index.html` 类型 `page`，目标 ID 和 WebSocket 路径一致；另有一个 `codex-sandbox://` 类型 `webview`，不作为主页面。隔离窗口尚未登录，因此项目身份、侧栏、草稿与拒绝路径未验收，G1 仍未通过。原始核对信息保存在忽略目录 `.artifacts/acceptance/2026-09-29-ci-185103d/installed-launch-evidence.json`。
+
+本轮本机没有 Docker 或已安装的 WSL 发行版，不能据此完成 G4 的 Compose 恢复与 HTTPS 复演；当前 CI 容器通过也不等于发布门槛通过。原始安装包和隔离数据均留在忽略目录 `.artifacts/acceptance/`。
+
 ## 2026-09-29：换机交接检查
 
 本轮整理当前源码、测试、设计和验收记录，并更新根目录 [交接文档](../HANDOFF.md)。`pnpm check` 退出码 0：类型检查和 Lint 通过；无 `TEST_DATABASE_URL` 的 Vitest 为 101 通过、15 项数据库用例按预期跳过；生产 Web 构建通过，主 JS chunk 540.08 kB 有现存体积提示。`git diff --cached --check` 通过。此结果针对交接工作树，尚需用固定推送提交核对 CI。此次没有重跑数据库、E2E、Rust、NSIS 或真实 Codex 安装版验收；G0–G4 状态不因换机提交自动变为通过。
