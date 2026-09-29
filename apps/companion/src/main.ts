@@ -53,7 +53,39 @@ function localError(error: unknown) {
       status: error.status,
       body: { error: { code: error.code, message: error.message, details: error.details } },
     };
+  if (error instanceof z.ZodError)
+    return {
+      status: 400,
+      body: { error: { code: 'VALIDATION_ERROR', message: '请求内容格式无效，请检查输入' } },
+    };
   return { status: 500, body: { error: { code: 'INTERNAL', message: '伴随服务发生未知错误' } } };
+}
+
+async function requestLogin(
+  upstream: string,
+  body: { email: string; password: string; deviceName: string },
+  tokenKind: 'agent' | 'browser',
+): Promise<Response> {
+  try {
+    return await fetch(new URL('/api/v1/auth/login', upstream), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...body, tokenKind }),
+      signal: AbortSignal.timeout(12_000),
+    });
+  } catch (error) {
+    if (error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name))
+      throw new CompanionError(
+        'UPSTREAM_TIMEOUT',
+        '连接任务服务器超时，请检查网络或服务器地址',
+        504,
+      );
+    throw new CompanionError(
+      'UPSTREAM_UNAVAILABLE',
+      '无法连接任务服务器，请检查网络或服务器地址',
+      502,
+    );
+  }
 }
 
 function cacheKey(path: string): string {
@@ -218,7 +250,15 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     } catch {
       throw new CompanionError('UNSAFE_UPSTREAM', '服务器地址必须是 HTTPS 或本机 HTTP 根地址', 400);
     }
-    await store.setUpstream(next);
+    try {
+      await store.setUpstream(next);
+    } catch {
+      throw new CompanionError(
+        'UPSTREAM_SAVE_FAILED',
+        '无法保存服务器地址，请检查本机数据目录',
+        500,
+      );
+    }
     upstream = next;
     remote = new RemoteTransport(upstream, async () => agentToken);
     browserRemote = new RemoteTransport(upstream, async () => browserSession, 'cookie', 'browser');
@@ -364,13 +404,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     return withAuthMutation(async () => {
       authEpoch += 1;
       liveStreams.forEach((close) => close());
-      const url = new URL('/api/v1/auth/login', upstream).toString();
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ...body, tokenKind: 'agent' }),
-        signal: AbortSignal.timeout(12_000),
-      });
+      const response = await requestLogin(upstream, body, 'agent');
       const payload = (await response.json().catch(() => ({}))) as {
         data?: { deviceToken?: string; user?: { id?: string } };
         error?: { code?: string; message?: string };
@@ -442,12 +476,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     return withAuthMutation(async () => {
       authEpoch += 1;
       liveStreams.forEach((close) => close());
-      const response = await fetch(new URL('/api/v1/auth/login', upstream), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ...body, tokenKind: 'browser' }),
-        signal: AbortSignal.timeout(12_000),
-      });
+      const response = await requestLogin(upstream, body, 'browser');
       const payload = (await response.json().catch(() => ({}))) as {
         data?: { user?: { id?: string } };
         error?: { code?: string; message?: string };

@@ -71,6 +71,55 @@ describe('desktop upstream setup', () => {
     }
   });
 
+  it('reports invalid login input and an unreachable server without an opaque 500', async () => {
+    vi.stubGlobal('fetch', async () => {
+      throw new TypeError('connect failed');
+    });
+    const runtime = await createCompanion({ dataDirectory: await directory(), port: 0 });
+    try {
+      const headers = {
+        'x-taskboard-companion-key': runtime.clientKey,
+        origin: 'tauri://localhost',
+      };
+      const invalid = await runtime.app.inject({
+        method: 'POST',
+        url: '/v1/browser/login',
+        headers,
+        payload: { email: 'user@example.test', password: 'short', deviceName: 'test' },
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+
+      const unreachable = await runtime.app.inject({
+        method: 'POST',
+        url: '/v1/browser/login',
+        headers,
+        payload: { email: 'user@example.test', password: 'long-enough-secret', deviceName: 'test' },
+      });
+      expect(unreachable.statusCode).toBe(502);
+      expect(unreachable.json()).toMatchObject({ error: { code: 'UPSTREAM_UNAVAILABLE' } });
+    } finally {
+      await runtime.stop();
+    }
+  });
+
+  it('reports a local failure to save the server address', async () => {
+    vi.spyOn(CompanionStore.prototype, 'setUpstream').mockRejectedValue(new Error('write failed'));
+    const runtime = await createCompanion({ dataDirectory: await directory(), port: 0 });
+    try {
+      const result = await runtime.app.inject({
+        method: 'POST',
+        url: '/v1/browser/upstream',
+        headers: { 'x-taskboard-companion-key': runtime.clientKey, origin: 'tauri://localhost' },
+        payload: { upstream: 'https://taskboard.example.test' },
+      });
+      expect(result.statusCode).toBe(500);
+      expect(result.json()).toMatchObject({ error: { code: 'UPSTREAM_SAVE_FAILED' } });
+    } finally {
+      await runtime.stop();
+    }
+  });
+
   it('rejects CLI access, locked values, and unsafe input', async () => {
     const dataDirectory = await directory();
     const runtime = await createCompanion({
