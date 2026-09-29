@@ -6,6 +6,18 @@
 
 下一轮逐项通过条件见 [闭环验收计划](closure-acceptance.md)。该计划不改变下述历史结果。
 
+## 2026-09-29：侧栏开关、响应式布局与跨设备接入续验（进行中）
+
+固定提交 `bc02c44e81e93762cfa5268c0cd2e7b6482944fe` 的 [CI #36544426117](https://github.com/i-am-yimin/codex-taskboard/actions/runs/36544426117) 中 `verify`、`container`、`windows-desktop` 均为 success。`windows-installer-ci.zip` 为 24,615,792 字节，SHA-256 `1A7822B709DCE8188C2C9C339E4D6A5306FED94A8E80DC0098F816ED5B8F4D95`；其中未签名 NSIS 安装器为 24,627,431 字节，SHA-256 `B4CC9CEE9EEB23AC17F2070B2D8A26D58754F8DCBD7EEA650C8C7E9668E13BE0`。静默安装到独立测试目录退出码 0，程序及随包 Node 启动，伴随服务监听 `127.0.0.1:47831`。切换前旧测试版经托盘“退出”后，主进程、随包 Node 与该端口均退出；旧隔离 Codex 确认唯一编辑器为空、注入节点为零后，仅停止核对过路径、父进程和 profile 的测试进程，CDP 端口释放。
+
+用户反馈原独立“返回 Codex”按钮点击无效，且侧栏入口已可承担关闭操作；提交 `bc02c44` 移除该按钮，将侧栏“任务看板”入口改为再次点击关闭，并保留 Esc 和按下状态。提交 `c051ce3` 为 iframe 宽度 935、640、420 像素提供三、二、单列重排及窄屏筛选器布局；浏览器回归在 1575、935、640、420 像素验证列均位于容器内且没有横向溢出。当前提交本机在 Node `24.19.0`、pnpm `10.28.0` 下执行 `pnpm check` 退出 0：无数据库 Vitest 102 通过、15 项数据库用例按预期跳过，类型检查、Lint 和构建通过。
+
+`bc02c44` 安装版重新登录隔离测试账号并读到原两张任务；随包 CLI 单独登录后也读到相同任务。已安装 Taskboard 启动独立 Codex `26.924.2738.0`，原生进程、`127.0.0.1:60087` 监听者、唯一 `app://-/index.html` 页面及精确 WebSocket 目标一致。用户在新隔离 profile 登录并打开目标项目，唯一可见项目 ID 与隔离 Codex 数据库中唯一根目录映射匹配，唯一编辑器为空、无弹窗。安装版接入侧栏成功，入口位于“新聊天”下方；用户点击后看板占主内容区，再次点击后看板隐藏，原项目聊天与空编辑器保持。真实截图同时暴露**响应式失效**：iframe 宽 935 像素时仍横向滚动，右侧状态列被截断，证据在忽略目录 `.artifacts/acceptance/2026-09-29-ci-bc02c44/installed-codex-sidebar-before-open.png`（采集时实际已打开）。原因是已安装伴随服务给 iframe 的地址缺少 `embedded=1`，使响应式 CSS 条件未生效；当前工作树已修正内嵌地址并新增参数回归，`pnpm typecheck`、`pnpm lint`、伴随服务与启动器测试 14/14 通过，打包准备产物已含该参数。修复安装包、窗口缩放及草稿成功与拒绝路径仍待实机复验，G1 与 G2 不关闭。
+
+隔离测试 API 经 Tailscale Serve 暴露于同一 tailnet 的 HTTPS 地址；本机经 HTTPS 访问 `/api/v1/health` 得到 200，数据库状态 `ok`。第二台 `codex-server` 先因未接受 Tailscale DNS 而无法解析域名；启用该设备的 Tailscale DNS 后，普通域名 HTTPS 请求返回 200。其原浏览器仍受代理拦截，在不更改系统代理的独立 Edge 中禁用代理后，用户看到登录页，登录同一合成账号并读到原两张任务。测试预览脚本已改为支持配置 `PUBLIC_ORIGIN`；原测试服务固定本机来源时，带 HTTPS `Origin` 的请求为 403，重启后同请求为 200。
+
+本机随包 CLI 于 `2026-09-29T09:22:48Z` 创建 TB-3，服务器返回版本 1；第二台 Edge 未刷新即自动出现该任务，用户报告约 2 秒内可见，本机安装版随后也显示三张任务。复用同一幂等键重试创建，返回原任务 ID 和版本，服务器列表仍恰有三张任务。这证明当前测试网络的双设备浏览器实时分发和该写入幂等性；第二台桌面程序的本机仓库映射、领取冲突、离线与撤权仍未验收，G3 不关闭。另发现随包 `taskctl.cmd` 会覆盖显式 `TASKBOARD_DATA_DIR`，当前工作树改为仅在未设置时使用默认目录；重新生成的运行时 wrapper 以隔离目录读取三张任务成功。上述工作树改动仍待新 CI 与安装版复验。
+
 ## 2026-09-29：当前 Codex 宿主 G1 诊断
 
 提交 `ae943d3c487a543646077b26b16ce3101dbd3818` 的 [CI #7](https://github.com/i-am-yimin/codex-taskboard/actions/runs/36519827934) 已完成，`verify`、`container`、`windows-desktop` 均为 success。本机继续保留 `185103d` 安装版启动的隔离 Codex `26.924.2738.0`：PID 27276、监听端口 59504、唯一 `app://-/index.html` 页面及精确 WebSocket 目标一致。用户在此隔离窗口登录并创建 `codex-taskboard` 项目后，页面唯一选中 ID 与隔离 `state_5.sqlite` 中唯一根目录映射对应当前仓库；唯一编辑器为空，且无弹窗或 Taskboard 节点。

@@ -25,7 +25,7 @@ await db.query(
 const app = buildApp({
   db,
   sessionSecret: randomBytes(32).toString('hex'),
-  origin: 'http://127.0.0.1:4173',
+  origin: process.env.PUBLIC_ORIGIN ?? 'http://127.0.0.1:4173',
   logger: false,
 });
 await app.listen({ host: '127.0.0.1', port: 47830 });

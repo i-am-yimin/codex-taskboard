@@ -70,6 +70,8 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
   const control = options.launcherControl ?? LauncherControl.fromEnvironment();
   const embeddedKey = randomBytes(32).toString('base64url');
   const embeddedBase = `/embedded/${embeddedKey}/`;
+  const embeddedBoardUrl = (port: number) =>
+    `http://127.0.0.1:${port}${embeddedBase}?embedded=1`;
   const embeddedWebRoot = options.embeddedWebRoot ?? join(dirname(process.argv[1] ?? ''), 'web');
   let embeddedPort = options.port ?? PORT;
   const directory = options.dataDirectory ?? defaultDataDirectory();
@@ -136,7 +138,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
       endpoint: session.endpoint,
       appVersion: session.version,
       codexHome: session.codexHome,
-      boardUrl: `http://127.0.0.1:${embeddedPort}${embeddedBase}`,
+      boardUrl: embeddedBoardUrl(embeddedPort),
       targetBinding: {
         targetId: session.targetId,
         exactPageUrl: session.exactPageUrl,
@@ -816,7 +818,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     app,
     port,
     clientKey,
-    embeddedUrl: `http://127.0.0.1:${port}${embeddedBase}`,
+    embeddedUrl: embeddedBoardUrl(port),
     stop,
   };
 }

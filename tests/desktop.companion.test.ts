@@ -20,7 +20,9 @@ describe('companion loopback boundary', () => {
       port: 0,
     });
     try {
-      const path = new URL(runtime.embeddedUrl).pathname;
+      const embeddedUrl = new URL(runtime.embeddedUrl);
+      expect(embeddedUrl.searchParams.get('embedded')).toBe('1');
+      const path = embeddedUrl.pathname;
       const demo = await runtime.app.inject({ method: 'GET', url: `${path}?demo=1` });
       expect(demo.statusCode).toBe(200);
       expect(demo.headers['content-type']).toContain('text/html');

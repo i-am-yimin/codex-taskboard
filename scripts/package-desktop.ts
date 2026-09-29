@@ -58,7 +58,7 @@ async function main(): Promise<void> {
   });
   await writeFile(
     join(runtime, 'taskctl.cmd'),
-    '@echo off\r\nset "TASKBOARD_DATA_DIR=%APPDATA%\\CodexTaskboard"\r\nset "TASKBOARD_RUNTIME_TASKCTL=1"\r\n"%~dp0node.exe" "%~dp0taskctl.js" %*\r\n',
+    '@echo off\r\nif not defined TASKBOARD_DATA_DIR set "TASKBOARD_DATA_DIR=%APPDATA%\\CodexTaskboard"\r\nset "TASKBOARD_RUNTIME_TASKCTL=1"\r\n"%~dp0node.exe" "%~dp0taskctl.js" %*\r\n',
     'utf8',
   );
   await cp(join(root, 'skills'), join(runtime, 'skills'), { recursive: true });
