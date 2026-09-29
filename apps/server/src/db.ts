@@ -15,6 +15,11 @@ export function afterCommit(effect: () => void): void {
 export function createDatabase(connectionString = process.env.DATABASE_URL): Database {
   if (!connectionString) throw new Error('DATABASE_URL is required');
   const pool = new pg.Pool({ connectionString, max: Number(process.env.DATABASE_POOL_SIZE ?? 10) });
+  // pg emits idle-client failures on the pool. Without a listener, a database
+  // restart can terminate the server even though a later query could reconnect.
+  pool.on('error', (error) => {
+    console.error('PostgreSQL idle connection error:', error.message);
+  });
   const database: Database = new Proxy(pool, {
     get(target, property) {
       if (property === 'query')

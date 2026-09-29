@@ -22,6 +22,10 @@
 
 新安装版点击“启动独立 Codex”后出现“受管理 Codex 已启动”的反馈，并显示独立 Codex 登录窗口。原生启动器创建 MSIX `26.924.2738.0` 的 `ChatGPT.exe` PID 27276，命令行使用位于隔离测试数据目录的 `--user-data-dir`；`127.0.0.1:59504` 的监听 PID 同为 27276。CDP 列表只有一个 `app://-/index.html` 类型 `page`，目标 ID 和 WebSocket 路径一致；另有一个 `codex-sandbox://` 类型 `webview`，不作为主页面。隔离窗口尚未登录，因此项目身份、侧栏、草稿与拒绝路径未验收，G1 仍未通过。原始核对信息保存在忽略目录 `.artifacts/acceptance/2026-09-29-ci-185103d/installed-launch-evidence.json`。
 
+使用随包 CLI 的本机凭据调用伴随服务的 Codex 探测和接入入口：探测明确返回 `embedded/projects/draft/thread=false`，原因是当前宿主版本尚未完成页面验收；侧栏接入返回 HTTP 409 `ADAPTER_UNAVAILABLE`，未触发页面注入。合成任务的未映射仓库草稿请求返回 `opened=false` 和手动粘贴提示。CLI 凭据访问浏览器会话代理返回 HTTP 403 `LOCAL_SURFACE_DENIED`。这证明当前安装版对**未验收版本**与**未映射仓库**的拒绝路径生效，不代替项目不匹配、非空编辑器及清理恢复等其他 G1 拒绝场景。响应摘要保存在忽略目录 `.artifacts/acceptance/2026-09-29-ci-185103d/unsupported-host-refusal.json`，未保存凭据。
+
+验收记录提交 `e439b67f897a5df10af41dec4453b21b1c3d7e08` 的 [CI 运行 #5](https://github.com/i-am-yimin/codex-taskboard/actions/runs/36517851534) 中容器和 Windows 作业通过，`verify` 在离线流程已报告通过后的测试库清理阶段失败：`DROP DATABASE ... WITH (FORCE)` 与连接池关闭竞态，PostgreSQL 强制断开的空闲连接发出未处理的 `error`。本轮源码已改为等待数据库会话实际断开再执行普通 `DROP DATABASE`，并为服务端连接池增加空闲连接错误处理。本机 `pnpm typecheck`、`pnpm lint`、`pnpm check`、独立数据库 117/117 和 `pnpm test:offline` 均通过；修复提交仍须核对自己的 Linux CI。
+
 本轮本机没有 Docker 或已安装的 WSL 发行版，不能据此完成 G4 的 Compose 恢复与 HTTPS 复演；当前 CI 容器通过也不等于发布门槛通过。原始安装包和隔离数据均留在忽略目录 `.artifacts/acceptance/`。
 
 ## 2026-09-29：换机交接检查

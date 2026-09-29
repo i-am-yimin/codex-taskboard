@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { resolve, relative } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, expect, type BrowserContext } from '@playwright/test';
 import { hash } from '@node-rs/argon2';
 import pg from 'pg';
@@ -29,6 +30,21 @@ async function removeTestProfile() {
   if (!child || child.startsWith('..') || child.includes(':'))
     throw new Error('Unsafe test-profile cleanup');
   await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+}
+async function dropTestDatabase() {
+  // pg-pool can resolve end() before its idle sockets finish closing. Wait
+  // for PostgreSQL to observe the disconnect instead of killing the sockets.
+  const deadline = Date.now() + 15_000;
+  while (true) {
+    const result = await control.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = $1',
+      [databaseName],
+    );
+    if (result.rows[0]?.count === 0) break;
+    if (Date.now() >= deadline) throw new Error('Offline test database connections did not close');
+    await delay(50);
+  }
+  await control.query(`DROP DATABASE "${databaseName}"`);
 }
 let context: BrowserContext | undefined;
 try {
@@ -120,7 +136,10 @@ try {
   await context?.close();
   await app.close();
   await db.end();
-  await control.query(`DROP DATABASE "${databaseName}" WITH (FORCE)`);
-  await control.end();
-  await removeTestProfile();
+  try {
+    await dropTestDatabase();
+  } finally {
+    await control.end();
+    await removeTestProfile();
+  }
 }
