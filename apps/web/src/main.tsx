@@ -293,10 +293,12 @@ function App() {
           ready: () => {
             retry = 0;
             setSync('synced');
+            setOffline(false);
             refresh();
           },
           board: () => {
             setSync('synced');
+            setOffline(false);
             refresh();
           },
           revoked: () => {
@@ -305,7 +307,7 @@ function App() {
           },
           error: () => {
             if (stopped) return;
-            setSync(navigator.onLine ? 'connecting' : 'offline');
+            setSync('offline');
             timer = setTimeout(connect, Math.min(2000, 250 * 2 ** retry++));
           },
         });
@@ -323,14 +325,16 @@ function App() {
     );
     events.addEventListener('ready', () => {
       setSync('synced');
+      setOffline(false);
       refresh();
     });
     events.addEventListener('board', () => {
       setSync('synced');
+      setOffline(false);
       refresh();
     });
     events.addEventListener('revoked', revoke);
-    events.onerror = () => setSync(navigator.onLine ? 'connecting' : 'offline');
+    events.onerror = () => setSync('offline');
     return () => events.close();
   }, [client, spaceId, user]);
   useEffect(() => {
@@ -375,7 +379,7 @@ function App() {
     [board, search, priority, assigneeFilter, labelFilter],
   );
   const editor = board?.space.role !== 'viewer' && !board?.space.archived;
-  const readOnlyCached = offline || showingCached;
+  const readOnlyCached = offline || showingCached || (!isDemo && sync !== 'synced');
 
   const refresh = () => client.invalidateQueries({ queryKey: ['board', user?.id, spaceId] });
   const move = async (task: Task, statusId: string, position?: number) => {
@@ -618,7 +622,11 @@ function App() {
           </select>
           <span className="result-count">{visible.length} 个任务</span>
         </div>
-        {readOnlyCached && (
+        {readOnlyCached && sync === 'connecting' && !showingCached && !offline ? (
+          <div className="banner">
+            正在确认实时连接；所有写入已暂停。
+          </div>
+        ) : readOnlyCached && (
           <div className="banner">
             <CloudOff size={16} />
             当前正在浏览

@@ -18,11 +18,23 @@ export function subscribeDesktopBoardEvents(
 ): () => void {
   const controller = new AbortController();
   let stopped = false;
+  let watchdog: ReturnType<typeof setTimeout> | undefined;
+  const fail = () => {
+    if (stopped) return;
+    stopped = true;
+    controller.abort();
+    handlers.error();
+  };
+  const armWatchdog = () => {
+    if (watchdog) clearTimeout(watchdog);
+    watchdog = setTimeout(fail, 25_000);
+  };
+  armWatchdog();
   void (async () => {
     try {
       const key = await companionKey();
       if (!key || stopped) {
-        if (!stopped) handlers.error();
+        if (!stopped) fail();
         return;
       }
       const response = await fetch(
@@ -34,6 +46,7 @@ export function subscribeDesktopBoardEvents(
         },
       );
       if (response.status === 401 || response.status === 403) {
+        stopped = true;
         handlers.revoked();
         return;
       }
@@ -49,18 +62,28 @@ export function subscribeDesktopBoardEvents(
         pending = frames.pop() ?? '';
         for (const frame of frames) {
           const event = /^event:\s*([^\r\n]+)/m.exec(frame)?.[1];
-          if (event === 'ready') handlers.ready();
-          else if (event === 'board') handlers.board();
-          else if (event === 'revoked') handlers.revoked();
+          if (event === 'ready') {
+            armWatchdog();
+            handlers.ready();
+          } else if (event === 'board') {
+            armWatchdog();
+            handlers.board();
+          } else if (event === 'revoked') {
+            stopped = true;
+            handlers.revoked();
+          }
         }
       }
-      if (!stopped) handlers.error();
+      if (!stopped) fail();
     } catch {
-      if (!stopped && !controller.signal.aborted) handlers.error();
+      if (!stopped && !controller.signal.aborted) fail();
+    } finally {
+      if (watchdog) clearTimeout(watchdog);
     }
   })();
   return () => {
     stopped = true;
+    if (watchdog) clearTimeout(watchdog);
     controller.abort();
   };
 }
