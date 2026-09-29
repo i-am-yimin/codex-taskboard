@@ -6,6 +6,16 @@
 
 下一轮逐项通过条件见 [闭环验收计划](closure-acceptance.md)。该计划不改变下述历史结果。
 
+## 2026-09-29：当前 Codex 宿主 G1 诊断
+
+提交 `ae943d3c487a543646077b26b16ce3101dbd3818` 的 [CI #7](https://github.com/i-am-yimin/codex-taskboard/actions/runs/36519827934) 已完成，`verify`、`container`、`windows-desktop` 均为 success。本机继续保留 `185103d` 安装版启动的隔离 Codex `26.924.2738.0`：PID 27276、监听端口 59504、唯一 `app://-/index.html` 页面及精确 WebSocket 目标一致。用户在此隔离窗口登录并创建 `codex-taskboard` 项目后，页面唯一选中 ID 与隔离 `state_5.sqlite` 中唯一根目录映射对应当前仓库；唯一编辑器为空，且无弹窗或 Taskboard 节点。
+
+源码适配器的实机草稿诊断先拒绝错误目录，再写入 21 字三段验收草稿，第二次写入因编辑器非空而拒绝；只读复核确认原文留在编辑器、未发送。此诊断使用前一宿主版本清单项来试验相同草稿契约，不是已安装产品放行。用户随后手动清空验收草稿；只读复核确认空编辑器，才进行页面重载检查。
+
+当前宿主的真实 `securitypolicyviolation` 事件确认本机看板 iframe 默认受 `frame-src` 阻挡。适配器侧栏诊断在临时回环演示看板上通过 nonce 就绪、入口显示、看板可见、“返回 Codex”、外部重载恢复和退出清理；清理后注入节点与入口均为零，再次出现真实 `frame-src` 拦截。首次探针因验收脚本 `page.evaluate` 表达式写法错误返回空值，未执行注入；修复探针后完整诊断通过。使用新版本清单项重新执行相同完整诊断也通过。临时看板服务已停止。证据脚本与摘要位于忽略目录 `.artifacts/acceptance/2026-09-29-current-host/`，不包含登录凭据或完整会话。
+
+源码现将 `26.924.2738.0` 纳入侧栏和草稿清单，并沿用本次实测的新版宿主标记。聚焦回归 12/12、无数据库完整 Vitest 102 通过且 15 项按预期跳过；TypeScript、ESLint、Web/Node 构建退出 0。这里仍是待提交的本机工作树结果；**尚需同一提交的 CI 安装器、真实安装版侧栏和草稿成功及拒绝路径复验**，G1 与 G2 均未通过。
+
 ## 2026-09-29：新机器续验与安装版任务闭环
 
 固定提交 `cac30bbd37e155b1e3b5ba200642248cceb832ab` 使用 Node `24.19.0` 和 pnpm `10.28.0`。`pnpm install --frozen-lockfile`、`pnpm check`、`pnpm test:db`、`pnpm test:e2e`、`pnpm test:offline` 及编译后的 migrate/admin 入口检查均退出 0。无数据库套件为 101 通过、15 项按预期跳过；独立 PostgreSQL 为 116/116，浏览器 6/6，离线冷重启、草稿保留、只读、重连和撤权通过。同一提交的 [CI 运行 #3](https://github.com/i-am-yimin/codex-taskboard/actions/runs/36513524961) 中 `verify`、`container`、`windows-desktop` 全部通过。新机器的 G0 基础门槛通过；后续源码提交仍须核对自身 CI。

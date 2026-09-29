@@ -115,7 +115,7 @@ describe('private launcher control', () => {
       }
       response.setHeader('content-type', 'application/json');
       response.end(JSON.stringify(request.url === '/session'
-        ? { session: { ...original, version: '26.924.2738.0' } }
+        ? { session: { ...original, version: '26.924.9999.0' } }
         : { valid: true }));
     });
     await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
@@ -133,7 +133,7 @@ describe('private launcher control', () => {
       expect(probe.json().data).toMatchObject({
         embedded: false,
         draft: false,
-        reason: 'Codex 26.924.2738.0 尚未完成页面验收，仅可隔离启动',
+        reason: 'Codex 26.924.9999.0 尚未完成页面验收，仅可隔离启动',
       });
       const install = await runtime.app.inject({ method: 'POST', url: '/v1/codex/install', headers });
       expect(install.statusCode).toBe(409);
