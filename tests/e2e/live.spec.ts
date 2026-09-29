@@ -79,6 +79,12 @@ test.describe('real PostgreSQL browser collaboration', () => {
       await expect(page.getByRole('textbox', { name: '任务标题' })).toHaveValue('保留这份中文草稿');
       await page.getByRole('button', { name: '放弃草稿，加载最新内容' }).click();
       await second.getByRole('button', { name: '领取任务', exact: true }).click();
+      await expect(
+        page
+          .locator('.column')
+          .filter({ has: page.locator('.column-head b', { hasText: '进行中' }) })
+          .getByText('另一台设备已保存', { exact: true }),
+      ).toBeVisible({ timeout: 2000 });
       await second.getByRole('button', { name: '提交结果至待验收' }).click();
       await second.getByLabel('完成说明', { exact: true }).fill('已完成真实浏览器协作验证');
       await second.getByLabel('验证记录', { exact: true }).fill('两端同步和冲突草稿检查通过');
