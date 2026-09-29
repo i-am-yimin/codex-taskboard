@@ -33,7 +33,8 @@ test.describe('real PostgreSQL browser collaboration', () => {
     await page.getByPlaceholder('例如：产品工作室').fill('真实协作验收');
     await page.getByRole('button', { name: '创建空间', exact: true }).click();
     await expect(page.getByRole('heading', { name: '任务看板', exact: true })).toBeVisible();
-    if (test.info().project.name === 'compact') await page.screenshot({ path: 'docs/screenshots/empty-state.png' });
+    if (test.info().project.name === 'compact')
+      await page.screenshot({ path: test.info().outputPath('empty-state.png') });
     await page.getByRole('button', { name: '新建任务', exact: true }).click();
     await page.getByLabel('任务标题', { exact: true }).fill('同步前的标题');
     await Promise.all([
@@ -70,7 +71,8 @@ test.describe('real PostgreSQL browser collaboration', () => {
       await expect(page.getByRole('textbox', { name: '任务标题' })).toHaveValue('保留这份中文草稿');
       await page.getByRole('button', { name: '保存任务', exact: true }).click();
       await expect(page.locator('.conflict-box')).toBeVisible();
-      if (test.info().project.name === 'compact') await page.screenshot({ path: 'docs/screenshots/conflict-state.png' });
+      if (test.info().project.name === 'compact')
+        await page.screenshot({ path: test.info().outputPath('conflict-state.png') });
       await expect(page.getByRole('textbox', { name: '任务标题' })).toHaveValue('保留这份中文草稿');
       await page.reload();
       await page.getByText('另一台设备已保存', { exact: true }).click();
@@ -88,7 +90,8 @@ test.describe('real PostgreSQL browser collaboration', () => {
       await secondContext.setOffline(true);
       await expect(second.getByRole('button', { name: '领取任务', exact: true })).toBeDisabled();
       await expect(second.getByRole('button', { name: '保存任务', exact: true })).toBeDisabled();
-      if (test.info().project.name === 'compact') await second.screenshot({ path: 'docs/screenshots/offline-state.png' });
+      if (test.info().project.name === 'compact')
+        await second.screenshot({ path: test.info().outputPath('offline-state.png') });
     } finally {
       await secondContext.close();
     }

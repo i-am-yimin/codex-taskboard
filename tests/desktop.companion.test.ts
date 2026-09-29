@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { createCompanion } from '../apps/companion/src/main.ts';
 import { SecretStore } from '../apps/companion/src/secret.ts';
 
@@ -11,10 +11,12 @@ describe('companion loopback boundary', () => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
-  it('serves the bundled demo URL with its query string', async () => {
+  it('serves the embedded demo URL with its query string', async () => {
+    const embeddedWebRoot = await mkdtemp(join(tmpdir(), 'taskboard-embedded-web-'));
+    await writeFile(join(embeddedWebRoot, 'index.html'), '<!doctype html><title>Taskboard</title>');
     const runtime = await createCompanion({
       dataDirectory: await mkdtemp(join(tmpdir(), 'taskboard-demo-')),
-      embeddedWebRoot: resolve('apps/desktop/runtime/web'),
+      embeddedWebRoot,
       port: 0,
     });
     try {
