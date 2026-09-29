@@ -223,6 +223,24 @@ fn show_main(app: &tauri::AppHandle) {
     }
 }
 
+#[cfg(windows)]
+fn recover_stale_desktop_shell(window: tauri::WebviewWindow) {
+    let nonce: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(16)
+        .map(char::from)
+        .collect();
+    let script = include_str!("desktop_recovery.js").replace("__TASKBOARD_BOOT_NONCE__", &nonce);
+    thread::spawn(move || {
+        // An old WebView2 worker may return a cached blank shell on the first
+        // cold start after an upgrade. Retry evaluation if the page is still loading.
+        for delay in [Duration::from_secs(2), Duration::from_secs(3)] {
+            thread::sleep(delay);
+            let _ = window.eval(&script);
+        }
+    });
+}
+
 fn main() {
     #[cfg(windows)]
     if let Some(code) = package_launch::dispatch_helper() {
@@ -301,6 +319,10 @@ fn main() {
                     }
                 })
                 .build(app)?;
+            #[cfg(windows)]
+            if let Some(window) = app.get_webview_window("main") {
+                recover_stale_desktop_shell(window);
+            }
             show_main(&app.handle());
             Ok(())
         })

@@ -4,11 +4,12 @@ import { createServer, type Server } from 'node:http';
 import { readFile } from 'node:fs/promises';
 
 const oldShell = '<!doctype html><title>Taskboard</title><main>old shell</main><script>navigator.serviceWorker.register("/sw.js")</script>';
-const newShell = '<!doctype html><title>Taskboard</title><main>current shell</main>';
-const oldWorker = `
+const blankShell = '<!doctype html><title>Taskboard</title><div id="root"></div><script>navigator.serviceWorker.register("/sw.js")</script>';
+const newShell = '<!doctype html><title>Taskboard</title><div id="root"><main>current shell</main></div>';
+const oldWorker = (shell: string) => `
   self.addEventListener('install', event => event.waitUntil((async () => {
     const cache = await caches.open('taskboard-shell-v1');
-    await cache.put('/', new Response(${JSON.stringify(oldShell)}, { headers: { 'content-type': 'text/html' } }));
+    await cache.put('/', new Response(${JSON.stringify(shell)}, { headers: { 'content-type': 'text/html' } }));
     await self.skipWaiting();
   })()));
   self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
@@ -22,12 +23,15 @@ let server: Server;
 let origin: string;
 let currentWorker: string;
 let upgraded = false;
+let blankMode = false;
 
 beforeAll(async () => {
   currentWorker = await readFile('apps/web/public/sw.js', 'utf8');
   server = createServer((request, response) => {
     response.setHeader('content-type', request.url === '/sw.js' ? 'text/javascript' : 'text/html');
-    response.end(request.url === '/sw.js' ? (upgraded ? currentWorker : oldWorker) : upgraded ? newShell : oldShell);
+    response.end(request.url === '/sw.js'
+      ? (upgraded ? currentWorker : oldWorker(blankMode ? blankShell : oldShell))
+      : upgraded ? newShell : blankMode ? blankShell : oldShell);
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
@@ -49,6 +53,8 @@ afterAll(async () => {
 
 describe('desktop service worker upgrade', () => {
   it('retires a stale shell cache while retaining local drafts', async () => {
+    upgraded = false;
+    blankMode = false;
     const context = await browser.newContext();
     try {
       const page = await context.newPage();
@@ -67,6 +73,41 @@ describe('desktop service worker upgrade', () => {
       expect(await page.evaluate(() => localStorage.getItem('tb:draft:test'))).toBe('preserved draft');
     } finally {
       await context.close();
+    }
+  });
+
+  it('reloads a cached blank shell once when the native startup probe runs', async () => {
+    upgraded = false;
+    blankMode = true;
+    const recovery = (await readFile('apps/desktop/src-tauri/src/desktop_recovery.js', 'utf8'))
+      .replace('__TASKBOARD_BOOT_NONCE__', 'test-upgrade');
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await page.goto(origin);
+      await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+      await page.reload();
+      expect(await page.locator('#root').evaluate((root) => root.childElementCount)).toBe(0);
+      await page.evaluate(() => localStorage.setItem('tb:draft:test', 'preserved draft'));
+
+      upgraded = true;
+      await page.evaluate(recovery).catch(() => undefined);
+      await page.waitForFunction(async () =>
+        document.querySelector('#root main')?.textContent === 'current shell' &&
+        (await navigator.serviceWorker.getRegistrations()).length === 0,
+      );
+      // The retiring worker navigates its clients once more after activation.
+      await page.waitForTimeout(200);
+      await page.waitForFunction(() => document.querySelector('#root main')?.textContent === 'current shell');
+      await page.waitForFunction(() => document.readyState === 'complete');
+      await page.evaluate(recovery);
+      expect(await page.evaluate(() => sessionStorage.getItem('tb:desktop-shell-reload:test-upgrade')))
+        .toBeNull();
+      expect(await page.evaluate(() => localStorage.getItem('tb:draft:test')))
+        .toBe('preserved draft');
+    } finally {
+      await context.close();
+      blankMode = false;
     }
   });
 });
