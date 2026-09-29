@@ -924,7 +924,8 @@ export class CodexDesktopAdapter implements AgentAdapter {
       throw new Error('DRAFT_UNAVAILABLE: 草稿内容无效');
     // Restore the host CSP while the editor is still empty. An unsent draft
     // must never force cleanup to reload and discard the user's text.
-    if (this.session) await this.dispose();
+    const restoringSidebar = Boolean(this.session);
+    if (restoringSidebar) await this.dispose();
     let requestedPath: string;
     try { requestedPath = realpathSync.native(request.projectPath); }
     catch { throw new Error('DRAFT_UNAVAILABLE: 请求的项目目录不存在'); }
@@ -941,7 +942,9 @@ export class CodexDesktopAdapter implements AgentAdapter {
       if (target.targetInfo?.targetId !== binding.targetId || target.targetInfo.type !== 'page' ||
         target.targetInfo.url !== binding.exactPageUrl)
         throw new Error('DRAFT_UNAVAILABLE: Codex 页面绑定已变化');
-      const state = await this.evaluate<{ selectedIds?: string[]; labels?: string[]; composerLabels?: string[]; editorEmpty?: boolean; modal?: boolean; overlayVisible?: boolean }>(
+      type DraftSurface = { selectedIds: string[]; labels: string[]; composerLabels: string[];
+        editorCount: number; editorEmpty: boolean; editorHasText: boolean; modal: boolean; overlayVisible: boolean };
+      const readSurface = () => this.evaluate<DraftSurface | null>(
         connection,
         `(() => { if (location.href !== ${JSON.stringify(binding.exactPageUrl)}) return null;
           const selected = [...document.querySelectorAll('[data-app-action-sidebar-project-id][aria-current="page"]')];
@@ -951,19 +954,42 @@ export class CodexDesktopAdapter implements AgentAdapter {
           return { selectedIds: selected.map(el => el.getAttribute('data-app-action-sidebar-project-id')),
             labels: selected.map(el => el.getAttribute('data-app-action-sidebar-project-label')),
             composerLabels: [...document.querySelectorAll('[data-composer-navigation-target="workspace-project"]')].map(el => el.getAttribute('aria-label')),
+            editorCount: editors.length, editorHasText: editors.some(el => !!el.textContent.trim()),
             editorEmpty: !!editor && !editor.textContent.trim() && editor.children.length === 1 &&
               editor.firstElementChild.tagName === 'P' && editor.firstElementChild.children.length === 1 &&
               editor.firstElementChild.firstElementChild.tagName === 'BR',
             modal: !!document.querySelector('[role="dialog"]'),
             overlayVisible: !!overlay && getComputedStyle(overlay).display !== 'none' }; })()`,
       );
-      const id = state?.selectedIds?.length === 1 ? state.selectedIds[0] : undefined;
-      const project = id ? resolveCodexProject(home, id) : undefined;
-      if (!project || (process.platform === 'win32' ? project.path.toLowerCase() !== requestedPath.toLowerCase() : project.path !== requestedPath) ||
-        state.labels?.length !== 1 || state.labels[0] !== project.name ||
-        state.composerLabels?.length !== 1 || state.composerLabels[0] !== `切换项目：${project.name}` ||
-        !state.editorEmpty || state.modal || state.overlayVisible)
-        throw new Error('DRAFT_UNAVAILABLE: 项目身份、空白编辑器或页面状态未通过验证');
+      let id: string | undefined;
+      let project: ReturnType<typeof resolveCodexProject>;
+      const readyUntil = Date.now() + (restoringSidebar ? 5_000 : 0);
+      while (true) {
+        await this.assertOwner();
+        const state = await readSurface();
+        id = state?.selectedIds.length === 1 ? state.selectedIds[0] : undefined;
+        project = id ? resolveCodexProject(home, id) : undefined;
+        const projectMatches = !!project &&
+          (process.platform === 'win32' ? project.path.toLowerCase() === requestedPath.toLowerCase() : project.path === requestedPath) &&
+          state?.labels.length === 1 && state.labels[0] === project.name;
+        const composerMatches = !!project && state?.composerLabels.length === 1 &&
+          state.composerLabels[0] === `切换项目：${project.name}`;
+        if (projectMatches && composerMatches && state?.editorEmpty && !state.modal && !state.overlayVisible)
+          break;
+        // Our guarded CSP restoration can finish before Codex rehydrates its
+        // selected project. Wait only for missing markers after that reload;
+        // a wrong project, typed text, modal, or unexpected overlay fails at once.
+        const loading = restoringSidebar && state && !state.modal && !state.overlayVisible &&
+          !state.editorHasText && state.selectedIds.length <= 1 && state.composerLabels.length <= 1 &&
+          state.editorCount <= 1 &&
+          (!id || projectMatches) &&
+          (state.composerLabels.length === 0 || composerMatches) &&
+          (!state.editorCount || state.editorEmpty);
+        if (!loading || Date.now() >= readyUntil)
+          throw new Error('DRAFT_UNAVAILABLE: 项目身份、空白编辑器或页面状态未通过验证');
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      if (!id || !project) throw new Error('DRAFT_UNAVAILABLE: Codex 项目身份未确认');
       await this.assertOwner();
       const current = await connection.send<{ targetInfo?: { targetId?: string; type?: string; url?: string } }>('Target.getTargetInfo');
       if (current.targetInfo?.targetId !== binding.targetId || current.targetInfo.type !== 'page' ||

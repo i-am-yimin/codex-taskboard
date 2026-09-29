@@ -31,6 +31,7 @@ let cdpEndpoint: string;
 let profileDirectory: string;
 let activeAdapter: CodexDesktopAdapter | undefined;
 let delayComposerOnNextLoad = false;
+let delayProjectOnNextLoad = false;
 let projectFixtureId: string | undefined;
 const pageErrors: string[] = [];
 
@@ -152,6 +153,8 @@ beforeAll(async () => {
   host = createServer((_request, response) => {
     const delayComposer = delayComposerOnNextLoad;
     delayComposerOnNextLoad = false;
+    const delayProject = delayProjectOnNextLoad;
+    delayProjectOnNextLoad = false;
     const projectRow = projectFixtureId
       ? `<div data-app-action-sidebar-project-id="${projectFixtureId}" data-app-action-sidebar-project-label="repo" aria-current="page"></div>`
       : '';
@@ -159,12 +162,21 @@ beforeAll(async () => {
       ? '<button data-composer-navigation-target="workspace-project" aria-label="切换项目：repo"></button>'
       : '';
     const emptyParagraph = projectFixtureId ? '<p><br></p>' : '';
+    const lateProject = delayProject
+      ? `setTimeout(() => {
+          document.querySelector('#codex-sidebar').innerHTML = '${projectRow}';
+          document.querySelector('#codex-content').insertAdjacentHTML('beforeend', '${projectButton}');
+        }, 700);`
+      : '';
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
     response.setHeader('Content-Security-Policy', "frame-src 'self'");
     response.end(`<!doctype html><html><body><script>
       const mount = () => {
-        document.body.innerHTML = '<main id="codex-shell"><nav id="codex-sidebar">${projectRow}</nav><section id="codex-content"></section></main>';
-        const composer = () => document.querySelector('#codex-content').innerHTML = '<div id="codex-composer" contenteditable="true" role="textbox">${emptyParagraph}</div>${projectButton}';
+        document.body.innerHTML = '<main id="codex-shell"><nav id="codex-sidebar">${delayProject ? '' : projectRow}</nav><section id="codex-content"></section></main>';
+        const composer = () => {
+          document.querySelector('#codex-content').innerHTML = '<div id="codex-composer" contenteditable="true" role="textbox">${emptyParagraph}</div>${delayProject ? '' : projectButton}';
+          ${lateProject}
+        };
         ${delayComposer ? 'setTimeout(composer, 450);' : 'composer();'}
       };
       setTimeout(mount, ${delayComposer ? 0 : 250});
@@ -201,6 +213,7 @@ afterEach(async () => {
   } finally {
     activeAdapter = undefined;
     projectFixtureId = undefined;
+    delayProjectOnNextLoad = false;
     await page.goto(`${hostOrigin}/`);
     await waitForShell();
   }
@@ -310,6 +323,7 @@ describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () =>
       expect(await page.locator('[data-taskboard-owned]').count()).toBe(1);
       expect(await cspBlocksBoard()).toBe(false);
       const before = await documentOrigin();
+      delayProjectOnNextLoad = true;
       await instance.openDraft({ taskId: 'task', spaceId: 'space', projectPath: root, prompt: 'leave this unsent' });
       expect(await documentOrigin()).not.toBe(before);
       expect(await page.locator('[data-taskboard-owned]').count()).toBe(0);
