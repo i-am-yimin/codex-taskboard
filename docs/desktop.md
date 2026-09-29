@@ -1,6 +1,6 @@
 # Windows 桌面版
 
-桌面版是 Windows x64 的 Tauri 启动器。它在当前用户范围安装，使用安装资源目录中自带的 Node 运行时启动本机伴随服务，因此不要求安装系统 Node 或 Codex CLI。共享任务数据存放在服务器；本机凭据和仓库映射保存在 `%APPDATA%\CodexTaskboard`。卸载器按当前实现保留该目录，数据保留行为仍待实机验收。
+桌面版是 Windows x64 的 Tauri 启动器。它在当前用户范围安装，使用安装资源目录中自带的 Node 运行时启动本机伴随服务，因此不要求安装系统 Node 或 Codex CLI。共享任务数据存放在服务器；本机凭据和仓库映射保存在 `%APPDATA%\CodexTaskboard`。卸载保留数据并重装恢复已在隔离测试目录实机通过，正式用户目录未参与该试验。
 
 ## 当前可用流程
 
@@ -8,9 +8,11 @@
 
 安装完成后，桌面窗口通过本机伴随服务访问远程任务服务器。桌面 Web UI 使用一次性的本机能力令牌和浏览器会话代理；`taskctl` 使用独立的当前用户 DPAPI 凭据，不能调用浏览器会话接口。
 
-桌面事件通过伴随服务 SSE 转发，连接携带本机能力凭据，退出或断开时关闭上游订阅；远程不可达时缓存只读。此路径已进行代码与自动化测试，真实 Tauri 窗口中的多设备延迟仍需实机验收。
+桌面事件通过伴随服务 SSE 转发，连接携带本机能力凭据，退出或断开时关闭上游订阅；远程不可达时缓存只读。两台真实 Windows 桌面窗口已验证任务创建、领取和结果提交无需刷新即可出现在第二台；用户反馈为“很快”，尚未取得精确延迟计时。
 
 启动器先等待伴随服务完成初始化，并携带本次启动的能力凭据检查健康接口。每次网络探测限时 250ms，首次启动最多等待 30 秒，以容纳 Windows 凭据初始化。界面在成功后显示；运行时缺失、子进程提前退出、端口冲突或超时会显示错误，并保存到 `%APPDATA%\CodexTaskboard\launcher-diagnostic.txt`。`pnpm desktop:diagnose` 会读取该失败记录。
+
+旧安装版曾在 WebView2 默认目录中保留页面 Service Worker，升级后可能在启动时返回旧版入口文件并白屏。当前源码不再为桌面版注册该 worker，并让旧 worker 更新时退出和重新加载页面；此修复等待新版安装包在第二台真实默认目录中复验。该迁移只处理页面资源缓存，不清除本地登录、仓库映射或未发送草稿。
 
 随包 CLI 位于安装器资源目录的 `runtime\taskctl.cmd`。开发阶段可验证其可执行性：
 
@@ -19,6 +21,8 @@ apps\desktop\runtime\taskctl.cmd --help
 ```
 
 该命令使用 `%APPDATA%\CodexTaskboard` 中的 CLI 配对密钥。常用操作包括 `list`、`get`、`claim --version`、`comment`、`link`、`release --version` 和 `submit --version`。对网络超时后的同一写操作，复用 `--idempotency-key <uuid>`。
+
+PowerShell 调用 `.cmd` 并传入 JSON 时，CMD 会剥离参数内的双引号。`create`、`update` 等 JSON 写操作请直接调用同目录的随包 `node.exe` 和 `taskctl.js`，例如 `& "$runtime\node.exe" "$runtime\taskctl.js" create $spaceId $payloadJson`；这样 PowerShell 会保留 JSON 参数。`$runtime` 为安装目录中的 `runtime` 路径。
 
 浏览器与 Agent 使用独立会话。首次使用 CLI，先启动伴随服务，再通过标准输入登录（密码不会成为进程参数）：
 
@@ -40,7 +44,7 @@ Remove-Variable taskboardPassword
 
 ## Codex 桌面集成状态
 
-设置页的“启动独立 Codex”使用独立 profile 和 Codex 数据目录，不接管用户已有实例。启动器只接受列入隔离启动清单的 MSIX 版本，并逐次核对进程句柄、回环监听者和精确页面。当前源码可隔离启动 `26.924.2738.0` 以继续宿主验收；该版本尚未完成页面验收，因此伴随服务仍拒绝侧栏注入和草稿。已安装的旧 CI 包对该版本会在启动前明确拒绝。
+设置页的“启动独立 Codex”使用独立 profile 和 Codex 数据目录，不接管用户已有实例。启动器只接受列入隔离启动清单的 MSIX 版本，并逐次核对进程句柄、回环监听者和精确页面。`26.924.2738.0` 已在新版安装包中通过侧栏、窄窗口与未发送草稿的成功及部分拒绝路径；完整 G1 门槛仍在[验收记录](acceptance.md)中跟踪。
 
 侧栏、项目发现与草稿还有独立的宿主版本清单和页面检查。版本、进程归属、项目身份或空白编辑器不能确认时，界面保持不可用；草稿不会自动发送或领取任务。`openThread` 尚未验证会话路由，保持不可用。完整安装版 G1 验收状态见[验收记录](acceptance.md)。
 

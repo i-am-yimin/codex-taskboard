@@ -50,7 +50,6 @@ import {
   ApiError,
   cacheBoard,
   clearAccountCache,
-  embeddedCapability,
   hasLocalCompanion,
   readCachedBoard,
 } from './api';
@@ -73,7 +72,15 @@ const query = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
 });
 const isDemo = new URLSearchParams(location.search).get('demo') === '1';
-if (import.meta.env.PROD && !embeddedCapability() && 'serviceWorker' in navigator) {
+// Tauri ships its shell locally. A persisted service worker can serve an old
+// index.html after an installer update, leaving WebView2 with a blank page.
+if (
+  import.meta.env.PROD &&
+  location.hostname !== 'tauri.localhost' &&
+  location.protocol !== 'tauri:' &&
+  !hasLocalCompanion() &&
+  'serviceWorker' in navigator
+) {
   navigator.serviceWorker
     .register('/sw.js')
     .then(() => navigator.serviceWorker.ready)
