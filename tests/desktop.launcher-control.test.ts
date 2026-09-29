@@ -107,6 +107,42 @@ describe('private launcher control', () => {
     }
   });
 
+  it('allows an isolated launch to report its unverified host without enabling injection', async () => {
+    server = createServer((request, response) => {
+      if (request.headers['x-taskboard-control-key'] !== key) {
+        response.writeHead(403).end();
+        return;
+      }
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify(request.url === '/session'
+        ? { session: { ...original, version: '26.924.2738.0' } }
+        : { valid: true }));
+    });
+    await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('missing test port');
+    const runtime = await createCompanion({
+      dataDirectory: await mkdtemp(join(tmpdir(), 'taskboard-control-')),
+      port: 0,
+      launcherControl: new LauncherControl(address.port, key),
+    });
+    try {
+      const headers = { 'x-taskboard-companion-key': runtime.clientKey };
+      const probe = await runtime.app.inject({ method: 'GET', url: '/v1/codex/probe', headers });
+      expect(probe.statusCode).toBe(200);
+      expect(probe.json().data).toMatchObject({
+        embedded: false,
+        draft: false,
+        reason: 'Codex 26.924.2738.0 尚未完成页面验收，仅可隔离启动',
+      });
+      const install = await runtime.app.inject({ method: 'POST', url: '/v1/codex/install', headers });
+      expect(install.statusCode).toBe(409);
+      expect(install.json().error.code).toBe('ADAPTER_UNAVAILABLE');
+    } finally {
+      await runtime.stop();
+    }
+  });
+
   it('serves bundled board assets through a separate scoped capability', async () => {
     const root = await mkdtemp(join(tmpdir(), 'taskboard-embedded-'));
     const web = join(root, 'web');

@@ -16,7 +16,9 @@ use std::{
 };
 
 // Host/draft acceptance and native package-context handle transfer verified.
-const VERIFIED_VERSION: &str = "26.924.1866.0";
+// The package-context launcher can inspect this version in an isolated profile.
+// The companion has a separate host-DOM allowlist for injection and drafts.
+const LAUNCHABLE_VERSION: &str = "26.924.2738.0";
 const CODEX_PAGE: &str = "app://-/index.html";
 const START_TIMEOUT: Duration = Duration::from_secs(90);
 const CDP_TIMEOUT: Duration = Duration::from_millis(1200);
@@ -47,7 +49,7 @@ impl ManagedCodex {
         let target = self.target.as_ref().expect("verified Codex target");
         serde_json::json!({
             "id": self.session_id,
-            "version": VERIFIED_VERSION,
+            "version": LAUNCHABLE_VERSION,
             "pid": self.pid(),
             "createdTicks": self.created_ticks.to_string(),
             "codexHome": self.codex_home,
@@ -107,7 +109,7 @@ pub fn launch(data_directory: &Path) -> Result<ManagedCodex, String> {
     let managed_root = fs::canonicalize(managed_root).map_err(|error| error.to_string())?;
     let marker = managed_root.join("active.json");
     reject_running_previous(&marker)?;
-    let executable = discover_verified_executable()?;
+    let executable = discover_launchable_executable()?;
     let launch_id: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(24)
@@ -269,7 +271,7 @@ fn serve_control(
     Ok(())
 }
 
-fn discover_verified_executable() -> Result<PathBuf, String> {
+fn discover_launchable_executable() -> Result<PathBuf, String> {
     let script = "Get-AppxPackage -Name OpenAI.Codex | Where-Object { $_.PublisherId -eq '2p2nqsd0c76g0' } | ForEach-Object { '{0}|{1}' -f $_.Version,$_.InstallLocation }";
     let system_root = std::env::var_os("SystemRoot").ok_or("缺少 Windows 系统目录")?;
     let powershell = Path::new(&system_root)
@@ -297,12 +299,12 @@ fn discover_verified_executable() -> Result<PathBuf, String> {
     let matches: Vec<PathBuf> = listing
         .lines()
         .filter_map(|line| line.trim().split_once('|'))
-        .filter(|(version, _)| *version == VERIFIED_VERSION)
+        .filter(|(version, _)| *version == LAUNCHABLE_VERSION)
         .map(|(_, location)| Path::new(location.trim()).join("app").join("ChatGPT.exe"))
         .filter(|path| path.is_file())
         .collect();
     if matches.len() != 1 {
-        return Err("当前 Codex 安装包版本未通过受管理宿主验收".into());
+        return Err("当前 Codex 安装包版本未列入隔离启动清单".into());
     }
     fs::canonicalize(&matches[0]).map_err(|error| error.to_string())
 }
@@ -724,12 +726,12 @@ mod tests {
     #[test]
     #[ignore = "run only on a machine whose installed Codex version is outside the verified list"]
     fn newer_installed_codex_is_refused_before_launch() {
-        assert!(discover_verified_executable().is_err());
+        assert!(discover_launchable_executable().is_err());
     }
 
     #[test]
     #[ignore = "run only on a machine with the verified Codex package installed"]
     fn verified_installed_codex_is_discovered_without_launch() {
-        assert!(discover_verified_executable().unwrap().is_file());
+        assert!(discover_launchable_executable().unwrap().is_file());
     }
 }

@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { z } from 'zod';
 import { taskPrompt, type Task } from '@taskboard/core';
-import { CodexDesktopAdapter, codexHostMarkers } from '@taskboard/adapter-codex';
+import { CodexDesktopAdapter, SUPPORTED_CODEX_VERSIONS, codexHostMarkers } from '@taskboard/adapter-codex';
 import type { AgentAdapter, DraftRequest } from '@taskboard/core';
 import { CompanionStore, defaultDataDirectory, normalizeUpstream } from './store.ts';
 import { SecretStore } from './secret.ts';
@@ -110,6 +110,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
   let adapter = options.adapter;
   let controlSessionId: string | undefined;
   let retirementError: string | undefined;
+  let unsupportedHostReason: string | undefined;
   const currentAdapter = async (): Promise<AgentAdapter | undefined> => {
     if (options.adapter || !control) return adapter;
     if (retirementError) return undefined;
@@ -124,8 +125,13 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     }
     adapter = undefined;
     controlSessionId = undefined;
+    unsupportedHostReason = undefined;
     if (retirementError) return undefined;
     if (!session) return undefined;
+    if (!(SUPPORTED_CODEX_VERSIONS as readonly string[]).includes(session.version)) {
+      unsupportedHostReason = `Codex ${session.version} 尚未完成页面验收，仅可隔离启动`;
+      return undefined;
+    }
     adapter = new CodexDesktopAdapter({
       endpoint: session.endpoint,
       appVersion: session.version,
@@ -526,7 +532,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
               projects: false,
               draft: false,
               thread: false,
-              reason: '桌面适配器未由启动器启用',
+              reason: unsupportedHostReason ?? '桌面适配器未由启动器启用',
             },
     };
   });
@@ -534,7 +540,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     const current = await currentAdapter();
     if (retirementError) throw new CompanionError('RESTORATION_UNCONFIRMED', retirementError, 409);
     if (!(current instanceof CodexDesktopAdapter))
-      throw new CompanionError('ADAPTER_UNAVAILABLE', '当前设备没有可安装的 Codex 适配器', 409);
+      throw new CompanionError('ADAPTER_UNAVAILABLE', unsupportedHostReason ?? '当前设备没有可安装的 Codex 适配器', 409);
     try { await current.install(); }
     catch (error) {
       throw new CompanionError('CODEX_INSTALL_REFUSED',
