@@ -6,6 +6,18 @@
 
 下一轮逐项通过条件见 [闭环验收计划](closure-acceptance.md)。该计划不改变下述历史结果。
 
+## 2026-09-30：eef388d 安装包与新宿主源码接入检查
+
+已重新读取精确提交 `eef388dd25e11eb7e6df0104e85572829fc89dbc` 的 CI run `36701763981`：verify、container、windows-desktop 均 completed/success，Windows 作业于 2026-09-30T10:29:52Z 完成。包含生产 API、E2E、离线回归、生产依赖审计、隔离 Compose 恢复和内部 CA HTTPS，以及 Rust 测试、NSIS 构建和独立原生探针。提交后的 Node 24.19.0 / pnpm 10.28.0 冻结安装退出 0，没有依赖修改。
+
+精确 head 的 windows-installer-ci artifact ID 为 11090477196。实际 ZIP 为 24,633,188 字节，SHA-256 为 `840D9CF8BD7B8FEAC883538221B07124D392F1B176D5BEC8BFB48169640263FA`，与 GitHub artifact digest 一致；ZIP 只有预期安装器。安装器为 24,644,829 字节，SHA-256 为 `071543982A040F03ED4378890A3D4AB798CFA55ECBED5CB35D918D2FC5B92587`，签名 NotSigned。安装器已通过 Taildrop 发给用户指定的在线 codex-server，传输退出 0；尚未收到取回、安装和默认缓存连续冷启动结果。本机仍运行 cf415a2，eef388d 尚未安装。证据位于 .artifacts/acceptance/2026-09-30-ci-eef388d/ 的 ci-observed.json、artifact-verification.json、frozen-install.log 和 second-device-taildrop.json/log。
+
+对实际安装版按钮创建的 Codex 26.928.1915.0 宿主继续运行源码适配器诊断。每次检查均重新验证 PID 2172、精确创建 FILETIME、官方包路径、回环 52777 的所有者、精确 target 和随包伴随服务的 native control。候选版本只在各个独立诊断进程中临时加入清单，生产源码与随包伴随服务清单未改变。五项拒绝检查（错误已有目录、不存在目录、错误页面绑定、未验证版本、失效进程归属）均返回预期失败，所选项目、空编辑器、弹窗和注入计数保持一致。
+
+无 CSP bypass 的内嵌安装实际收到 enforce/frame-src 策略事件，握手失败后入口与 iframe 完整移除，主页面样式及项目、编辑器保持一致。启用适配器受控 reload 的独立源码诊断已完成真实生产前端 nonce 握手；正常 dispose 后再次收到 enforce/frame-src 事件，证明 CSP 已恢复。另一轮在空编辑器及精确归属检查后外部重载原生页面，实际 document timeOrigin 改变，适配器重新完成握手；随后 dispose 再次确认策略恢复。三次诊断最终均无入口或 iframe 残留，项目与空编辑器保持不变。初次握手辅助脚本因组装漏掉变量而在连接前失败，已保留 helper-failure.log 并修正；实际运行结果另有完整日志。
+
+证据位于 .artifacts/acceptance/2026-09-30-resume/ 的 installed-host-negative-contract.json/log、installed-host-csp-failure.json/log、installed-host-csp-handshake.json/log、installed-host-csp-external-reload.json/log 及对应 check-installed-host-*.ts。这些结果属于新宿主的源码接入及清理证据，握手使用真实预览前端；未测试登录后的看板内部交互、实际窗口自适应、草稿成功/已有内容拒绝或同一新安装包完整流程。当前 Taskboard 仍在登录页；登录交由用户手动完成。G1–G4 保持未通过，尚未扩展新版本侧栏/草稿支持清单。
+
 ## 2026-09-30：会话失效的实时界面修复与本机完整回归
 
 用户已用修正后的脚本人工启动预览 API。回环 47830 的实际 Node PID 36200、启动时间与手工启动一致，HTTP 与 Tailscale HTTPS 健康接口均返回 200、数据库 ok；未执行此前被审批拒绝的自动预览启动。已有安装版 cf415a2 在联网恢复时出现“创建你的第一个任务空间”，没有恢复原任务。检查发现 revoke 回调直接调用 api.me() 后只清持久缓存，没有更新 React Query 的账号查询。新增真实生产离线回归断言“撤销当前设备后，不刷新即显示登录页”在修复前失败，并抓到相同首次建空间界面；源码已改为重新验证活跃账号查询，账号确认期间显示加载状态。
