@@ -538,6 +538,9 @@ h3 {
   border-bottom: 1px solid #ecebf0;
   font-size: 12px;
 }
+.list-row {
+  width: 100%;
+}
 .list-header {
   font-weight: 700;
   color: #85828e;

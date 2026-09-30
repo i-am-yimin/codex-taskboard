@@ -20,6 +20,22 @@
 
 只读 PostgreSQL `BEGIN READ ONLY` 查询另存 `.artifacts/acceptance/2026-09-30-resume/persisted-tasks.json`，七张任务保留，TB-4 为版本 4、已完成，TB-7 为版本 2且描述与真实窗口读回一致；未重建或重置预览数据库。
 
+固定源码提交 `cf415a215b2b5be48bc4c39ee39345dbb8f41ff2` 的 [CI #36687594367](https://github.com/i-am-yimin/codex-taskboard/actions/runs/36687594367) 中 `verify`、`container`、`windows-desktop` 均已成功；包含修复后的生产依赖审计、数据库/E2E/离线回归、Compose 恢复与内部 CA HTTPS 演练、Windows 原生选择拒绝回归和 NSIS 构建。安装包 ZIP 为 24,631,117 字节、SHA-256 `D505C2052E9092458EC918950A9258D11024EDC260F4EF2E8C7E059AA02A0852`；内含未签名 NSIS 安装器 24,642,754 字节、SHA-256 `E080D5DBFACF29BFABD2A43448DB01F0E347834D4877AC870637E152C9C08A40`。首次 Node 下载在保存文件前超时，复核目标目录未生成文件后重试下载，校验 ZIP 与 CI digest 一致并核对唯一安装器及其签名状态；未把下载超时误判为构建失败。产物和来源记录保存在 `.artifacts/acceptance/2026-09-30-ci-cf415a2/`，下载核对时此安装包尚未安装运行；随后本机安装结果见下段。
+
+同一源码提交在本机现有独立 `taskboard_test` 数据库上执行 `pnpm exec vitest run`，124 项全量通过、没有跳过，退出 0；随后 `pnpm test:offline` 退出 0，生产构建的独立数据库与 headless Chrome 实际验证离线冷重启、草稿保留、禁写、重连和撤权。原测试数据库服务正在运行，因此此次使用其连接执行 Vitest，没有重复启动 `pnpm test:db` 宏。测试结束后只读查询对比先前快照，原 `taskboard_preview` 中七张验收任务的标题、版本、状态与 TB-7 描述完全相同；离线测试的 47834 监听已释放。日志分别为 `.artifacts/acceptance/2026-09-30-resume/vitest-real-db-cf415a2.log`、`offline-cf415a2.log` 与 `persisted-tasks-after-regression.json`。本机 E2E 会自动调用先前被审批拒绝的 `live-preview.ts` 启动动作，故未通过该入口执行同一被拒操作；联网实机仍等待用户手动启动预览 API。真实新 Codex 登录/项目选择、两台最新安装包和完整 G1–G4 门槛仍未关闭。
+
+## 2026-09-30：cf415a2 本机安装与离线冷启动续验
+
+旧测试窗口的缓存看板与无编辑表单状态先由真实 UI 确认；再核对旧 exe 路径、PID/创建时间与注册目标，仅为升级清理停止旧桌面 PID 37392。其随包 Node PID 22376 自行退出，47831 释放，原生 Codex 探针和其隔离宿主保持运行。这是精确身份的测试进程清理，不记为托盘正常退出。使用上述 CI 安装器以当前用户静默安装到新隔离目录，安装器退出 0，exe 存在且 HKCU 卸载注册指向新目录，原 state.json 和三个 DPAPI 文件哈希保持一致；未检查旧目录是否被删除。安装证据在 `.artifacts/acceptance/2026-09-30-ci-cf415a2/` 的 data-before-upgrade.json、old-test-cleanup.json、cleanup-result.json 与 install-result.json。
+
+随后保留原测试数据目录及原 WebView2 缓存启动刚安装的 cf415a2；桌面 PID 27220、随包 Node PID 10496 的安装路径及父子关系一致，47831 唯一监听者为该 Node。API 47830 不在。真实窗口首次加载没有刷新，直接显示原空间和七张缓存任务，TB-6 修改标题保留；页面显示“离线缓存”和未验证权限提示，新建任务及各列添加任务禁用。打开 TB-7，描述准确读回“安装版创建后修改并保存；验证重启后仍可读取。”，标题/描述编辑、归档、保存、领取、在 Codex 中打开及发送评论均禁用。第一次尝试直接点击屏幕外 TB-7 被 Computer Use 的边界检查拒绝；重新观察后通过可见的列表行打开，无任务内容改动。installed-launch.json、installed-processes.json、installed-offline-cold-start.txt/png、installed-offline-tb7.txt/png 保存了此轮结果。
+
+点击窗口关闭后原桌面和伴随进程保持运行；再次以同一环境启动，第二个短暂 launcher 退出，原 PID 27220/10496、端口监听者及窗口 ID 均保持，真实 UI 恢复同一列表和七张任务。证据 installed-close-to-tray.json、installed-restore-launch.json、installed-single-instance-restore.json、installed-restore.txt/png。未将这项恢复测试算作正常托盘退出或完整重启，通知区域托盘退出仍待实测。本轮离线冷启动不代替线上读写、第二台默认缓存冷启动或完整 G2。
+
+实际列表 UI 暴露正文按钮按内容收缩，导致同一列的正文与表头错位；原截图为 installed-list-column-misalignment.png。修复仅令 .list-row 占满列表宽度，保留既有窄内嵌列表折行规则。独立 Chrome 的纯前端演示页重现旧样式错位，然后核对 1322/980/480px 普通宽度及 935/715/480/185px 内嵌宽度：可见表格列对齐，185px 按原规则堆叠，无横向溢出或页面异常，API 请求为 0。脚本和结果在 `.artifacts/acceptance/2026-09-30-resume/` 的 check-list-layout.mjs、list-layout-result.json 与截图。首次样式格式检查失败；修正编辑范围并格式化后检查退出 0，最终 Web 生产构建退出 0，日志 web-list-layout-build.log。该演示页结果是前端布局回归，不能替代真实 Codex iframe 或已安装修复版；新 CI/安装器仍待生成。
+
+原生宿主只读核验于 2026-09-30T08:52:47Z 再次通过原包、持有句柄、监听者和精确页面绑定，但仍无 shell/选中项目/编辑器。预览 API 仍未启动，原被审批拒绝动作未换入口执行。G1–G4 保持未通过。
+
 ## 2026-09-29：安装版窄窗口与双设备续验（进行中）
 
 实时状态回归提交 `e849afec186e449767a6d5981dd68c8f93484fa0` 的 [CI #36558154348](https://github.com/i-am-yimin/codex-taskboard/actions/runs/36558154348) 中 `verify`（含真实 PostgreSQL 双会话 E2E 的领取后 2 秒内跨会话更新断言）、`container`、`windows-desktop` 均成功。Windows ZIP 为 24,615,315 字节，SHA-256 `147325F272B7F294AE3E0B08ADBBD8C7BD25997261D0A13529439B0ABCBE06F6`；内含未签名 NSIS 安装器 24,626,950 字节，SHA-256 `EC4E627D264610A4A5CD26D2B9A5D531FFB247BEAEDC50CE491B66634703AD5B`。旧 `6c8e41a` 版经托盘正常退出，主程序、随包 Node 和端口 47831 释放；卸载器静默退出 0，隔离安装目录消失，`state.json` 与三个 DPAPI 文件 SHA-256 保持一致。新包静默安装到另一个隔离目录退出 0；启动后主 PID 18168 的随包 Node PID 32736 独占 47831，本机窗口显示原“桌面隔离验收”空间及 TB-1～TB-3，随包 CLI 联网读取三张任务成功。这通过了本机卸载保留数据与重装恢复，不代替第二台桌面和最终发布验收。该安装器也已在 `codex-server` 安装，后续结果见下。
