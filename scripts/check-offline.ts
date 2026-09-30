@@ -123,6 +123,13 @@ try {
       !localStorage.getItem('tb:offline-session:v1') &&
       !Object.keys(localStorage).some((key) => key.startsWith('tb:draft:')),
   );
+  // Revoking the current device must also replace the live UI with login;
+  // clearing persisted snapshots alone leaves a misleading first-space page.
+  await page.screenshot({ path: resolve(artifacts, 'offline-revoked-live.png') });
+  await expect(page.getByLabel('邮箱', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: '创建你的第一个任务空间', exact: true }),
+  ).toHaveCount(0);
   await context.close();
   context = await launch(true);
   page = await context.newPage();

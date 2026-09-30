@@ -276,12 +276,9 @@ function App() {
         spaces?.filter((space) => space.id !== spaceId),
       );
       setSync('offline');
-      void api.me().catch((error) => {
-        if (!(error instanceof ApiError) || ![401, 403].includes(error.status)) return;
-        clearAccountCache(user.id);
-        clearOfflineSnapshot(user.id);
-        setOfflineSession(null);
-      });
+      // Recheck through the active account query so authentication failures
+      // replace the live UI with login as well as clearing persisted caches.
+      void client.invalidateQueries({ queryKey: ['me'] });
     };
     if (hasLocalCompanion()) {
       let stopped = false;
@@ -422,7 +419,12 @@ function App() {
     }
     location.href = location.pathname;
   };
-  if (userQuery.isLoading || (user && spacesQuery.isLoading)) return <Loading />;
+  if (
+    userQuery.isLoading ||
+    (user && spacesQuery.isLoading) ||
+    (!isDemo && userQuery.isFetching && spacesQuery.data?.length === 0)
+  )
+    return <Loading />;
   if (!isDemo && (userQuery.error || !user))
     return (
       <Onboarding
@@ -623,18 +625,18 @@ function App() {
           <span className="result-count">{visible.length} 个任务</span>
         </div>
         {readOnlyCached && sync === 'connecting' && !showingCached && !offline ? (
-          <div className="banner">
-            正在确认实时连接；所有写入已暂停。
-          </div>
-        ) : readOnlyCached && (
-          <div className="banner">
-            <CloudOff size={16} />
-            当前正在浏览
-            {showingCached
-              ? `于 ${offlineSession?.updatedAt ? new Date(offlineSession.updatedAt).toLocaleString() : '此前'} 保存的`
-              : '已'}
-            缓存内容。此状态未验证登录或权限；草稿会保留在此设备，所有写入已暂停。
-          </div>
+          <div className="banner">正在确认实时连接；所有写入已暂停。</div>
+        ) : (
+          readOnlyCached && (
+            <div className="banner">
+              <CloudOff size={16} />
+              当前正在浏览
+              {showingCached
+                ? `于 ${offlineSession?.updatedAt ? new Date(offlineSession.updatedAt).toLocaleString() : '此前'} 保存的`
+                : '已'}
+              缓存内容。此状态未验证登录或权限；草稿会保留在此设备，所有写入已暂停。
+            </div>
+          )
         )}
         {isDemo && (
           <div className="demo-bar">

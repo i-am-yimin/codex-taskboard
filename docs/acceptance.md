@@ -6,6 +6,24 @@
 
 下一轮逐项通过条件见 [闭环验收计划](closure-acceptance.md)。该计划不改变下述历史结果。
 
+## 2026-09-30：会话失效的实时界面修复与本机完整回归
+
+用户已用修正后的脚本人工启动预览 API。回环 47830 的实际 Node PID 36200、启动时间与手工启动一致，HTTP 与 Tailscale HTTPS 健康接口均返回 200、数据库 ok；未执行此前被审批拒绝的自动预览启动。已有安装版 cf415a2 在联网恢复时出现“创建你的第一个任务空间”，没有恢复原任务。检查发现 revoke 回调直接调用 api.me() 后只清持久缓存，没有更新 React Query 的账号查询。新增真实生产离线回归断言“撤销当前设备后，不刷新即显示登录页”在修复前失败，并抓到相同首次建空间界面；源码已改为重新验证活跃账号查询，账号确认期间显示加载状态。
+
+修复后生产构建、完整 pnpm check 退出 0（109 项通过、15 项预期数据库跳过），已有独立 *_test 数据库上的 Vitest 124/124 通过，pnpm test:offline 退出 0，新增实时登录页断言及既有离线冷启动、草稿保留、禁写、重连与撤权后缓存清理均实际执行。使用 webServer:[] 的验收配置，在用户已启动的同一 HTTPS API 上运行原 tests/e2e 两种宽度的全部 8 项用例，退出 0；配置不启动或重启 API，浏览器使用独立测试上下文。两项真实 PostgreSQL 协作用例执行同步、冲突草稿保留、重载读回和生命周期，六项演示/布局用例单独标明，不能代替真实双设备或安装版结果。E2E 前后 API 的精确 PID/创建时间一致，原“桌面隔离验收”七张任务前后状态摘要 SHA-256 均为 31366b0aa36b4a2595ceb2b1161291eb9c45572b7ba05e96fba593c9d41d7e9a。
+
+证据位于 .artifacts/acceptance/2026-09-30-resume/：offline-live-auth-before.log/png、offline-live-auth-after.log/png、build-live-auth-fix.log、check-live-auth-fix.log、test-db-live-auth-fix.log、e2e-existing-api.config.ts、e2e-live-auth-fix.log、e2e-live-auth-results/report 与三份 preview-*-auth-regression.json。源码修复尚未在新 Windows 安装包中复验；当前已安装的 cf415a2 仍包含该故障，不能以源码回归关闭 G2/G3。
+
+独立 Codex 的项目随后由用户选中。只读实机复查确认 PID 2172、精确创建 FILETIME、回环 52777 与 target 0C9F06FA781A80889E55CD3B095B8056 前后一致；唯一选中项目、composer 的“切换项目：codex-taskboard”和空白 P→BR 编辑器匹配。读取该独立 Codex home 的项目数据库后，实际可见项目 ID 唯一映射到当前仓库；已安装 Taskboard 的仓库映射也匹配。经随包伴随服务的真实 /v1/codex/probe 重新检查 native control 后，明确返回新宿主 26.928.1915.0 尚未通过页面验收。证据在 .artifacts/acceptance/2026-09-30-ci-cf415a2/ 的 installed-project-shape.json、installed-project-input.json、installed-project-mapping.json。项目契约子项已确认；侧栏/CSP 和草稿完整流程仍待实测，宿主清单保持不变。G1–G4 仍未通过。
+
+## 2026-09-30：人工 API 脚本运行时修正与已登录宿主复查
+
+用户人工运行预览 API 脚本时，实际选择了固定路径 E:\nodejs\node.exe（本机 v18.18.0），在最低版本检查阶段停止。已保留原脚本副本，将当前脚本改为本机已验证的 Codex primary runtime Node v24.19.0，补充路径、版本与读取失败诊断；PowerShell AST 静态解析和独立版本验证均通过。只执行语法和 --version 检查，未自动执行此前被审批拒绝的 API 启动动作；预览 API 仍需用户重新运行修正后的同一脚本。修正与验证位于 .artifacts/acceptance/2026-09-30-resume/，不影响现有隔离预览数据库。
+
+后续用户在 Windows PowerShell 5.1 重跑时，UTF-8 无 BOM 中硬编码的中文用户名被按本机代码页误读，导致运行时路径乱码。现已移除脚本中的中文路径字面量，改用 USERPROFILE 动态构造运行时目录，源码保持 ASCII 并保存为 UTF-8 BOM。新增 ValidateOnly 模式仅验证运行时后返回，实机 Windows PowerShell 5.1.26100.9444 用该模式成功定位 Node v24.19.0；验证时 API 仍未启动。保留修复前脚本副本，证据见同目录 start-preview-api-encoding-validation.json。
+
+用户确认登录后，在 2026-09-30T09:43:07Z 对实际已安装程序创建的 Codex PID 2172、回环 52777、target 0C9F06FA781A80889E55CD3B095B8056 做只读复查。检查前后通过 Get-Process 的精确创建 FILETIME、官方包路径、回环监听者及页面绑定比对；CIM 的时间值仅精确到微秒，不能替代完整创建 FILETIME。新宿主已有唯一 shell、原生侧栏 nav、主内容 main 和唯一空白消息编辑器（P→BR），无弹窗或 Taskboard 注入；项目节点为 0，项目选择按钮仍为“选择项目”。登录已生效，项目尚未选中；还不能把此结果记为项目身份、侧栏或草稿通过，也未扩展侧栏/草稿版本清单。证据在 .artifacts/acceptance/2026-09-30-ci-cf415a2/ 的 installed-project-shape.json 与 installed-project-boundaries.json。G1–G4 保持未通过。
+
 ## 2026-09-30：原安装版离线冷启动与宿主升级阻塞
 
 继续固定已安装源码提交 `87406f547b13306f8ca76cb41f574a0902736f6d`，文档 HEAD 为 `132d8adfe1aef17098182534b091ed1c9b93044d`。续验开始时旧 Taskboard、伴随服务、受管理 Codex、测试 API 和独立测试数据库进程均不在，不能把未知退出方式记为正常托盘退出。恢复原独立测试数据库后，以原隔离数据和 WebView2 目录启动同一已安装程序，主 PID 37392、随包 Node PID 22376 的父子关系一致且独占回环 47831；测试 API 的 47830 未启动。真实窗口没有白屏，直接显示“桌面隔离验收”的七张缓存任务与“离线缓存”。页面明确显示缓存未验证登录/权限、全部写入暂停；“新建任务”和各列“添加任务”均禁用。打开 TB-7 后读回描述“安装版创建后修改并保存；验证重启后仍可读取。”，描述、归档、保存、领取、在 Codex 中打开及发送评论均禁用。临时搜索已清空。该项是本机已安装程序的离线冷启动与禁写证据；不代替第二台默认缓存冷启动或联网恢复。当前只读状态证据位于 `.artifacts/acceptance/2026-09-30-resume/taskboard-offline-accessibility.txt`。
@@ -35,6 +53,16 @@
 实际列表 UI 暴露正文按钮按内容收缩，导致同一列的正文与表头错位；原截图为 installed-list-column-misalignment.png。修复仅令 .list-row 占满列表宽度，保留既有窄内嵌列表折行规则。独立 Chrome 的纯前端演示页重现旧样式错位，然后核对 1322/980/480px 普通宽度及 935/715/480/185px 内嵌宽度：可见表格列对齐，185px 按原规则堆叠，无横向溢出或页面异常，API 请求为 0。脚本和结果在 `.artifacts/acceptance/2026-09-30-resume/` 的 check-list-layout.mjs、list-layout-result.json 与截图。首次样式格式检查失败；修正编辑范围并格式化后检查退出 0，最终 Web 生产构建退出 0，日志 web-list-layout-build.log。该演示页结果是前端布局回归，不能替代真实 Codex iframe 或已安装修复版；新 CI/安装器仍待生成。
 
 原生宿主只读核验于 2026-09-30T08:52:47Z 再次通过原包、持有句柄、监听者和精确页面绑定，但仍无 shell/选中项目/编辑器。预览 API 仍未启动，原被审批拒绝动作未换入口执行。G1–G4 保持未通过。
+
+## 2026-09-30：安装版新宿主原生启动与 c1a3fcc 产物核验
+
+在 cf415a2 已安装程序的真实“连接与设备”界面点击“启动独立 Codex”，正常创建官方包 26.928.1915.0 的隔离宿主，界面回执为“受管理 Codex 已启动；登录并选中项目后，可接入 Codex 侧栏”。再次点击同一按钮回执为“受管理 Codex 已在运行”，该分支实际执行原生 held handle、创建时间、包身份、TCP 监听者与精确页面的 verify。只读进程核对新宿主 PID 2172、active.json 的创建 ticks、包路径、回环 52777 的所有者和唯一 app://-/index.html 页面一致；精确 targetId 为 0C9F06FA781A80889E55CD3B095B8056。检测连接明确返回“Codex 26.928.1915.0 尚未完成页面验收，仅可隔离启动”。未改变宿主清单或 CSP，也未操作登录。安装版原生启动/重复启动是局部通过，完整 G1 仍未通过。
+
+证据在 `.artifacts/acceptance/2026-09-30-ci-cf415a2/` 的 installed-native-launch.txt/png、installed-native-reuse.txt/png、installed-native-identity.json、installed-native-targets.json、installed-host-not-yet-approved.txt/png、installed-host-shape.json 与 installed-native-inspection-boundaries.json。只读形状检查前后的 OS PID、创建时间和监听者相同；页面仍无项目 shell、选中项目、消息编辑器或 Taskboard 注入节点。诊断工具首次在 REPL 导入 ws 失败，随后生成的脚本有字符串语法错误；均未连接目标。改用已确认 Node 24.19.0 的原生 WebSocket、修正字符串并通过 node --check 后，最终只读检查退出 0。原探针及其旧隔离窗口保持运行，不将其当作这次产品创建的宿主。
+
+列表对齐修复源码 c1a3fccbcd50d44c5dcfa2541d7166d58a61d1a3 的 CI #36693823092 中 verify、container、windows-desktop 三项均成功，含真实数据库、生产 API、E2E、离线、依赖审计、Compose 恢复/内部 CA HTTPS、Windows Rust 和 NSIS 构建。Windows artifact 11087206289 的 ZIP 为 24,630,197 字节，SHA-256 A81FD22CF3F22E42BB574A2BA2CC9EC39435D378073CC0D66EF0F0D76DA5B46F，与 CI digest 一致；唯一安装器 24,641,821 字节，SHA-256 D396802D7A1A1BD642AC6769C72A0AE9D3C23611198412C818C372CD973BB565，NotSigned。下载/解包未运行安装器；记录在 `.artifacts/acceptance/2026-09-30-ci-c1a3fcc/artifact-verification.json`。
+
+确认第二台 codex-server 的 Tailscale 身份和在线状态后，以 codex-taskboard-c1a3fcc-setup.exe 名称发送同一哈希安装器，Taildrop 返回 0，记录 second-device-taildrop.json；尚无对方取件、安装或默认缓存冷启动结果。当前本机仍运行 cf415a2 及其原生受管理宿主，预览 API 47830 未运行，联网读写、真实新宿主项目/侧栏/草稿、最新安装包和两台设备完整 G1–G4 门槛保持待验。
 
 ## 2026-09-29：安装版窄窗口与双设备续验（进行中）
 
