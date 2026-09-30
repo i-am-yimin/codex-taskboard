@@ -90,6 +90,13 @@ jobs:
       - run: pnpm desktop:prepare
       - run: cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
       - run: pnpm desktop:bundle
+      - name: Build separate native Codex acceptance probe
+        run: cargo build --locked --release --manifest-path apps/desktop/src-tauri/Cargo.toml --features acceptance-probes --example codex-native-probe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-native-probe-ci
+          path: apps/desktop/src-tauri/target/release/examples/codex-native-probe.exe
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer-ci

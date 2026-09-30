@@ -33,6 +33,7 @@ pub struct TargetBinding {
 pub struct ManagedCodex {
     child: OwnedProcess,
     created_ticks: u64,
+    version: String,
     session_id: String,
     pub profile: PathBuf,
     pub codex_home: PathBuf,
@@ -49,7 +50,7 @@ impl ManagedCodex {
         let target = self.target.as_ref().expect("verified Codex target");
         serde_json::json!({
             "id": self.session_id,
-            "version": LAUNCHABLE_VERSION,
+            "version": self.version,
             "pid": self.pid(),
             "createdTicks": self.created_ticks.to_string(),
             "codexHome": self.codex_home,
@@ -58,6 +59,18 @@ impl ManagedCodex {
             "exactPageUrl": target.page_url,
             "pageWebSocketUrl": target.websocket_url,
         })
+    }
+
+    #[cfg(feature = "acceptance-probes")]
+    pub fn probe_description(&mut self) -> Value {
+        let valid = self.verify();
+        let mut description = self.session_description();
+        let object = description.as_object_mut().expect("session description object");
+        object.remove("id");
+        object.insert("valid".into(), Value::Bool(valid));
+        object.insert("profile".into(), serde_json::json!(self.profile));
+        object.insert("package".into(), serde_json::json!(self.child.identity().package));
+        description
     }
 
     pub fn is_running(&mut self) -> bool {
@@ -104,12 +117,23 @@ impl ManagedCodex {
 }
 
 pub fn launch(data_directory: &Path) -> Result<ManagedCodex, String> {
+    launch_version(data_directory, LAUNCHABLE_VERSION)
+}
+
+/// Developer-only native acceptance. It does not expand the installed app gate
+/// or the companion's separate host/draft allowlist.
+#[cfg(feature = "acceptance-probes")]
+pub fn launch_probe(data_directory: &Path) -> Result<ManagedCodex, String> {
+    launch_version(data_directory, "26.928.1915.0")
+}
+
+fn launch_version(data_directory: &Path, version: &str) -> Result<ManagedCodex, String> {
     let managed_root = data_directory.join("managed-codex");
     fs::create_dir_all(&managed_root).map_err(|error| error.to_string())?;
     let managed_root = fs::canonicalize(managed_root).map_err(|error| error.to_string())?;
     let marker = managed_root.join("active.json");
     reject_running_previous(&marker)?;
-    let executable = discover_launchable_executable()?;
+    let executable = discover_executable(version)?;
     let launch_id: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(24)
@@ -146,6 +170,7 @@ pub fn launch(data_directory: &Path) -> Result<ManagedCodex, String> {
     Ok(ManagedCodex {
         child: owned,
         created_ticks,
+        version: version.to_string(),
         session_id: rand::thread_rng()
             .sample_iter(&Alphanumeric)
             .take(48)
@@ -271,7 +296,7 @@ fn serve_control(
     Ok(())
 }
 
-fn discover_launchable_executable() -> Result<PathBuf, String> {
+fn discover_executable(version: &str) -> Result<PathBuf, String> {
     let script = "Get-AppxPackage -Name OpenAI.Codex | Where-Object { $_.PublisherId -eq '2p2nqsd0c76g0' } | ForEach-Object { '{0}|{1}' -f $_.Version,$_.InstallLocation }";
     let system_root = std::env::var_os("SystemRoot").ok_or("缺少 Windows 系统目录")?;
     let powershell = Path::new(&system_root)
@@ -299,7 +324,7 @@ fn discover_launchable_executable() -> Result<PathBuf, String> {
     let matches: Vec<PathBuf> = listing
         .lines()
         .filter_map(|line| line.trim().split_once('|'))
-        .filter(|(version, _)| *version == LAUNCHABLE_VERSION)
+        .filter(|(installed, _)| *installed == version)
         .map(|(_, location)| Path::new(location.trim()).join("app").join("ChatGPT.exe"))
         .filter(|path| path.is_file())
         .collect();
@@ -726,12 +751,12 @@ mod tests {
     #[test]
     #[ignore = "run only on a machine whose installed Codex version is outside the verified list"]
     fn newer_installed_codex_is_refused_before_launch() {
-        assert!(discover_launchable_executable().is_err());
+        assert!(discover_executable(LAUNCHABLE_VERSION).is_err());
     }
 
     #[test]
     #[ignore = "run only on a machine with the verified Codex package installed"]
     fn verified_installed_codex_is_discovered_without_launch() {
-        assert!(discover_launchable_executable().unwrap().is_file());
+        assert!(discover_executable(LAUNCHABLE_VERSION).unwrap().is_file());
     }
 }
