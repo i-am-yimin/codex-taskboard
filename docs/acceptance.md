@@ -6,6 +6,41 @@
 
 下一轮逐项通过条件见 [闭环验收计划](closure-acceptance.md)。该计划不改变下述历史结果。
 
+## 2026-09-30：安装版读写、托盘恢复及拒绝路径的侧栏缺陷
+
+45acfd3 安装版实际 Windows 界面创建 TB-8，再保存标题/描述和仓库，服务端版本依次为 1、2、3。已观察到 /api/v1 代理请求、If-Match 和 Idempotency-Key、HTTP 200 响应及内嵌看板自动出现八张任务。最初观察器选错协议后在写入前停止；修正后的长观察器超时，只记录创建，不能算完整通过。随后聚焦观察器确认修改后的服务端版本 2 和实际仓库保存 2→3，退出 0。失败与后续证据均保留在 .artifacts/acceptance/2026-09-30-ci-45acfd3/installed-g2-create-edit.json、installed-g2-repository-save.json。
+
+实际 Alt+F4 隐藏安装版窗口并保留主进程/服务；再次启动恢复原窗口和同一伴随服务。另一个无窗口同名进程是原有包启动辅助进程，不是重复桌面实例。未映射仓库、缺少本机认证和不可验证会话路由均被拒绝，原项目及空编辑器保持不变。该证据不等于正常托盘退出、卸载或重装。运行脚本与安装 runtime/web/index.html 一致；旧 Service Worker 仍注册，当前页面正常，仍需默认缓存连续冷启动复验。
+
+安装版错误目录测试复现了 G1 缺陷：请求 opened=false、空编辑器和项目保留，但持续侧栏入口与内嵌容器被移除。测试 finally 已恢复原映射、官方侧栏入口及展开状态。原观察器的 passed 只代表拒绝和恢复；另存 installed-wrong-project-verdict.json 明确该项 G1 未通过，不能掩盖界面改变。源码修复将项目、编辑器、弹窗、页面归属和当前看板校验移到清理前；合法请求仍在恢复 CSP 后再次校验，再写入未发送草稿。
+
+修改后的适配器及独立 Chromium CSP 回归 38 项通过，覆盖错误目录、缺失目录、已有文字和弹窗时无重载、原侧栏及草稿保留，以及合法草稿前恢复 CSP。这是源码回归，修复安装包的同一场景仍待 CI 产物实测。G1–G4 保持未通过。
+
+## 2026-09-30：45acfd3 安装版持续侧栏入口与实际点击
+
+新受管理宿主 PID 38836 已由用户完成登录和项目选择；只读核对唯一选中项目 fe50e2f1-e682-498d-b2a2-ea9398683c45 在本次独立 Codex home 内唯一映射到当前验收仓库，与安装版本机仓库映射一致。唯一编辑器为空，无弹窗，初始确实没有 Taskboard 入口。通过已安装窗口的“接入 Codex 侧栏”按钮恢复一个持续入口，probe 返回 embedded=true；本轮未创建临时源码适配器或注入超时任务。
+
+Computer Use 在同一独立窗口实际点击 Taskboard 自己的入口、列表/看板切换和收起/再次展开均成功。内嵌页面 URL 与安装版配置相符，显示“桌面隔离验收”、TB-1～TB-7 和“已同步”；看板实际内容宽 920px，列表宽 935px，document/body scrollWidth 等于 clientWidth。列表四列表头与首行 x/width 一致。收起时 aria-pressed=false、容器 display=none；再次展开时 true/flex，七张任务仍在。项目未切换、编辑器仍为空。现场窗口当前保持看板展开，持续入口归属安装版伴随服务。证据在 .artifacts/acceptance/2026-09-30-ci-45acfd3/installed-sidebar-interaction-result.json、installed-sidebar-*.png/.json、installed-frame-*.json。
+
+实际窗口缩窄尚未完成。尝试 CDP 浏览器窗口 API 返回“Browser window not found”，未改变窗口尺寸；这不算缩放通过，也不是 Taskboard 功能失败。Computer Use 技能限制原生 Codex 界面操作，尺寸变更需用户手动完成。安装版完整草稿/拒绝路径、同版 G2/G3 仍待验收，G1–G4 保持未通过。
+
+## 2026-09-30：45acfd3 精确提交本机 G0 续验
+
+在精确 detached checkout 执行冻结安装通过。位于中文用户目录的 PostgreSQL 本机二进制初始化出现 invalid byte sequence for encoding UTF8（0xb8）；同一二进制的对照验证表明，在中文二进制路径下使用 ASCII 和中文数据目录均失败，在原 ASCII 二进制路径下两种数据目录均成功。未修改 Taskboard 源码以获得通过。保留失败与路径对照记录，再在 .artifacts/acceptance/2026-09-30-g0-45acfd3/checkout 的精确 ASCII checkout 使用 Node 24.19.0、pnpm 10.28.0 冻结安装并执行 pnpm test:db：19 个文件、124 项通过，进程退出 0，独立 55539 端口释放，现有 47830 API 及 55439 数据库保持运行。
+
+同一提交的原始浏览器 E2E 使用已由用户启动的 HTTPS API 和配置 webServer=[]，8 项通过、17.7 秒、退出 0，包括两浏览器实时更新/冲突草稿和紧凑内嵌布局。生产离线脚本退出 0，验证离线冷启动、草稿保留、写入禁用、重连、撤权后缓存清理；使用新建独立 *_test 数据库并正常清理，47834 端口释放。没有重启用户 API。新日志及结果均在 .artifacts/acceptance/2026-09-30-g0-45acfd3/。这些自动回归不替代第二台已安装桌面验收。
+
+## 2026-09-30：45acfd3 CI 安装版升级与新宿主登录前检查
+
+代码候选 45acfd3b1c05b8d3a38f63625e5a9255a1b67a97 的 CI #36713309548 三项作业全部成功（verify 109880054564、container 109880054434、windows-desktop 109880054091）。Windows 产物 11095732356 的 ZIP SHA-256 为 ED82CC2BD1002C443B7B12C3E5C3A6DAD5F1927E57B8EDB9089B899E88F6F50E，与 GitHub digest 匹配；其中 NSIS 安装器 SHA-256 为 44CF500B739D33A799DEC0AE2F34A87A35F543A6C8D2B000BF7E922D4939B7F4，签名状态 NotSigned。
+
+使用正式源码版本清单和标记补查 CDP 指针后，入口仍在“等待可见、可用且稳定”阶段超时，退出码 1。没有确认点击，不能解释为产品点击通过，也未确认其底层原因；已清理服务、入口和复制的凭据，保留 installed-host-authenticated-pointer.json/.log。组件事件通过仍只算组件证据，安装版实际点击待用户登录后的持续入口验证。
+
+升级前重新核对旧隔离宿主 PID 2172、精确 FILETIME、页面及唯一空编辑器，无弹窗和注入。仅清理核对过身份的旧测试进程，主程序、伴随 Node、47831 和旧原生 CDP 均释放；这次精确进程清理不算正常托盘退出。原预览 API 保持运行。安装到独立目录 .artifacts/acceptance/2026-09-30-installed-45acfd3，NSIS 退出码 0，安装前后 state.json、browser-session.dpapi、cli-key.dpapi 校验一致。随包 Node 为 v22.16.0，随包伴随服务包含新宿主支持。保留原数据目录和 WebView2 缓存冷启动，实际窗口直接显示“桌面隔离验收”、TB-1～TB-7 及“已同步”，未刷新或重新登录 Taskboard。新桌面 PID 41992、伴随 Node PID 27764、47831 归属已核对。
+
+通过新版实际“启动独立 Codex”按钮创建新受管理宿主 PID 38836，FILETIME 134352453862940241、回环 63322、精确 target 00DB75D87823D4896287A78C4BE89727 与 app://-/index.html 一致，版本仍为 26.928.1915.0。安装版控制检查已不再拒绝版本，登录前 probe 返回“尚未观察到已验证的 Codex 页面标记”；只读检查确认登录提示可见，尚无项目、编辑器或 Taskboard 入口。此时不能接入侧栏，需用户在这扇新隔离窗口人工登录并打开项目。不得继续使用旧 PID 或旧源码诊断脚本的所有权常量。
+
+精确安装器已经 Taildrop 发往在线 codex-server，传输退出码 0；尚无领取、安装或默认缓存冷启动确认。当前安装、原缓存启动和原生启动均已有新包证据，但持续侧栏、实际指针、缩放、完整草稿路径和同版 G2/G3 仍待验收，G1–G4 未通过。证据在 .artifacts/acceptance/2026-09-30-ci-45acfd3/，源诊断在 .artifacts/acceptance/2026-09-30-resume/。
 ## 2026-09-30：临时入口消失定位与新宿主组件验证
 
 用户报告“没有任务看板”。上一轮临时入口诊断已因等待人工点击超时而以退出码 1 结束，清理了入口、源码伴随服务及复制的合成测试凭据；因此这次报告对应实际不存在的入口。此前的“请点击任务看板”交接失效，不能继续要求用户寻找已经被清理的控件。已停止这种临时入口交接方式，后续使用安装版管理的持续入口。

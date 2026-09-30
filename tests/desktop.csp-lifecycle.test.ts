@@ -294,7 +294,7 @@ describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () =>
       await rm(home, { recursive: true, force: true });
     }
   });
-  it('restores CSP before filling a draft from an installed board', { timeout: 45000 }, async () => {
+  it('preserves the installed board on refusal and restores CSP before filling a verified draft', { timeout: 45000 }, async () => {
     const home = await mkdtemp(join(tmpdir(), 'taskboard-installed-draft-'));
     const root = join(home, 'repo');
     await mkdir(root);
@@ -322,9 +322,34 @@ describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () =>
       await instance.install();
       expect(await page.locator('[data-taskboard-owned]').count()).toBe(1);
       expect(await cspBlocksBoard()).toBe(false);
+      await page.locator('[data-taskboard-entry]').click();
+      const request = { taskId: 'task', spaceId: 'space', projectPath: root, prompt: 'leave this unsent' };
+      const beforeRefusal = await documentOrigin();
+      const sidebarBefore = await page.locator('#codex-sidebar').innerHTML();
+      const assertBoardPreserved = async () => {
+        expect(await documentOrigin()).toBe(beforeRefusal);
+        expect(await page.locator('#codex-sidebar').innerHTML()).toBe(sidebarBefore);
+        expect(await page.locator('[data-taskboard-entry]').getAttribute('aria-pressed')).toBe('true');
+        expect(await page.locator('[data-taskboard-owned]').isVisible()).toBe(true);
+      };
+      for (const projectPath of [home, join(home, 'missing-repo')]) {
+        await expect(instance.openDraft({ ...request, projectPath })).rejects.toThrow('DRAFT_UNAVAILABLE');
+        await assertBoardPreserved();
+        expect(await page.locator('#codex-composer').textContent()).toBe('');
+      }
+      await page.locator('#codex-composer').evaluate(element => { element.innerHTML = '<p>existing unsent text</p>'; });
+      await expect(instance.openDraft(request)).rejects.toThrow('DRAFT_UNAVAILABLE');
+      await assertBoardPreserved();
+      expect(await page.locator('#codex-composer').textContent()).toBe('existing unsent text');
+      await page.locator('#codex-composer').evaluate(element => { element.innerHTML = '<p><br></p>'; });
+      await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div role="dialog" id="test-modal"></div>'));
+      await expect(instance.openDraft(request)).rejects.toThrow('DRAFT_UNAVAILABLE');
+      await assertBoardPreserved();
+      expect(await page.locator('#test-modal').count()).toBe(1);
+      await page.locator('#test-modal').evaluate(element => element.remove());
       const before = await documentOrigin();
       delayProjectOnNextLoad = true;
-      await instance.openDraft({ taskId: 'task', spaceId: 'space', projectPath: root, prompt: 'leave this unsent' });
+      await instance.openDraft(request);
       expect(await documentOrigin()).not.toBe(before);
       expect(await page.locator('[data-taskboard-owned]').count()).toBe(0);
       expect(await page.locator('#codex-composer').textContent()).toBe('leave this unsent');

@@ -947,10 +947,6 @@ export class CodexDesktopAdapter implements AgentAdapter {
       throw new Error('DRAFT_UNAVAILABLE: 缺少已验证的启动器会话或 Codex 版本');
     if (typeof request.prompt !== 'string' || !request.prompt.trim() || request.prompt.length > 120_000)
       throw new Error('DRAFT_UNAVAILABLE: 草稿内容无效');
-    // Restore the host CSP while the editor is still empty. An unsent draft
-    // must never force cleanup to reload and discard the user's text.
-    const restoringSidebar = Boolean(this.session);
-    if (restoringSidebar) await this.dispose();
     let requestedPath: string;
     try { requestedPath = realpathSync.native(request.projectPath); }
     catch { throw new Error('DRAFT_UNAVAILABLE: 请求的项目目录不存在'); }
@@ -968,7 +964,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
         target.targetInfo.url !== binding.exactPageUrl)
         throw new Error('DRAFT_UNAVAILABLE: Codex 页面绑定已变化');
       type DraftSurface = { selectedIds: string[]; labels: string[]; composerLabels: string[];
-        editorCount: number; editorEmpty: boolean; editorHasText: boolean; modal: boolean; overlayVisible: boolean };
+        editorCount: number; editorEmpty: boolean; editorHasText: boolean; modal: boolean; overlayVisible: boolean; overlayGeneration: string | null };
       const readSurface = () => this.evaluate<DraftSurface | null>(
         connection,
         `(() => { if (location.href !== ${JSON.stringify(binding.exactPageUrl)}) return null;
@@ -984,8 +980,30 @@ export class CodexDesktopAdapter implements AgentAdapter {
               editor.firstElementChild.tagName === 'P' && editor.firstElementChild.children.length === 1 &&
               editor.firstElementChild.firstElementChild.tagName === 'BR',
             modal: !!document.querySelector('[role="dialog"]'),
-            overlayVisible: !!overlay && getComputedStyle(overlay).display !== 'none' }; })()`,
+            overlayVisible: !!overlay && getComputedStyle(overlay).display !== 'none',
+            overlayGeneration: overlay?.getAttribute('data-taskboard-owned') ?? null }; })()`,
       );
+      // Refuse unsafe requests before removing the persistent entry or reloading
+      // the host. The active board may cover a valid, empty composer.
+      const sidebarSession = this.session;
+      if (sidebarSession) this.assertCurrentSession(sidebarSession);
+      const initial = await readSurface();
+      const initialId = initial?.selectedIds.length === 1 ? initial.selectedIds[0] : undefined;
+      const initialProject = initialId ? resolveCodexProject(home, initialId) : undefined;
+      const initialProjectMatches = !!initialProject &&
+        (process.platform === 'win32' ? initialProject.path.toLowerCase() === requestedPath.toLowerCase() : initialProject.path === requestedPath) &&
+        initial?.labels.length === 1 && initial.labels[0] === initialProject.name &&
+        initial.composerLabels.length === 1 && initial.composerLabels[0] === `切换项目：${initialProject.name}`;
+      const knownOverlay = !initial?.overlayVisible ||
+        (!!sidebarSession && initial.overlayGeneration === String(sidebarSession.generation));
+      if (!initialProjectMatches || !initial?.editorEmpty || initial.modal || !knownOverlay)
+        throw new Error('DRAFT_UNAVAILABLE: 项目身份、空白编辑器或页面状态未通过验证');
+      if (sidebarSession) this.assertCurrentSession(sidebarSession);
+      await this.assertOwner();
+      // Restore CSP before filling an unsent draft, then validate the reloaded
+      // project and editor again. Cleanup must not reload after text is inserted.
+      const restoringSidebar = Boolean(sidebarSession);
+      if (restoringSidebar) await this.dispose();
       let id: string | undefined;
       let project: ReturnType<typeof resolveCodexProject>;
       const readyUntil = Date.now() + (restoringSidebar ? 5_000 : 0);
