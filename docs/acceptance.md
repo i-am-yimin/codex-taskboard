@@ -14,6 +14,12 @@
 
 恢复测试 API 的自动启动命令在执行前被审批返回 `blocked by policy`，未给出具体原因；未改用其他入口执行同一被拒操作。Tailscale Serve 保持原 443→47830 配置，API 不在时 HTTPS 测试入口不可用。已准备人工可审阅启动脚本 `.artifacts/acceptance/2026-09-30-resume/start-preview-api.ps1`，仅启动现有隔离预览数据库上的 API，不重置验收数据。脚本 PowerShell 静态解析无错误，尚未执行。第二台 `87406f5` 默认缓存与开始菜单连续冷启动回报仍待收集；G1–G4 保持未通过。
 
+原生探针提交 `92d1cde03108c0449e3e7adff7bac5b5cb914497` 的 [CI #36685003327](https://github.com/i-am-yimin/codex-taskboard/actions/runs/36685003327) 中 Windows Rust 测试、NSIS 构建与独立探针编译均成功，`container` 也成功。独立探针 ZIP SHA-256 为 `A0A87398B4FEC135F327F9D7F238F683BCA3B1289BBCC1259B29DC3AEFAD01FB`，exe SHA-256 为 `4C1BE93DBB34F14DD6DCD247920A524DFC6F878DA56E996A1C14635341ED4A55`。本机使用全新验收目录实际运行探针，探针 PID 40768 持有 Codex PID 42936 的真实进程句柄；创建时间、官方包 `26.928.1915.0`、独立 profile/Codex home、回环 60965 的监听者与唯一 `app://-/index.html` 主页面绑定一致，认证 native control 返回有效。只读 CDP 形状检查前后重新验证 native ownership，当前窗口尚无选中项目或消息编辑器；未操作登录。证据在 `.artifacts/acceptance/2026-09-30-native-26.928.1915/native.json` 与 `host-shape.json`。据此源码原生启动清单保留 `26.924.2738.0` 并加入 `26.928.1915.0`，报告实际被选中的安装包版本，多个匹配安装包明确拒绝。侧栏/草稿清单尚未加入新版本；探针成功不能替代已安装启动器与完整 G1 验收。
+
+同一 CI 的 `verify` 在类型检查、全量数据库测试、生产 API、E2E 与离线测试通过后，因生产依赖审计失败而整体失败，不记作 G0 通过。官方注册表复查报告 `brace-expansion` 5.0.9 的两项 high 和相关 moderate，以及 `fast-uri` 3.1.7/4.1.4 的 moderate，共 6 项。随后只对受影响传递版本范围固定最小补丁 `brace-expansion` 5.0.12、`fast-uri` 3.1.8/4.1.5；冻结安装退出 0，官方注册表生产审计退出 0、各严重性均 0。补丁后的 Node 24.19.0 / pnpm 10.28.0 `pnpm check` 退出 0，109 项通过、15 项数据库依赖用例按预期跳过，Web/服务端构建成功。本机默认 npm 镜像缺少 audit 端点，首次镜像审计失败只记为端点不可用，正式结果使用显式官方 registry。新提交的完整 CI 与安装包实测仍待完成。
+
+只读 PostgreSQL `BEGIN READ ONLY` 查询另存 `.artifacts/acceptance/2026-09-30-resume/persisted-tasks.json`，七张任务保留，TB-4 为版本 4、已完成，TB-7 为版本 2且描述与真实窗口读回一致；未重建或重置预览数据库。
+
 ## 2026-09-29：安装版窄窗口与双设备续验（进行中）
 
 实时状态回归提交 `e849afec186e449767a6d5981dd68c8f93484fa0` 的 [CI #36558154348](https://github.com/i-am-yimin/codex-taskboard/actions/runs/36558154348) 中 `verify`（含真实 PostgreSQL 双会话 E2E 的领取后 2 秒内跨会话更新断言）、`container`、`windows-desktop` 均成功。Windows ZIP 为 24,615,315 字节，SHA-256 `147325F272B7F294AE3E0B08ADBBD8C7BD25997261D0A13529439B0ABCBE06F6`；内含未签名 NSIS 安装器 24,626,950 字节，SHA-256 `EC4E627D264610A4A5CD26D2B9A5D531FFB247BEAEDC50CE491B66634703AD5B`。旧 `6c8e41a` 版经托盘正常退出，主程序、随包 Node 和端口 47831 释放；卸载器静默退出 0，隔离安装目录消失，`state.json` 与三个 DPAPI 文件 SHA-256 保持一致。新包静默安装到另一个隔离目录退出 0；启动后主 PID 18168 的随包 Node PID 32736 独占 47831，本机窗口显示原“桌面隔离验收”空间及 TB-1～TB-3，随包 CLI 联网读取三张任务成功。这通过了本机卸载保留数据与重装恢复，不代替第二台桌面和最终发布验收。该安装器也已在 `codex-server` 安装，后续结果见下。

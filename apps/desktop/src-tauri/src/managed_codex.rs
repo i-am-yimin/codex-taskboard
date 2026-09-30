@@ -15,10 +15,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-// Host/draft acceptance and native package-context handle transfer verified.
-// The package-context launcher can inspect this version in an isolated profile.
-// The companion has a separate host-DOM allowlist for injection and drafts.
-const LAUNCHABLE_VERSION: &str = "26.924.2738.0";
+// Native package-context launch and real handle transfer verified for both versions.
+// 26.928.1915.0 native probe evidence: 2026-09-30, source 92d1cde.
+// The companion keeps its separate host-DOM allowlist for injection and drafts.
+const LAUNCHABLE_VERSIONS: &[&str] = &["26.924.2738.0", "26.928.1915.0"];
 const CODEX_PAGE: &str = "app://-/index.html";
 const START_TIMEOUT: Duration = Duration::from_secs(90);
 const CDP_TIMEOUT: Duration = Duration::from_millis(1200);
@@ -117,23 +117,23 @@ impl ManagedCodex {
 }
 
 pub fn launch(data_directory: &Path) -> Result<ManagedCodex, String> {
-    launch_version(data_directory, LAUNCHABLE_VERSION)
+    launch_versions(data_directory, LAUNCHABLE_VERSIONS)
 }
 
 /// Developer-only native acceptance. It does not expand the installed app gate
 /// or the companion's separate host/draft allowlist.
 #[cfg(feature = "acceptance-probes")]
 pub fn launch_probe(data_directory: &Path) -> Result<ManagedCodex, String> {
-    launch_version(data_directory, "26.928.1915.0")
+    launch_versions(data_directory, &["26.928.1915.0"])
 }
 
-fn launch_version(data_directory: &Path, version: &str) -> Result<ManagedCodex, String> {
+fn launch_versions(data_directory: &Path, versions: &[&str]) -> Result<ManagedCodex, String> {
     let managed_root = data_directory.join("managed-codex");
     fs::create_dir_all(&managed_root).map_err(|error| error.to_string())?;
     let managed_root = fs::canonicalize(managed_root).map_err(|error| error.to_string())?;
     let marker = managed_root.join("active.json");
     reject_running_previous(&marker)?;
-    let executable = discover_executable(version)?;
+    let (version, executable) = discover_executable(versions)?;
     let launch_id: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(24)
@@ -296,7 +296,7 @@ fn serve_control(
     Ok(())
 }
 
-fn discover_executable(version: &str) -> Result<PathBuf, String> {
+fn discover_executable(versions: &[&str]) -> Result<(String, PathBuf), String> {
     let script = "Get-AppxPackage -Name OpenAI.Codex | Where-Object { $_.PublisherId -eq '2p2nqsd0c76g0' } | ForEach-Object { '{0}|{1}' -f $_.Version,$_.InstallLocation }";
     let system_root = std::env::var_os("SystemRoot").ok_or("缺少 Windows 系统目录")?;
     let powershell = Path::new(&system_root)
@@ -321,17 +321,31 @@ fn discover_executable(version: &str) -> Result<PathBuf, String> {
         return Err("无法查询 Codex 安装包版本".into());
     }
     let listing = String::from_utf8_lossy(&output.stdout);
-    let matches: Vec<PathBuf> = listing
+    let (version, executable) = select_installed(&listing, versions)?;
+    Ok((
+        version,
+        fs::canonicalize(executable).map_err(|error| error.to_string())?,
+    ))
+}
+
+fn select_installed(listing: &str, versions: &[&str]) -> Result<(String, PathBuf), String> {
+    let mut matches: Vec<_> = listing
         .lines()
         .filter_map(|line| line.trim().split_once('|'))
-        .filter(|(installed, _)| *installed == version)
-        .map(|(_, location)| Path::new(location.trim()).join("app").join("ChatGPT.exe"))
-        .filter(|path| path.is_file())
+        .filter(|(installed, _)| versions.contains(installed))
+        .map(|(version, location)| (
+            version.to_string(),
+            Path::new(location.trim()).join("app").join("ChatGPT.exe"),
+        ))
+        .filter(|(_, path)| path.is_file())
         .collect();
-    if matches.len() != 1 {
+    if matches.is_empty() {
         return Err("当前 Codex 安装包版本未列入隔离启动清单".into());
     }
-    fs::canonicalize(&matches[0]).map_err(|error| error.to_string())
+    if matches.len() != 1 {
+        return Err("存在多个已验证 Codex 安装包，无法唯一确认启动身份".into());
+    }
+    Ok(matches.remove(0))
 }
 
 pub(crate) fn fetch_target(port: u16) -> Result<TargetBinding, String> {
@@ -749,14 +763,32 @@ mod tests {
     }
 
     #[test]
+    fn native_candidates_require_exact_version_and_existing_executable() {
+        let root = std::env::temp_dir().join(format!("taskboard-package-selection-{}", rand::random::<u64>()));
+        fs::create_dir(&root).unwrap();
+        fs::create_dir(root.join("app")).unwrap();
+        let executable = root.join("app/ChatGPT.exe");
+        fs::write(&executable, b"package selection fixture").unwrap();
+        let listing = format!("26.928.1915.0-extra|{0}\n26.928.1915.0|{0}\n26.924.2738.0|{0}\n26.928.1915.0|{0}/missing", root.display());
+        let probe = select_installed(&listing, &["26.928.1915.0"]).unwrap();
+        assert_eq!(probe, ("26.928.1915.0".to_string(), executable.clone()));
+        // The normal discovery must reject two approved installed packages,
+        // rather than silently select one with uncertain package identity.
+        assert!(select_installed(&listing, LAUNCHABLE_VERSIONS).is_err());
+        fs::remove_file(executable).unwrap();
+        fs::remove_dir(root.join("app")).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
     #[ignore = "run only on a machine whose installed Codex version is outside the verified list"]
     fn newer_installed_codex_is_refused_before_launch() {
-        assert!(discover_executable(LAUNCHABLE_VERSION).is_err());
+        assert!(discover_executable(LAUNCHABLE_VERSIONS).is_err());
     }
 
     #[test]
     #[ignore = "run only on a machine with the verified Codex package installed"]
     fn verified_installed_codex_is_discovered_without_launch() {
-        assert!(discover_executable(LAUNCHABLE_VERSION).unwrap().is_file());
+        assert!(discover_executable(LAUNCHABLE_VERSIONS).unwrap().1.is_file());
     }
 }

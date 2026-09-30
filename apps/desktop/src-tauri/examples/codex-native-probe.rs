@@ -2,6 +2,8 @@
 //! Holds the real child handle until Codex is closed and exposes the same
 //! authenticated native ownership check used by the companion.
 
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 #[cfg(windows)]
 #[path = "../src/managed_codex.rs"]
 mod managed_codex;
