@@ -12,14 +12,14 @@ import { resolveCodexProject } from './project-identity.ts';
 /** The only desktop version this adapter knows how to inspect. A successful CDP
  * connection is deliberately not enough to mark a user's Codex installation as
  * supported: the host DOM must be observed through an explicit marker. */
-export const SUPPORTED_CODEX_VERSIONS = ['26.901.5280.0', '26.917.9434.0', '26.924.1866.0', '26.924.2738.0'] as const;
+export const SUPPORTED_CODEX_VERSIONS = ['26.901.5280.0', '26.917.9434.0', '26.924.1866.0', '26.924.2738.0', '26.928.1915.0'] as const;
 
 /** Version-specific markers confirmed on an isolated host. Native launch support
  * has a separate gate: recognizing a host does not prove process ownership. */
 export function codexHostMarkers(version: string) {
   if (!SUPPORTED_CODEX_VERSIONS.includes(version as (typeof SUPPORTED_CODEX_VERSIONS)[number]))
     throw new Error('Unsupported Codex host version');
-  const redesignedShell = version === '26.924.1866.0' || version === '26.924.2738.0';
+  const redesignedShell = version === '26.924.1866.0' || version === '26.924.2738.0' || version === '26.928.1915.0';
   return {
     shellMarker: 'div:has(>aside.app-shell-left-panel)',
     sidebarMarker: redesignedShell
