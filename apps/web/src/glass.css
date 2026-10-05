@@ -276,13 +276,13 @@ body {
   top: 12px;
   right: 12px;
   height: calc(100dvh - 24px);
-  width: min(580px, calc(100vw - 24px));
+  width: min(580px, calc(100% - 24px));
   border-radius: 28px;
 }
 :root .settings {
   height: calc(100dvh - 24px);
   margin: 12px 12px 12px auto;
-  width: min(960px, calc(100vw - 24px));
+  width: min(960px, calc(100% - 24px));
   border-radius: 28px;
   overflow: hidden;
 }
@@ -502,14 +502,14 @@ body {
   :root .drawer {
     top: 6px;
     right: 6px;
-    width: calc(100vw - 12px);
+    width: calc(100% - 12px);
     height: calc(100dvh - 12px);
     border-radius: 24px;
   }
   :root .settings {
     margin: 6px;
     height: calc(100dvh - 12px);
-    width: calc(100vw - 12px);
+    width: calc(100% - 12px);
     border-radius: 24px;
   }
   :root .settings-nav {
