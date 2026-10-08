@@ -15,10 +15,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-// Native package-context launch and real handle transfer verified for both versions.
+// Native package-context launch and real handle transfer verified per version.
 // 26.928.1915.0 native probe evidence: 2026-09-30, source 92d1cde.
+// 26.930.7945.0 native probe evidence: 2026-10-08, source e72c648.
 // The companion keeps its separate host-DOM allowlist for injection and drafts.
-const LAUNCHABLE_VERSIONS: &[&str] = &["26.924.2738.0", "26.928.1915.0"];
+const LAUNCHABLE_VERSIONS: &[&str] = &["26.924.2738.0", "26.928.1915.0", "26.930.7945.0"];
 const CODEX_PAGE: &str = "app://-/index.html";
 const START_TIMEOUT: Duration = Duration::from_secs(90);
 const CDP_TIMEOUT: Duration = Duration::from_millis(1200);
@@ -792,7 +793,7 @@ mod tests {
         ] {
             assert!(validate_probe_version(invalid).is_err(), "accepted {invalid}");
         }
-        assert!(!LAUNCHABLE_VERSIONS.contains(&"26.930.7945.0"));
+        assert!(!LAUNCHABLE_VERSIONS.contains(&"26.999.1.0"));
     }
 
     #[test]
@@ -810,7 +811,12 @@ mod tests {
             select_installed(&newer_listing, &["26.930.7945.0"]).unwrap(),
             ("26.930.7945.0".to_string(), executable.clone())
         );
-        assert!(select_installed(&newer_listing, LAUNCHABLE_VERSIONS).is_err());
+        assert_eq!(
+            select_installed(&newer_listing, LAUNCHABLE_VERSIONS).unwrap(),
+            ("26.930.7945.0".to_string(), executable.clone())
+        );
+        let unverified_listing = format!("26.999.1.0|{}", root.display());
+        assert!(select_installed(&unverified_listing, LAUNCHABLE_VERSIONS).is_err());
         // The normal discovery must reject two approved installed packages,
         // rather than silently select one with uncertain package identity.
         assert!(select_installed(&listing, LAUNCHABLE_VERSIONS).is_err());

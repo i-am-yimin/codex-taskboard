@@ -484,3 +484,12 @@ Rust `1.98.1` 已安装在忽略目录 `.artifacts/tools/`。本机没有现成 
 - 上述适配器及测试修改后的 `pnpm typecheck` 已重新执行并以退出码 0 通过，`pnpm lint` 也已通过。新增测试曾暴露替身参数类型错误，修正后再次通过类型检查；未以 Vitest 通过代替类型检查。较早一次辅助脚本生成的退出码文件与错误日志不一致，未采用该文件作为通过依据。
 - 最新 Web/Node 构建与桌面运行时重新打包准备通过；随包 Node `v22.16.0` 与 `taskctl.cmd --help` 已重新执行成功。完整 MSVC `cargo test --locked -j 1 --release --manifest-path apps/desktop/src-tauri/Cargo.toml` 已通过（优化编译 37 分 29 秒，完整 `main.rs` 测试可执行文件 8/8 通过、1.02 秒），不是仅独立 `ready.rs` 测试。它不等价于程序启动、WebView2 或 NSIS 安装器验收。匹配的 release `cargo build --locked -j 1` 已于 10 分 03 秒通过并生成 `apps/desktop/src-tauri/target/release/codex-taskboard-desktop.exe`；真实窗口 smoke 已通过，NSIS 已生成并完成隔离安装检查；安装后运行、卸载保留数据和托盘退出仍待验收。
 - `ready.rs` 使用 MSVC host 的 `rustc --edition=2021 --test` 编译为 Windows 可执行文件并运行，8 项真实回环 TCP 测试通过（退出码 0）。新增验证覆盖带认证头的关闭请求、收到 202 头后无需等待对端关闭，以及慢速响应不能延长总截止时间；此项仍不等于完整 Tauri 程序或安装器验收。
+
+
+### 2026-10-08：26.930.7945.0 的原生启动和页面契约已观测
+
+开发探针提交 e72c648 的同提交 CI 37711898585 三个作业全部通过；独立探针压缩包 SHA-256 为 644c9d7eb2fa31dff2d3e9c3f0819549a658f439b40a2a4bbad003e4b01c8935，执行文件为 FA04FF52F5AC439DD2420F3CCFEB3E56538D5C9B99A63971331A2C4A22F6D976，未签名。在本机实际当前用户 MSIX 中创建全新隔离实例，私有管道交接、真实进程句柄、创建时间、回环端口、精确 target/page/WebSocket 和独立 profile/Codex home 均通过，主 Codex 进程保持原样。
+
+随后只读核对该实例已登录并打开测试仓库，真实项目 UUID 经其隔离 state_5.sqlite 唯一解析到已映射目录；shell、项目侧栏、主内容区与编辑器各一个，编辑器为空、无弹窗，与既有新版 shell 契约一致。按这两项实机证据补入 26.930.7945.0 的原生启动和 DOM 标记清单，未知版本继续拒绝。来源记录位于 .artifacts/acceptance/2026-10-08-host-26-930/native-probe-launch.json 与 native-current-readiness.json。
+
+本机类型检查和 lint 退出 0，独立 Chromium CSP 生命周期及私有启动器回归合计十二项通过；当前源变更的 Rust 编译仍待后续同提交 CI。这些结果只证明启动归属、只读页面/项目契约与自动回归。真实新版侧栏 iframe、nonce/CSP 清理、未发送草稿及全部拒绝路径、正式 NSIS 启动和正常宿主退出/重启尚待完整执行，因此 G1 未关闭，G4 未进入。共享测试 API 当前停止，继续等待用户手动启动原脚本；原数据库十二任务已只读确认保留。

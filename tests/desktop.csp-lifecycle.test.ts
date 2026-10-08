@@ -240,7 +240,7 @@ describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () =>
       <nav role="navigation" aria-label="首页" id="projects"></nav>
     </aside><div role="status" style="position:absolute;left:-1px;width:1px;height:1px"></div>
     <main data-app-shell-main-surface="default" id="content"></main></div>`);
-    for (const version of ['26.924.1866.0', '26.924.2738.0', '26.928.1915.0']) {
+    for (const version of ['26.924.1866.0', '26.924.2738.0', '26.928.1915.0', '26.930.7945.0']) {
       const markers = codexHostMarkers(version);
       await expect(page.locator(markers.shellMarker).count()).resolves.toBe(1);
       await expect(page.locator(markers.sidebarMarker).evaluateAll(elements => elements.map(el => el.id)))
