@@ -123,8 +123,24 @@ pub fn launch(data_directory: &Path) -> Result<ManagedCodex, String> {
 /// Developer-only native acceptance. It does not expand the installed app gate
 /// or the companion's separate host/draft allowlist.
 #[cfg(feature = "acceptance-probes")]
-pub fn launch_probe(data_directory: &Path) -> Result<ManagedCodex, String> {
-    launch_versions(data_directory, &["26.928.1915.0"])
+pub fn launch_probe(data_directory: &Path, version: &str) -> Result<ManagedCodex, String> {
+    validate_probe_version(version)?;
+    launch_versions(data_directory, &[version])
+}
+
+#[cfg(any(feature = "acceptance-probes", test))]
+fn validate_probe_version(version: &str) -> Result<(), String> {
+    let parts: Vec<_> = version.split('.').collect();
+    if parts.len() != 4
+        || parts.iter().any(|part| {
+            part.is_empty()
+                || !part.bytes().all(|byte| byte.is_ascii_digit())
+                || part.parse::<u16>().is_err()
+        })
+    {
+        return Err("The probe requires an exact four-part MSIX version".into());
+    }
+    Ok(())
 }
 
 fn launch_versions(data_directory: &Path, versions: &[&str]) -> Result<ManagedCodex, String> {
@@ -763,6 +779,23 @@ mod tests {
     }
 
     #[test]
+    fn acceptance_probe_requires_exact_msix_version() {
+        assert!(validate_probe_version("26.930.7945.0").is_ok());
+        for invalid in [
+            "",
+            "26.930.7945",
+            "26.930.7945.0-extra",
+            "26.930.7945.0|path",
+            "26.930..0",
+            "26.930.65536.0",
+            "26.930.+1.0",
+        ] {
+            assert!(validate_probe_version(invalid).is_err(), "accepted {invalid}");
+        }
+        assert!(!LAUNCHABLE_VERSIONS.contains(&"26.930.7945.0"));
+    }
+
+    #[test]
     fn native_candidates_require_exact_version_and_existing_executable() {
         let root = std::env::temp_dir().join(format!("taskboard-package-selection-{}", rand::random::<u64>()));
         fs::create_dir(&root).unwrap();
@@ -772,6 +805,12 @@ mod tests {
         let listing = format!("26.928.1915.0-extra|{0}\n26.928.1915.0|{0}\n26.924.2738.0|{0}\n26.928.1915.0|{0}/missing", root.display());
         let probe = select_installed(&listing, &["26.928.1915.0"]).unwrap();
         assert_eq!(probe, ("26.928.1915.0".to_string(), executable.clone()));
+        let newer_listing = format!("26.930.7945.0|{}", root.display());
+        assert_eq!(
+            select_installed(&newer_listing, &["26.930.7945.0"]).unwrap(),
+            ("26.930.7945.0".to_string(), executable.clone())
+        );
+        assert!(select_installed(&newer_listing, LAUNCHABLE_VERSIONS).is_err());
         // The normal discovery must reject two approved installed packages,
         // rather than silently select one with uncertain package identity.
         assert!(select_installed(&listing, LAUNCHABLE_VERSIONS).is_err());

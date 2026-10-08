@@ -18,10 +18,10 @@ mod package_launch;
 mod private_pipe;
 
 #[cfg(windows)]
-fn run(root: &std::path::Path) -> Result<(), String> {
+fn run(root: &std::path::Path, version: &str) -> Result<(), String> {
     use rand::{distributions::Alphanumeric, Rng};
     use std::{fs, sync::{Arc, Mutex}, thread, time::Duration};
-    let mut child = managed_codex::launch_probe(root)?;
+    let mut child = managed_codex::launch_probe(root, version)?;
     child.await_binding()?;
     let evidence = child.probe_description();
     if evidence["valid"] != true {
@@ -56,17 +56,21 @@ fn main() {
         std::process::exit(code);
     }
     let args: Vec<_> = std::env::args_os().skip(1).collect();
-    if args.len() != 1 {
-        eprintln!("Usage: codex-native-probe.exe <new absolute acceptance directory>");
-        std::process::exit(2);
-    }
+    let version = match args.as_slice() {
+        [_] => "26.928.1915.0",
+        [_, flag, version] if flag == "--version" => version.to_str().unwrap_or(""),
+        _ => {
+            eprintln!("Usage: codex-native-probe.exe <new absolute acceptance directory> [--version <exact MSIX version>]");
+            std::process::exit(2);
+        }
+    };
     let root = std::path::PathBuf::from(&args[0]);
     // An exclusive fresh directory prevents attaching to existing user sessions.
     if !root.is_absolute() || std::fs::create_dir(&root).is_err() {
         eprintln!("The acceptance directory must be absolute, new, and have an existing parent");
         std::process::exit(2);
     }
-    if let Err(error) = run(&root) {
+    if let Err(error) = run(&root, version) {
         let _ = std::fs::write(root.join("error.json"), serde_json::to_vec_pretty(
             &serde_json::json!({"error": error})
         ).unwrap());
