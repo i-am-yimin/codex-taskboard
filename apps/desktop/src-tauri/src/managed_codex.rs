@@ -74,13 +74,13 @@ impl ManagedCodex {
         description
     }
 
-    pub fn is_running(&mut self) -> bool {
+    pub fn is_running(&self) -> bool {
         self.child.is_running()
     }
 
     /// Verifies the held child handle, its original creation time, the OS TCP
     /// listener owner, and the exact page discovered when it was launched.
-    pub fn verify(&mut self) -> bool {
+    pub fn verify(&self) -> bool {
         self.is_running()
             && self.created_ticks != 0
             && self.profile.is_dir()
@@ -92,6 +92,15 @@ impl ManagedCodex {
                 .target
                 .as_ref()
                 .is_some_and(|target| fetch_target(self.port).ok().as_ref() == Some(target))
+    }
+
+    pub fn restore_window(&self) -> Result<String, String> {
+        let focused = crate::managed_window::restore(&self.child, || self.verify())?;
+        Ok(if focused {
+            "受管理 Codex 窗口已恢复；登录并选中项目后，可接入 Codex 侧栏"
+        } else {
+            "受管理 Codex 窗口已显示；请从任务栏选择它，登录并选中项目后可接入侧栏"
+        }.into())
     }
 
     pub fn await_binding(&mut self) -> Result<(), String> {

@@ -437,6 +437,18 @@ describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () =>
     expect(await page.locator('#codex-composer').count()).toBe(1);
   });
 
+  it('explains the login-page refusal without reloading or enabling CSP bypass', async () => {
+    await page.setContent('<main><h1>登录 ChatGPT</h1><button>继续登录</button></main>');
+    const before = await documentOrigin();
+    const target = await boundPage();
+    const instance = adapter(target);
+    await expect(instance.install()).rejects.toThrow('sign in and open a project first');
+    expect(await documentOrigin()).toBe(before);
+    expect(await page.locator('h1').textContent()).toBe('登录 ChatGPT');
+    expect(await page.locator('[data-taskboard-owned], [data-taskboard-entry]').count()).toBe(0);
+    expect(await cspBlocksBoard()).toBe(true);
+  });
+
   it('refuses the guarded CSP reload when the editor contains an unsent draft', async () => {
     await page.locator('#codex-composer').fill('do not discard this draft');
     const target = await boundPage();

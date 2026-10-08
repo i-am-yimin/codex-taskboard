@@ -671,7 +671,21 @@ export class CodexDesktopAdapter implements AgentAdapter {
       connection,
       `(() => location.href === ${JSON.stringify(exactPageUrl)} && document.querySelectorAll(${JSON.stringify(shell)}).length === 1 && document.querySelectorAll(${JSON.stringify(editor)}).length === 1 && !document.querySelector(${JSON.stringify(modal)}) && !(document.querySelector(${JSON.stringify(editor)})?.textContent ?? '').trim())()`,
     );
-    if (!safe) throw new Error('CSP reload refused: Codex editor is not empty or a modal is open');
+    if (!safe) {
+      // Diagnose the refused state without enabling bypass or reloading.
+      const state = await this.evaluate<{
+        url?: string; shell?: number; editors?: number; modal?: boolean; hasText?: boolean;
+      }>(connection,
+        `({ url: location.href, shell: document.querySelectorAll(${JSON.stringify(shell)}).length, editors: document.querySelectorAll(${JSON.stringify(editor)}).length, modal: Boolean(document.querySelector(${JSON.stringify(modal)})), hasText: Array.from(document.querySelectorAll(${JSON.stringify(editor)})).some(element => Boolean((element.textContent ?? '').trim())) })`,
+      );
+      if (state?.url !== exactPageUrl)
+        throw new Error('CSP reload refused: Codex target changed');
+      if (state.modal) throw new Error('CSP reload refused: a Codex dialog is open');
+      if (state.hasText) throw new Error('CSP reload refused: the Codex editor contains an unsent draft');
+      if (state.shell === 0 || state.editors === 0)
+        throw new Error('CSP reload refused: Codex workspace is not ready; sign in and open a project first');
+      throw new Error('CSP reload refused: Codex workspace structure does not match the verified host');
+    }
   }
 
   private assertCurrentSession(session: { connection: CdpConnection; generation: number }): void {

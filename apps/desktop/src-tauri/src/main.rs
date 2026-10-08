@@ -3,6 +3,8 @@
 #[cfg(windows)]
 mod managed_codex;
 #[cfg(windows)]
+mod managed_window;
+#[cfg(windows)]
 mod owned_process;
 #[cfg(windows)]
 mod package_launch;
@@ -190,12 +192,12 @@ fn start_managed_codex(
             .map_err(|_| "Codex ownership lock poisoned")?;
         if let Some(existing) = child.as_mut() {
             if existing.verify() {
-                return Ok("受管理 Codex 已在运行".into());
+                return existing.restore_window();
             }
             if existing.is_running() {
                 if existing.target.is_none() {
                     existing.await_binding()?;
-                    return Ok("受管理 Codex 已启动；登录并选中项目后，可接入 Codex 侧栏".into());
+                    return existing.restore_window();
                 }
                 return Err("原有 Codex 页面或监听归属已变化，已拒绝启动第二个实例".into());
             }
