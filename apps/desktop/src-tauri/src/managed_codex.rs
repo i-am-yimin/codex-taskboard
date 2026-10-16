@@ -18,8 +18,9 @@ use std::{
 // Native package-context launch and real handle transfer verified per version.
 // 26.928.1915.0 native probe evidence: 2026-09-30, source 92d1cde.
 // 26.930.7945.0 native probe evidence: 2026-10-08, source e72c648.
+// 26.1007.9446.0 native ownership and host project contract observed: 2026-10-16.
 // The companion keeps its separate host-DOM allowlist for injection and drafts.
-const LAUNCHABLE_VERSIONS: &[&str] = &["26.924.2738.0", "26.928.1915.0", "26.930.7945.0"];
+const LAUNCHABLE_VERSIONS: &[&str] = &["26.924.2738.0", "26.928.1915.0", "26.930.7945.0", "26.1007.9446.0"];
 const CODEX_PAGE: &str = "app://-/index.html";
 const START_TIMEOUT: Duration = Duration::from_secs(90);
 const CDP_TIMEOUT: Duration = Duration::from_millis(1200);
