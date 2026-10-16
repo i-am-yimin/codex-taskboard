@@ -49,6 +49,8 @@ export async function request<T>(
   }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
+    if ((init.method ?? 'GET') === 'GET' && [502, 503, 504].includes(response.status))
+      throw new ApiError('OFFLINE', '任务看板服务器暂时不可用', response.status);
     const err = payload.error ?? {};
     throw new ApiError(
       err.code ?? 'REQUEST_FAILED',
