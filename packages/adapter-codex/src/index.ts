@@ -978,18 +978,21 @@ export class CodexDesktopAdapter implements AgentAdapter {
         target.targetInfo.url !== binding.exactPageUrl)
         throw new Error('DRAFT_UNAVAILABLE: Codex 页面绑定已变化');
       type DraftSurface = { selectedIds: string[]; labels: string[]; composerLabels: string[];
-        editorCount: number; editorEmpty: boolean; editorHasText: boolean; modal: boolean; overlayVisible: boolean; overlayGeneration: string | null };
+        editorCount: number; editorEmpty: boolean; editorModelEmpty: boolean; editorHasText: boolean; modal: boolean; overlayVisible: boolean; overlayGeneration: string | null };
       const readSurface = () => this.evaluate<DraftSurface | null>(
         connection,
         `(() => { if (location.href !== ${JSON.stringify(binding.exactPageUrl)}) return null;
           const selected = [...document.querySelectorAll('[data-app-action-sidebar-project-id][aria-current="page"]')];
           const editors = [...document.querySelectorAll('[contenteditable="true"][role="textbox"]')];
           const editor = editors.length === 1 ? editors[0] : null;
+          const model = editor?.pmViewDesc?.node;
+          const editorModelEmpty = !!model && model.type?.name === 'doc' && model.childCount === 1 &&
+            model.firstChild?.type?.name === 'paragraph' && model.firstChild.content?.size === 0;
           const overlay = document.querySelector('[data-taskboard-owned]');
           return { selectedIds: selected.map(el => el.getAttribute('data-app-action-sidebar-project-id')),
             labels: selected.map(el => el.getAttribute('data-app-action-sidebar-project-label')),
             composerLabels: [...document.querySelectorAll('[data-composer-navigation-target="workspace-project"]')].map(el => el.getAttribute('aria-label')),
-            editorCount: editors.length, editorHasText: editors.some(el => !!el.textContent.trim()),
+            editorCount: editors.length, editorModelEmpty, editorHasText: editors.some(el => !!el.textContent.trim()),
             editorEmpty: !!editor && !editor.textContent.trim() && editor.children.length === 1 &&
               editor.firstElementChild.tagName === 'P' && editor.firstElementChild.children.length === 1 &&
               editor.firstElementChild.firstElementChild.tagName === 'BR',
@@ -1010,7 +1013,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
         initial.composerLabels.length === 1 && initial.composerLabels[0] === `切换项目：${initialProject.name}`;
       const knownOverlay = !initial?.overlayVisible ||
         (!!sidebarSession && initial.overlayGeneration === String(sidebarSession.generation));
-      if (!initialProjectMatches || !initial?.editorEmpty || initial.modal || !knownOverlay)
+      if (!initialProjectMatches || !initial?.editorEmpty || !initial.editorModelEmpty || initial.modal || !knownOverlay)
         throw new Error('DRAFT_UNAVAILABLE: 项目身份、空白编辑器或页面状态未通过验证');
       if (sidebarSession) this.assertCurrentSession(sidebarSession);
       await this.assertOwner();
@@ -1031,7 +1034,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
           state?.labels.length === 1 && state.labels[0] === project.name;
         const composerMatches = !!project && state?.composerLabels.length === 1 &&
           state.composerLabels[0] === `切换项目：${project.name}`;
-        if (projectMatches && composerMatches && state?.editorEmpty && !state.modal && !state.overlayVisible)
+        if (projectMatches && composerMatches && state?.editorEmpty && state.editorModelEmpty && !state.modal && !state.overlayVisible)
           break;
         // Our guarded CSP restoration can finish before Codex rehydrates its
         // selected project. Wait only for missing markers after that reload;
@@ -1053,39 +1056,69 @@ export class CodexDesktopAdapter implements AgentAdapter {
         current.targetInfo.url !== binding.exactPageUrl)
         throw new Error('DRAFT_UNAVAILABLE: Codex 页面绑定已变化');
       await this.assertOwner();
-      const result = await this.evaluate<{ inserted?: boolean; exactText?: boolean; projectStillSelected?: boolean }>(
-        connection,
-        `(() => {
-          if (location.href !== ${JSON.stringify(binding.exactPageUrl)} || document.querySelector('[role="dialog"]')) return { inserted: false };
-          const selected = [...document.querySelectorAll('[data-app-action-sidebar-project-id][aria-current="page"]')];
-          const labels = [...document.querySelectorAll('[data-composer-navigation-target="workspace-project"]')];
-          const editors = [...document.querySelectorAll('[contenteditable="true"][role="textbox"]')];
-          const editor = editors[0];
-          const overlay = document.querySelector('[data-taskboard-owned]');
-          if (selected.length !== 1 || selected[0].getAttribute('data-app-action-sidebar-project-id') !== ${JSON.stringify(id)} ||
-            selected[0].getAttribute('data-app-action-sidebar-project-label') !== ${JSON.stringify(project.name)} ||
-            labels.length !== 1 || labels[0].getAttribute('aria-label') !== ${JSON.stringify(`切换项目：${project.name}`)} ||
-            editors.length !== 1 || editor.textContent.trim() || editor.children.length !== 1 ||
-            editor.firstElementChild.tagName !== 'P' || editor.firstElementChild.children.length !== 1 ||
-            editor.firstElementChild.firstElementChild.tagName !== 'BR' ||
-            (overlay && getComputedStyle(overlay).display !== 'none')) return { inserted: false };
-          editor.focus();
-          const inserted = document.execCommand('insertText', false, ${JSON.stringify(request.prompt)});
-          // Codex stores pasted newlines as separate <p> nodes. textContent drops the
-          // separators, so compare the actual paragraph sequence with the prompt.
-          const paragraphs = [...editor.children];
-          const exactText = editor.childNodes.length === paragraphs.length && paragraphs.length > 0 &&
-            paragraphs.every(paragraph => paragraph.tagName === 'P' &&
-              (paragraph.children.length === 0 ||
-                (paragraph.children.length === 1 && paragraph.firstElementChild.tagName === 'BR' &&
-                  !paragraph.textContent))) &&
-            paragraphs.map(paragraph => paragraph.textContent ?? '').join('\\n') === ${JSON.stringify(request.prompt)};
-          return { inserted, exactText,
-            projectStillSelected: selected[0].isConnected && selected[0].getAttribute('aria-current') === 'page' };
-        })()`,
-      );
-      if (!result.inserted || !result.exactText || !result.projectStillSelected)
-        throw new Error('DRAFT_UNCONFIRMED: 草稿未能在目标项目中完整显示；请检查独立 Codex 窗口');
+      try {
+        const result = await this.evaluate<{ inserted?: boolean; exactText?: boolean; modelAccepted?: boolean; projectStillSelected?: boolean }>(
+          connection,
+          `(async () => {
+            if (location.href !== ${JSON.stringify(binding.exactPageUrl)} || document.querySelector('[role="dialog"]')) return { inserted: false };
+            const selected = [...document.querySelectorAll('[data-app-action-sidebar-project-id][aria-current="page"]')];
+            const labels = [...document.querySelectorAll('[data-composer-navigation-target="workspace-project"]')];
+            const editors = [...document.querySelectorAll('[contenteditable="true"][role="textbox"]')];
+            const editor = editors[0];
+            const model = editor?.pmViewDesc?.node;
+            const overlay = document.querySelector('[data-taskboard-owned]');
+            if (selected.length !== 1 || selected[0].getAttribute('data-app-action-sidebar-project-id') !== ${JSON.stringify(id)} ||
+              selected[0].getAttribute('data-app-action-sidebar-project-label') !== ${JSON.stringify(project.name)} ||
+              labels.length !== 1 || labels[0].getAttribute('aria-label') !== ${JSON.stringify(`切换项目：${project.name}`)} ||
+              editors.length !== 1 || editor.textContent.trim() || editor.children.length !== 1 ||
+              editor.firstElementChild.tagName !== 'P' || editor.firstElementChild.children.length !== 1 ||
+              editor.firstElementChild.firstElementChild.tagName !== 'BR' ||
+              model?.type?.name !== 'doc' || model.childCount !== 1 ||
+              model.firstChild?.type?.name !== 'paragraph' || model.firstChild.content?.size !== 0 ||
+              (overlay && getComputedStyle(overlay).display !== 'none')) return { inserted: false };
+            editor.focus();
+            const inserted = document.execCommand('insertText', false, ${JSON.stringify(request.prompt)});
+            // Let the host process its input transaction before checking its model.
+            // Visible DOM alone does not prove that Codex accepted the draft.
+            await new Promise(resolve => setTimeout(resolve, 0));
+            // Codex stores pasted newlines as separate <p> nodes. textContent drops the
+            // separators, so compare the actual paragraph sequence with the prompt.
+            const paragraphs = [...editor.children];
+            const exactText = editor.childNodes.length === paragraphs.length && paragraphs.length > 0 &&
+              paragraphs.every(paragraph => paragraph.tagName === 'P' &&
+                (paragraph.children.length === 0 ||
+                  (paragraph.children.length === 1 && paragraph.firstElementChild.tagName === 'BR' &&
+                    !paragraph.textContent))) &&
+              paragraphs.map(paragraph => paragraph.textContent ?? '').join('\\n') === ${JSON.stringify(request.prompt)};
+            let modelAccepted = false;
+            try {
+              const accepted = editor.pmViewDesc?.node;
+              modelAccepted = accepted?.type?.name === 'doc' && accepted.childCount === paragraphs.length &&
+                typeof accepted.textBetween === 'function' &&
+                accepted.textBetween(0, accepted.content.size, '\\n') === ${JSON.stringify(request.prompt)};
+            } catch { /* An unknown editor model cannot confirm a draft. */ }
+            const currentEditors = [...document.querySelectorAll('[contenteditable="true"][role="textbox"]')];
+            const currentSelected = [...document.querySelectorAll('[data-app-action-sidebar-project-id][aria-current="page"]')];
+            const currentLabels = [...document.querySelectorAll('[data-composer-navigation-target="workspace-project"]')];
+            return { inserted, exactText, modelAccepted,
+              projectStillSelected: location.href === ${JSON.stringify(binding.exactPageUrl)} &&
+                !document.querySelector('[role="dialog"]') && currentEditors.length === 1 && currentEditors[0] === editor &&
+                currentSelected.length === 1 && currentSelected[0] === selected[0] &&
+                currentSelected[0].getAttribute('data-app-action-sidebar-project-id') === ${JSON.stringify(id)} &&
+                currentSelected[0].getAttribute('data-app-action-sidebar-project-label') === ${JSON.stringify(project.name)} &&
+                currentLabels.length === 1 && currentLabels[0].getAttribute('aria-label') === ${JSON.stringify(`切换项目：${project.name}`)} };
+          })()`,
+        );
+        await this.assertOwner();
+        const confirmedTarget = await connection.send<{ targetInfo?: { targetId?: string; type?: string; url?: string } }>('Target.getTargetInfo');
+        if (!result.inserted || !result.exactText || !result.modelAccepted || !result.projectStillSelected ||
+          confirmedTarget.targetInfo?.targetId !== binding.targetId || confirmedTarget.targetInfo.type !== 'page' ||
+          confirmedTarget.targetInfo.url !== binding.exactPageUrl)
+          throw new Error('Draft acceptance could not be confirmed');
+      } catch {
+        // Text may already be visible. Preserve it and prohibit a blind retry.
+        throw new Error('DRAFT_UNCONFIRMED: 草稿尚未得到目标 Codex 编辑器确认；请保留窗口并手动检查，不要重复填入');
+      }
     } finally { connection.close(); }
   }
   async openThread(_threadId: string): Promise<void> {
