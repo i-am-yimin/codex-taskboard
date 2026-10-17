@@ -190,6 +190,7 @@ fn start_managed_codex(
             .child
             .lock()
             .map_err(|_| "Codex ownership lock poisoned")?;
+        let mut exited_sessions = None;
         if let Some(existing) = child.as_mut() {
             if existing.verify() {
                 return existing.restore_window();
@@ -201,10 +202,13 @@ fn start_managed_codex(
                 }
                 return Err("原有 Codex 页面或监听归属已变化，已拒绝启动第二个实例".into());
             }
-            *child = None;
+            exited_sessions = Some(existing.confirmed_exit_history()?);
         }
         let data = taskboard_data_dir(&app)?;
-        let launched = managed_codex::launch(&data)?;
+        let mut launched = managed_codex::launch(&data)?;
+        if let Some(history) = exited_sessions {
+            launched.inherit_exits(history);
+        }
         *child = Some(launched);
         child
             .as_mut()

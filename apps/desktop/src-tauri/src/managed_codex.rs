@@ -5,6 +5,7 @@ use crate::owned_process::OwnedProcess;
 use rand::{distributions::Alphanumeric, Rng};
 use serde_json::Value;
 use std::{
+    collections::VecDeque,
     fs,
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
@@ -32,11 +33,19 @@ pub struct TargetBinding {
     pub websocket_url: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExitedSession {
+    id: String,
+    pid: u32,
+    created_ticks: u64,
+}
+
 pub struct ManagedCodex {
     child: OwnedProcess,
     created_ticks: u64,
     version: String,
     session_id: String,
+    exited_sessions: VecDeque<ExitedSession>,
     pub profile: PathBuf,
     pub codex_home: PathBuf,
     pub port: u16,
@@ -77,6 +86,36 @@ impl ManagedCodex {
 
     pub fn is_running(&self) -> bool {
         self.child.is_running()
+    }
+
+    // Carry only launcher-issued exit receipts across replacements. Neither a
+    // missing listener nor a changed page proves that the held process exited.
+    pub fn confirmed_exit_history(&self) -> Result<VecDeque<ExitedSession>, String> {
+        if !self.child.has_exited() {
+            return Err("无法确认原有 Codex 进程已退出，已拒绝替换会话".into());
+        }
+        let mut history = self.exited_sessions.clone();
+        history.push_back(ExitedSession {
+            id: self.session_id.clone(),
+            pid: self.pid(),
+            created_ticks: self.created_ticks,
+        });
+        while history.len() > 64 {
+            history.pop_front();
+        }
+        Ok(history)
+    }
+
+    pub fn inherit_exits(&mut self, history: VecDeque<ExitedSession>) {
+        self.exited_sessions = history;
+    }
+
+    fn confirms_exit(&self, id: &str, pid: u32, created_ticks: u64) -> bool {
+        (self.session_id == id && self.pid() == pid && self.created_ticks == created_ticks
+            && self.child.has_exited())
+            || self.exited_sessions.iter().any(|receipt| {
+                receipt.id == id && receipt.pid == pid && receipt.created_ticks == created_ticks
+            })
     }
 
     /// Verifies the held child handle, its original creation time, the OS TCP
@@ -203,6 +242,7 @@ fn launch_versions(data_directory: &Path, versions: &[&str]) -> Result<ManagedCo
             .take(48)
             .map(char::from)
             .collect(),
+        exited_sessions: VecDeque::new(),
         profile,
         codex_home,
         port,
@@ -305,15 +345,24 @@ fn serve_control(
     }
     let path = path.expect("checked above");
     let mut guard = state.lock().map_err(|_| "Codex ownership lock poisoned")?;
-    let session = guard
-        .as_mut()
-        .and_then(|child| child.verify().then_some(child));
-    let body = if path == "/session" {
-        serde_json::json!({ "session": session.map(|child| child.session_description()) })
-    } else if let Some(id) = path.strip_prefix("/verify/") {
-        serde_json::json!({ "valid": session.is_some_and(|child| child.session_id == id) })
+    let body = if let Some(identity) = path.strip_prefix("/exited/") {
+        let parts: Vec<_> = identity.split('/').collect();
+        let exited = parts.len() == 3
+            && parts[0].len() == 48
+            && parts[0].bytes().all(|byte| byte.is_ascii_alphanumeric())
+            && parts[1].parse::<u32>().ok().zip(parts[2].parse::<u64>().ok())
+                .is_some_and(|(pid, ticks)| guard.as_ref()
+                    .is_some_and(|child| child.confirms_exit(parts[0], pid, ticks)));
+        serde_json::json!({ "exited": exited })
     } else {
-        serde_json::json!({ "error": "unknown control request" })
+        let session = guard.as_mut().and_then(|child| child.verify().then_some(child));
+        if path == "/session" {
+            serde_json::json!({ "session": session.map(|child| child.session_description()) })
+        } else if let Some(id) = path.strip_prefix("/verify/") {
+            serde_json::json!({ "valid": session.is_some_and(|child| child.session_id == id) })
+        } else {
+            serde_json::json!({ "error": "unknown control request" })
+        }
     };
     let body = body.to_string();
     let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
@@ -661,6 +710,63 @@ mod tests {
         assert!(request("wrong", "/session").starts_with("HTTP/1.1 403 Forbidden"));
         assert!(request(&"K".repeat(48), "/session").contains("{\"session\":null}"));
         assert!(request(&"K".repeat(48), "/verify/old").contains("{\"valid\":false}"));
+        assert!(request(&"K".repeat(48), &format!("/exited/{}/1/1", "S".repeat(48))).contains("{\"exited\":false}"));
+        assert!(request("wrong", "/exited/old/1/1").starts_with("HTTP/1.1 403 Forbidden"));
+    }
+
+    struct ReceiptChild(std::process::Child);
+    impl Drop for ReceiptChild {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    fn receipt_child(id: char) -> (ReceiptChild, ManagedCodex) {
+        use std::os::windows::process::CommandExt;
+        use std::process::Stdio;
+        let executable = std::env::current_exe().unwrap();
+        let child = Command::new(&executable)
+            .args(["--exact", "owned_process::tests::child_waits_for_stdin", "--ignored"])
+            .env("TASKBOARD_HANDLE_TEST_CHILD", "1")
+            .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null())
+            .creation_flags(0x08000000).spawn().unwrap();
+        let held = OwnedProcess::from_child(&child, &executable).unwrap();
+        let created_ticks = held.identity().created_ticks;
+        let managed = ManagedCodex {
+            child: held, created_ticks, version: "26.1007.9446.0".into(),
+            session_id: id.to_string().repeat(48), exited_sessions: VecDeque::new(),
+            profile: PathBuf::new(), codex_home: PathBuf::new(), port: 0, target: None,
+        };
+        (ReceiptChild(child), managed)
+    }
+
+    #[test]
+    fn exit_receipts_require_a_signalled_held_object_and_survive_replacement() {
+        let (mut old_child, mut old) = receipt_child('O');
+        let old_pid = old.pid();
+        let ticks = old.created_ticks;
+        assert!(old.confirmed_exit_history().is_err());
+        assert!(!old.confirms_exit(&"O".repeat(48), old_pid, ticks));
+        old_child.0.kill().unwrap();
+        old_child.0.wait().unwrap();
+        assert!(old.confirms_exit(&"O".repeat(48), old_pid, ticks));
+        for index in 0..64 {
+            old.exited_sessions.push_back(ExitedSession {
+                id: format!("{index:048}"), pid: index + 1, created_ticks: u64::from(index) + 1,
+            });
+        }
+        let history = old.confirmed_exit_history().unwrap();
+        assert_eq!(history.len(), 64);
+        assert_ne!(history.front().unwrap().id, format!("{:048}", 0));
+        let (_next_child, mut next) = receipt_child('N');
+        next.inherit_exits(history);
+        assert!(next.confirms_exit(&"O".repeat(48), old_pid, ticks));
+        assert!(!next.confirms_exit(&"O".repeat(48), old_pid + 1, ticks));
+        assert!(!next.confirms_exit(&"O".repeat(48), old_pid, ticks + 1));
+        assert!(!next.confirms_exit(&"X".repeat(48), old_pid, ticks));
+        assert!(!next.confirms_exit(&"N".repeat(48), next.pid(), next.created_ticks));
+        assert!(next.confirmed_exit_history().is_err());
     }
 
     #[test]

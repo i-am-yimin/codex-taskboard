@@ -9,7 +9,7 @@ import type { AgentAdapter, DraftRequest } from '@taskboard/core';
 import { CompanionStore, defaultDataDirectory, normalizeUpstream } from './store.ts';
 import { SecretStore } from './secret.ts';
 import { CompanionError, RemoteTransport, validateNormalizedUpstream } from './remote.ts';
-import { LauncherControl } from './launcher-control.ts';
+import { LauncherControl, type LauncherSession } from './launcher-control.ts';
 import { watchDesktopParent } from './parent-lifetime.ts';
 
 const PORT = 47831;
@@ -143,23 +143,31 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
   // Only a launcher-owned session can supply an adapter. Environment variables
   // are diagnostics, never proof that an arbitrary Codex process belongs to us.
   let adapter = options.adapter;
-  let controlSessionId: string | undefined;
+  let controlSession: LauncherSession | undefined;
+  let retirementSession: LauncherSession | undefined;
   let retirementError: string | undefined;
   let unsupportedHostReason: string | undefined;
-  const currentAdapter = async (): Promise<AgentAdapter | undefined> => {
+  const refreshAdapter = async (): Promise<AgentAdapter | undefined> => {
     if (options.adapter || !control) return adapter;
-    if (retirementError) return undefined;
+    if (retirementError) {
+      if (!retirementSession || !(await control.hasExited(retirementSession))) return undefined;
+      retirementError = undefined;
+      retirementSession = undefined;
+    }
     const session = await control.session().catch(() => undefined);
-    if (session?.id === controlSessionId && adapter) return adapter;
+    if (session?.id === controlSession?.id && adapter) return adapter;
     if (adapter) {
       try {
         await adapter.dispose();
       } catch {
-        retirementError = 'Codex 页面恢复未确认；受管理会话已撤销';
+        if (!controlSession || !(await control.hasExited(controlSession))) {
+          retirementError = 'Codex 页面恢复未确认；受管理会话已撤销';
+          retirementSession = controlSession;
+        }
       }
     }
     adapter = undefined;
-    controlSessionId = undefined;
+    controlSession = undefined;
     unsupportedHostReason = undefined;
     if (retirementError) return undefined;
     if (!session) return undefined;
@@ -184,8 +192,18 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
       cdpTimeoutMs: 15_000,
       hostReadyTimeoutMs: 120_000,
     });
-    controlSessionId = session.id;
+    controlSession = session;
     return adapter;
+  };
+  // Requests arriving during a launcher transition share one retirement. A
+  // second request must not dispose an adapter created by the first request.
+  let adapterTransition: Promise<AgentAdapter | undefined> | undefined;
+  const currentAdapter = async (): Promise<AgentAdapter | undefined> => {
+    if (adapterTransition) return adapterTransition;
+    const transition = refreshAdapter();
+    adapterTransition = transition;
+    try { return await transition; }
+    finally { if (adapterTransition === transition) adapterTransition = undefined; }
   };
   const origins = new Set(options.allowedOrigins ?? allowedOrigins);
   const app = Fastify({
