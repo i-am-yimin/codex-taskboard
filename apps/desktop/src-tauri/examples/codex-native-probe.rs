@@ -8,6 +8,9 @@
 #[path = "../src/managed_codex.rs"]
 mod managed_codex;
 #[cfg(windows)]
+#[path = "../src/managed_profile.rs"]
+mod managed_profile;
+#[cfg(windows)]
 #[path = "../src/managed_window.rs"]
 mod managed_window;
 #[cfg(windows)]

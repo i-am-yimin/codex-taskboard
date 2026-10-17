@@ -3,6 +3,8 @@
 #[cfg(windows)]
 mod managed_codex;
 #[cfg(windows)]
+mod managed_profile;
+#[cfg(windows)]
 mod managed_window;
 #[cfg(windows)]
 mod owned_process;
@@ -214,7 +216,7 @@ fn start_managed_codex(
             .as_mut()
             .expect("new Codex child retained")
             .await_binding()?;
-        Ok("受管理 Codex 已启动；登录并选中项目后，可接入 Codex 侧栏".into())
+        Ok("受管理 Codex 已启动；首次使用请登录并选中项目，后续启动会保留登录与项目配置".into())
     }
     #[cfg(not(windows))]
     {

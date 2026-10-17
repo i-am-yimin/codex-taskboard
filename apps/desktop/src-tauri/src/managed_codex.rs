@@ -200,17 +200,9 @@ fn launch_versions(data_directory: &Path, versions: &[&str]) -> Result<ManagedCo
     let marker = managed_root.join("active.json");
     reject_running_previous(&marker)?;
     let (version, executable) = discover_executable(versions)?;
-    let launch_id: String = rand::thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(24)
-        .map(char::from)
-        .collect();
-    let root = managed_root.join(launch_id);
-    fs::create_dir(&root).map_err(|error| error.to_string())?;
-    let profile = root.join("profile");
-    let codex_home = root.join("codex-home");
-    fs::create_dir_all(&profile).map_err(|error| error.to_string())?;
-    fs::create_dir_all(&codex_home).map_err(|error| error.to_string())?;
+    let saved = crate::managed_profile::prepare(&managed_root)?;
+    let profile = saved.profile;
+    let codex_home = saved.codex_home;
     let reservation = TcpListener::bind("127.0.0.1:0").map_err(|error| error.to_string())?;
     let port = reservation
         .local_addr()
