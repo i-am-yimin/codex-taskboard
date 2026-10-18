@@ -1,0 +1,52 @@
+{
+  "at": "2026-10-18T05:52:25.217Z",
+  "candidate": "f6a363e1779db36c97332725bdc433260c5ef366",
+  "version": "0.1.0",
+  "tag": "v0.1.0",
+  "initialPreviewUsable": true,
+  "totalAcceptancePassed": true,
+  "releaseDraftOnly": true,
+  "windowsSignature": "NotSigned",
+  "gates": {
+    "G0": {
+      "passed": true,
+      "conditions": 12,
+      "evidence": "g0-verdict.json",
+      "sha256": "75f910c5f1fdbdd5a7fd4c39e732664ca2e7c2efbb1ceeb696843929d1c387c6"
+    },
+    "G1": {
+      "passed": true,
+      "conditions": 22,
+      "evidence": "installed-g1-complete-verdict.json",
+      "sha256": "b41d67fa2493077d06e8c05f7a7ff48f3dc921cdac1decf5f495c5c8f7a13187"
+    },
+    "G2": {
+      "passed": true,
+      "conditions": 17,
+      "evidence": "second-device-g2-complete-verdict.json",
+      "sha256": "3a87dc18e493f6019e3b5579179a5d02ae8a62f9c811cd2c325a4e3f143b59fc"
+    },
+    "G3": {
+      "passed": true,
+      "conditions": 17,
+      "evidence": "installed-g3-complete-verdict.json",
+      "sha256": "a192b659f3c513dddb26925b6ffd140b082b76d4d81da65e9033a04814162922"
+    },
+    "G4": {
+      "passed": true,
+      "conditions": 20,
+      "evidence": "g4/g4-complete-verdict.json"
+    }
+  },
+  "releaseId": 416260851,
+  "releaseRun": 39100683953,
+  "completionScope": "Initial usable development preview acceptance under docs/closure-acceptance.md. Public/stable publication is a separate maintainer decision.",
+  "sourceWorkingTreeWorkflowFixLocalOnly": true,
+  "scopeNotes": [
+    "Development preview; unsigned Windows package; draft release only.",
+    "Internal-CA HTTPS and explicitly scoped slow/reuse VM tests; no public Let's Encrypt or internet latency SLA claim.",
+    "Original packaging attempt failed on an incidental gzip Docker build record. Exact diagnostic retained, only its run artifact removed, then only failed packaging job rerun. Permanent exclusion is prepared and linted in local working tree; current immutable candidate workflow used the documented recovery.",
+    "GitHub normalizes spaces in the Windows asset filename. Original CI checksum manifest/proof kept; rename instruction is included in reviewed draft notes.",
+    "Windows rebuilt native binary differs only in identified timestamp and CodeView GUID metadata; accepted installation behavior was not recounted as a new installation test."
+  ]
+}
