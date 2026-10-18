@@ -70,6 +70,34 @@ describe('private launcher control', () => {
     expect(await control.verify(original)).toBe(false);
   });
 
+  it('accepts only an authenticated exact-process exit receipt and fails closed on missing or malformed proof', async () => {
+    const expectedPath = '/exited/' + original.id + '/' + original.pid + '/' + original.createdTicks;
+    let receipt: unknown = { exited: true };
+    server = createServer((request, response) => {
+      if (request.headers['x-taskboard-control-key'] !== key) {
+        response.writeHead(403).end(); return;
+      }
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify(request.url === expectedPath ? receipt : { exited: false }));
+    });
+    await new Promise<void>(resolve => server!.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('missing test port');
+    const control = new LauncherControl(address.port, key);
+    expect(await control.hasExited(original)).toBe(true);
+    expect(await control.hasExited({ ...original, pid: original.pid + 1 })).toBe(false);
+    expect(await control.hasExited({ ...original, createdTicks: '987654321' })).toBe(false);
+    expect(await control.hasExited({ ...original, id: 'X'.repeat(48) })).toBe(false);
+    for (const value of [null, {}, { exited: false }, { exited: 'true' }, { exited: true, extra: true }]) {
+      receipt = value;
+      expect(await control.hasExited(original)).toBe(false);
+    }
+    expect(await new LauncherControl(address.port, 'W'.repeat(48)).hasExited(original)).toBe(false);
+    await new Promise<void>(resolve => server!.close(() => resolve()));
+    server = undefined;
+    expect(await control.hasExited(original)).toBe(false);
+  });
+
   it('passes only the private session to the adapter and rejects an unavailable host', async () => {
     server = createServer((request, response) => {
       if (request.headers['x-taskboard-control-key'] !== key) {

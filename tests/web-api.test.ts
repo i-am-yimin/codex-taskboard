@@ -98,3 +98,56 @@ describe('web API transport', () => {
     expect(init.body).toBe('{}');
   });
 });
+
+describe('gateway unavailability and cached reads', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each([502, 503, 504])(
+    'makes a failed GET eligible for read-only cache recovery on HTTP %i',
+    async (status) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(new Response('<h1>Gateway unavailable</h1>', { status })),
+      );
+      await expect(request('/me')).rejects.toMatchObject({ code: 'OFFLINE', status });
+    },
+  );
+
+  it.each([401, 403])(
+    'preserves HTTP %i authorization failures so account caches are cleared',
+    async (status) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              error: { code: 'UNAUTHORIZED', message: 'Session revoked' },
+            }),
+            { status },
+          ),
+        ),
+      );
+      await expect(request('/me')).rejects.toMatchObject({ code: 'UNAUTHORIZED', status });
+    },
+  );
+
+  it.each([502, 503, 504])(
+    'keeps a failed write explicit on HTTP %i instead of reporting a cached success',
+    async (status) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              error: { code: 'UPSTREAM_FAILED', message: 'The write did not reach the server' },
+            }),
+            { status },
+          ),
+        ),
+      );
+      await expect(
+        request('/tasks/task-1', { method: 'PATCH', body: { title: 'Unsaved' }, version: 1 }),
+      ).rejects.toMatchObject({ code: 'UPSTREAM_FAILED', status });
+    },
+  );
+});

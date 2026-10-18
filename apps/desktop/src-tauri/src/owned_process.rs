@@ -77,6 +77,11 @@ impl OwnedProcess {
         unsafe { WaitForSingleObject(self.handle.as_raw_handle(), 0) == 258 }
     }
 
+    /// Only a signalled held process object proves exit; a failed wait does not.
+    pub fn has_exited(&self) -> bool {
+        unsafe { WaitForSingleObject(self.handle.as_raw_handle(), 0) == 0 }
+    }
+
     pub fn verify(&self) -> bool {
         self.is_running() && inspect(self.handle.as_raw_handle()).as_ref() == Ok(&self.identity)
     }
@@ -259,9 +264,11 @@ mod tests {
                 .unwrap();
         drop(held);
         assert!(received.verify());
+        assert!(!received.has_exited());
         child.0.kill().unwrap();
         child.0.wait().unwrap();
         assert!(!received.verify());
+        assert!(received.has_exited());
     }
 
     #[test]
@@ -278,6 +285,7 @@ mod tests {
         assert_eq!(child.0.wait().unwrap().code(), Some(259));
         assert!(!held.is_running());
         assert!(!held.verify());
+        assert!(held.has_exited());
     }
 
     #[test]

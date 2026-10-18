@@ -3,6 +3,10 @@
 #[cfg(windows)]
 mod managed_codex;
 #[cfg(windows)]
+mod managed_profile;
+#[cfg(windows)]
+mod managed_window;
+#[cfg(windows)]
 mod owned_process;
 #[cfg(windows)]
 mod package_launch;
@@ -188,27 +192,31 @@ fn start_managed_codex(
             .child
             .lock()
             .map_err(|_| "Codex ownership lock poisoned")?;
+        let mut exited_sessions = None;
         if let Some(existing) = child.as_mut() {
             if existing.verify() {
-                return Ok("受管理 Codex 已在运行".into());
+                return existing.restore_window();
             }
             if existing.is_running() {
                 if existing.target.is_none() {
                     existing.await_binding()?;
-                    return Ok("受管理 Codex 已启动；登录并选中项目后，可接入 Codex 侧栏".into());
+                    return existing.restore_window();
                 }
                 return Err("原有 Codex 页面或监听归属已变化，已拒绝启动第二个实例".into());
             }
-            *child = None;
+            exited_sessions = Some(existing.confirmed_exit_history()?);
         }
         let data = taskboard_data_dir(&app)?;
-        let launched = managed_codex::launch(&data)?;
+        let mut launched = managed_codex::launch(&data)?;
+        if let Some(history) = exited_sessions {
+            launched.inherit_exits(history);
+        }
         *child = Some(launched);
         child
             .as_mut()
             .expect("new Codex child retained")
             .await_binding()?;
-        Ok("受管理 Codex 已启动；登录并选中项目后，可接入 Codex 侧栏".into())
+        Ok("受管理 Codex 已启动；首次使用请登录并选中项目，后续启动会保留登录与项目配置".into())
     }
     #[cfg(not(windows))]
     {

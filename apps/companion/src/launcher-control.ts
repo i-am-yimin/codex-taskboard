@@ -70,6 +70,20 @@ export class LauncherControl {
     return session;
   }
 
+  async hasExited(expected: LauncherSession): Promise<boolean> {
+    // A failed ownership check also covers live page/port drift. Only the
+    // private launcher's held-process exit receipt permits failed cleanup to
+    // be retired without restoring the old page.
+    try {
+      const identity = sessionSchema.parse(expected);
+      return z.object({ exited: z.boolean() }).strict().parse(
+        await this.query('/exited/' + identity.id + '/' + identity.pid + '/' + identity.createdTicks),
+      ).exited;
+    } catch {
+      return false;
+    }
+  }
+
   async verify(expected: LauncherSession): Promise<boolean> {
     try {
       const current = await this.session();
