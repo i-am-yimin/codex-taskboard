@@ -188,17 +188,8 @@ fn launch_child(
     {
         return Err("启动预留记录不符".into());
     }
-    if fs::read_dir(&request.profile)
-        .map_err(|e| e.to_string())?
-        .next()
-        .is_some()
-        || fs::read_dir(&request.codex_home)
-            .map_err(|e| e.to_string())?
-            .next()
-            .is_some()
-    {
-        return Err("隔离目录不是空目录，已拒绝复用".into());
-    }
+    // validate_request checked the registered persistent profile in both the
+    // launcher and this helper. Existing login/project state is intentional.
     let mut command = Command::new(&request.executable);
     for (key, _) in std::env::vars_os() {
         let upper = key.to_string_lossy().to_ascii_uppercase();
@@ -295,6 +286,7 @@ fn validate_request(request: &LaunchRequest) -> Result<(), String> {
     {
         return Err("隔离目录与启动记录边界不符".into());
     }
+    crate::managed_profile::verify(marker_parent, &profile, &home)?;
     Ok(())
 }
 
@@ -387,6 +379,38 @@ mod tests {
         assert!(replace_pending(&marker, &pending, &active, "duplicate").is_err());
         fs::remove_file(marker).unwrap();
         fs::remove_dir(root).unwrap();
+    }
+    #[test]
+    fn package_helper_accepts_nonempty_registered_profile_and_refuses_another_directory() {
+        let temp = fs::canonicalize(std::env::temp_dir()).unwrap();
+        let root = temp.join(format!("taskboard-registered-launch-{}", rand::random::<u64>()));
+        fs::create_dir(&root).unwrap();
+        let managed = root.join("managed-codex");
+        fs::create_dir(&managed).unwrap();
+        let saved = crate::managed_profile::prepare(&managed).unwrap();
+        fs::write(saved.profile.join("saved-state"), b"profile state").unwrap();
+        fs::write(saved.codex_home.join("saved-project"), b"project state").unwrap();
+        let package = "OpenAI.Codex_26.1007.9446.0_x64__2p2nqsd0c76g0";
+        let app = root.join(package).join("app");
+        fs::create_dir_all(&app).unwrap();
+        let exe = app.join("ChatGPT.exe");
+        fs::write(&exe, b"not executed; path validation only").unwrap();
+        let mut request = LaunchRequest {
+            executable: exe, package: package.into(), profile: saved.profile.clone(),
+            codex_home: saved.codex_home.clone(), marker: managed.join("active.json"), port: 12345,
+        };
+        validate_request(&request).unwrap();
+        let other = managed.join("B".repeat(24));
+        fs::create_dir(&other).unwrap();
+        fs::create_dir(other.join("profile")).unwrap();
+        fs::create_dir(other.join("codex-home")).unwrap();
+        request.profile = other.join("profile");
+        request.codex_home = other.join("codex-home");
+        assert!(validate_request(&request).is_err());
+        assert_eq!(fs::read(saved.profile.join("saved-state")).unwrap(), b"profile state");
+        assert_eq!(root.parent(), Some(temp.as_path()));
+        assert_eq!(fs::canonicalize(&root).unwrap(), root);
+        fs::remove_dir_all(&root).unwrap();
     }
     #[test]
     fn helper_identity_requires_exact_executable_and_package() {

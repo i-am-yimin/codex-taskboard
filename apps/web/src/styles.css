@@ -773,6 +773,14 @@ h3 {
   display: flex;
   gap: 12px;
   margin: 16px 0;
+  overflow-wrap: anywhere;
+}
+.activity > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.activity pre {
+  white-space: pre-wrap;
 }
 .activity p {
   margin: 0;

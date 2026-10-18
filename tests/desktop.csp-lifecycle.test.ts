@@ -35,6 +35,23 @@ let delayProjectOnNextLoad = false;
 let projectFixtureId: string | undefined;
 const pageErrors: string[] = [];
 
+const composerModelFixture = String.raw`
+  const editor = document.querySelector('#codex-composer');
+  let modelParagraphs = [''];
+  const model = {
+    type: { name: 'doc' },
+    get content() { return { size: modelParagraphs.reduce((sum, text) => sum + text.length + 2, 0) }; },
+    get childCount() { return modelParagraphs.length; },
+    get firstChild() { return { type: { name: 'paragraph' }, content: { size: modelParagraphs[0].length } }; },
+    textBetween(_from, _to, separator) { return modelParagraphs.join(separator); }
+  };
+  editor.pmViewDesc = { node: model, freezeUpdates: false };
+  editor.addEventListener('input', () => {
+    if (editor.pmViewDesc.freezeUpdates) return;
+    setTimeout(() => { modelParagraphs = [...editor.children].map(child => child.textContent ?? ''); }, 0);
+  });
+`;
+
 function listen(server: Server): Promise<string> {
   return new Promise((resolve, reject) => {
     server.once('error', reject);
@@ -175,6 +192,7 @@ beforeAll(async () => {
         document.body.innerHTML = '<main id="codex-shell"><nav id="codex-sidebar">${delayProject ? '' : projectRow}</nav><section id="codex-content"></section></main>';
         const composer = () => {
           document.querySelector('#codex-content').innerHTML = '<div id="codex-composer" contenteditable="true" role="textbox">${emptyParagraph}</div>${delayProject ? '' : projectButton}';
+          ${composerModelFixture}
           ${lateProject}
         };
         ${delayComposer ? 'setTimeout(composer, 450);' : 'composer();'}
@@ -240,7 +258,7 @@ describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () =>
       <nav role="navigation" aria-label="首页" id="projects"></nav>
     </aside><div role="status" style="position:absolute;left:-1px;width:1px;height:1px"></div>
     <main data-app-shell-main-surface="default" id="content"></main></div>`);
-    for (const version of ['26.924.1866.0', '26.924.2738.0', '26.928.1915.0']) {
+    for (const version of ['26.924.1866.0', '26.924.2738.0', '26.928.1915.0', '26.930.7945.0', '26.1007.9446.0']) {
       const markers = codexHostMarkers(version);
       await expect(page.locator(markers.shellMarker).count()).resolves.toBe(1);
       await expect(page.locator(markers.sidebarMarker).evaluateAll(elements => elements.map(el => el.id)))
@@ -294,6 +312,115 @@ describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () =>
       await rm(home, { recursive: true, force: true });
     }
   });
+
+  it.each(['missing', 'nonempty'] as const)('refuses a %s editor model before changing the visible draft', { timeout: 45000 }, async (modelState) => {
+    const home = await mkdtemp(join(tmpdir(), 'taskboard-draft-model-'));
+    const root = join(home, 'repo');
+    await mkdir(root);
+    const id = 'f3f87941-d392-45d9-8c05-d7fdf1f134b1';
+    const database = new DatabaseSync(join(home, 'state_5.sqlite'));
+    database.exec('CREATE TABLE projects (id TEXT, name TEXT); CREATE TABLE project_idempotency_keys (key TEXT, project_id TEXT); CREATE TABLE project_roots (project_id TEXT, path TEXT)');
+    database.prepare('INSERT INTO projects VALUES (?, ?)').run('local', 'repo');
+    database.prepare('INSERT INTO project_idempotency_keys VALUES (?, ?)').run(id, 'local');
+    database.prepare('INSERT INTO project_roots VALUES (?, ?)').run('local', root);
+    database.close();
+    try {
+      projectFixtureId = id;
+      await page.reload();
+      await waitForShell();
+      const target = await boundPage();
+      const instance = new CodexDesktopAdapter({
+        owner: { verify: async () => true }, appVersion: '26.1007.9446.0', codexHome: home,
+        endpoint: cdpEndpoint,
+        targetBinding: { targetId: target.id, exactPageUrl: `${hostOrigin}/`, pageWebSocketUrl: target.webSocketDebuggerUrl },
+      });
+      activeAdapter = instance;
+      const composer = page.locator('#codex-composer');
+      await composer.evaluate(async (element, state) => {
+        if (state === 'missing') {
+          delete (element as unknown as { pmViewDesc?: unknown }).pmViewDesc;
+        } else {
+          element.innerHTML = '<p>existing model draft</p>';
+          element.dispatchEvent(new InputEvent('input', { bubbles: true }));
+          await new Promise(resolve => setTimeout(resolve, 0));
+          element.innerHTML = '<p><br></p>';
+        }
+      }, modelState);
+      const before = await documentOrigin();
+      await expect(instance.openDraft({ taskId: 'task', spaceId: 'space', projectPath: root, prompt: 'do not replace a model draft' }))
+        .rejects.toThrow('DRAFT_UNAVAILABLE');
+      expect(await composer.innerHTML()).toBe('<p><br></p>');
+      expect(await documentOrigin()).toBe(before);
+    } finally { await rm(home, { recursive: true, force: true }); }
+  });
+
+  it('preserves the inserted draft when launcher ownership expires before confirmation', { timeout: 45000 }, async () => {
+    const home = await mkdtemp(join(tmpdir(), 'taskboard-draft-model-'));
+    const root = join(home, 'repo');
+    await mkdir(root);
+    const id = 'f3f87941-d392-45d9-8c05-d7fdf1f134b1';
+    const database = new DatabaseSync(join(home, 'state_5.sqlite'));
+    database.exec('CREATE TABLE projects (id TEXT, name TEXT); CREATE TABLE project_idempotency_keys (key TEXT, project_id TEXT); CREATE TABLE project_roots (project_id TEXT, path TEXT)');
+    database.prepare('INSERT INTO projects VALUES (?, ?)').run('local', 'repo');
+    database.prepare('INSERT INTO project_idempotency_keys VALUES (?, ?)').run(id, 'local');
+    database.prepare('INSERT INTO project_roots VALUES (?, ?)').run('local', root);
+    database.close();
+    try {
+      projectFixtureId = id;
+      await page.reload();
+      await waitForShell();
+      const target = await boundPage();
+      const composer = page.locator('#codex-composer');
+      const instance = new CodexDesktopAdapter({
+        owner: { verify: async () => !(await composer.textContent()) }, appVersion: '26.1007.9446.0', codexHome: home,
+        endpoint: cdpEndpoint,
+        targetBinding: { targetId: target.id, exactPageUrl: `${hostOrigin}/`, pageWebSocketUrl: target.webSocketDebuggerUrl },
+      });
+      activeAdapter = instance;
+      const before = await documentOrigin();
+      await expect(instance.openDraft({ taskId: 'task', spaceId: 'space', projectPath: root, prompt: 'preserve this draft' }))
+        .rejects.toThrow('DRAFT_UNCONFIRMED');
+      expect(await composer.locator('p').allTextContents()).toEqual(['preserve this draft']);
+      expect(await documentOrigin()).toBe(before);
+    } finally { await rm(home, { recursive: true, force: true }); }
+  });
+
+  it('does not report a DOM-only insertion as a confirmed Codex draft', { timeout: 45000 }, async () => {
+    const home = await mkdtemp(join(tmpdir(), 'taskboard-draft-model-'));
+    const root = join(home, 'repo');
+    await mkdir(root);
+    const id = 'f3f87941-d392-45d9-8c05-d7fdf1f134b1';
+    const database = new DatabaseSync(join(home, 'state_5.sqlite'));
+    database.exec('CREATE TABLE projects (id TEXT, name TEXT); CREATE TABLE project_idempotency_keys (key TEXT, project_id TEXT); CREATE TABLE project_roots (project_id TEXT, path TEXT)');
+    database.prepare('INSERT INTO projects VALUES (?, ?)').run('local', 'repo');
+    database.prepare('INSERT INTO project_idempotency_keys VALUES (?, ?)').run(id, 'local');
+    database.prepare('INSERT INTO project_roots VALUES (?, ?)').run('local', root);
+    database.close();
+    try {
+      projectFixtureId = id;
+      await page.reload();
+      await waitForShell();
+      const target = await boundPage();
+      const instance = new CodexDesktopAdapter({
+        owner: { verify: async () => true }, appVersion: '26.1007.9446.0', codexHome: home,
+        endpoint: cdpEndpoint,
+        targetBinding: { targetId: target.id, exactPageUrl: `${hostOrigin}/`, pageWebSocketUrl: target.webSocketDebuggerUrl },
+      });
+      activeAdapter = instance;
+      const composer = page.locator('#codex-composer');
+      const request = { taskId: 'task', spaceId: 'space', projectPath: root, prompt: 'keep this unconfirmed draft\n\nsecond paragraph' };
+      await composer.evaluate(element => {
+        (element as unknown as { pmViewDesc: { freezeUpdates: boolean } }).pmViewDesc.freezeUpdates = true;
+      });
+      const before = await documentOrigin();
+      await expect(instance.openDraft(request)).rejects.toThrow('DRAFT_UNCONFIRMED');
+      expect(await composer.locator('p').allTextContents()).toEqual(['keep this unconfirmed draft', '', 'second paragraph']);
+      expect(await documentOrigin()).toBe(before);
+      await expect(instance.openDraft({ ...request, prompt: 'do not duplicate' })).rejects.toThrow('DRAFT_UNAVAILABLE');
+      expect(await composer.locator('p').allTextContents()).toEqual(['keep this unconfirmed draft', '', 'second paragraph']);
+    } finally { await rm(home, { recursive: true, force: true }); }
+  });
+
   it('preserves the installed board on refusal and restores CSP before filling a verified draft', { timeout: 45000 }, async () => {
     const home = await mkdtemp(join(tmpdir(), 'taskboard-installed-draft-'));
     const root = join(home, 'repo');
@@ -435,6 +562,18 @@ describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () =>
     expect(pageErrors.slice(pageErrorCount)).toEqual([]);
     expect(await page.locator('[data-taskboard-owned]').count()).toBe(1);
     expect(await page.locator('#codex-composer').count()).toBe(1);
+  });
+
+  it('explains the login-page refusal without reloading or enabling CSP bypass', async () => {
+    await page.setContent('<main><h1>登录 ChatGPT</h1><button>继续登录</button></main>');
+    const before = await documentOrigin();
+    const target = await boundPage();
+    const instance = adapter(target);
+    await expect(instance.install()).rejects.toThrow('sign in and open a project first');
+    expect(await documentOrigin()).toBe(before);
+    expect(await page.locator('h1').textContent()).toBe('登录 ChatGPT');
+    expect(await page.locator('[data-taskboard-owned], [data-taskboard-entry]').count()).toBe(0);
+    expect(await cspBlocksBoard()).toBe(true);
   });
 
   it('refuses the guarded CSP reload when the editor contains an unsent draft', async () => {

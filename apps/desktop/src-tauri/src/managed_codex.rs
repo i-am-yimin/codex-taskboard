@@ -5,6 +5,7 @@ use crate::owned_process::OwnedProcess;
 use rand::{distributions::Alphanumeric, Rng};
 use serde_json::Value;
 use std::{
+    collections::VecDeque,
     fs,
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
@@ -15,10 +16,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-// Native package-context launch and real handle transfer verified for both versions.
+// Native package-context launch and real handle transfer verified per version.
 // 26.928.1915.0 native probe evidence: 2026-09-30, source 92d1cde.
+// 26.930.7945.0 native probe evidence: 2026-10-08, source e72c648.
+// 26.1007.9446.0 native ownership and host project contract observed: 2026-10-16.
 // The companion keeps its separate host-DOM allowlist for injection and drafts.
-const LAUNCHABLE_VERSIONS: &[&str] = &["26.924.2738.0", "26.928.1915.0"];
+const LAUNCHABLE_VERSIONS: &[&str] = &["26.924.2738.0", "26.928.1915.0", "26.930.7945.0", "26.1007.9446.0"];
 const CODEX_PAGE: &str = "app://-/index.html";
 const START_TIMEOUT: Duration = Duration::from_secs(90);
 const CDP_TIMEOUT: Duration = Duration::from_millis(1200);
@@ -30,11 +33,19 @@ pub struct TargetBinding {
     pub websocket_url: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExitedSession {
+    id: String,
+    pid: u32,
+    created_ticks: u64,
+}
+
 pub struct ManagedCodex {
     child: OwnedProcess,
     created_ticks: u64,
     version: String,
     session_id: String,
+    exited_sessions: VecDeque<ExitedSession>,
     pub profile: PathBuf,
     pub codex_home: PathBuf,
     pub port: u16,
@@ -73,13 +84,43 @@ impl ManagedCodex {
         description
     }
 
-    pub fn is_running(&mut self) -> bool {
+    pub fn is_running(&self) -> bool {
         self.child.is_running()
+    }
+
+    // Carry only launcher-issued exit receipts across replacements. Neither a
+    // missing listener nor a changed page proves that the held process exited.
+    pub fn confirmed_exit_history(&self) -> Result<VecDeque<ExitedSession>, String> {
+        if !self.child.has_exited() {
+            return Err("无法确认原有 Codex 进程已退出，已拒绝替换会话".into());
+        }
+        let mut history = self.exited_sessions.clone();
+        history.push_back(ExitedSession {
+            id: self.session_id.clone(),
+            pid: self.pid(),
+            created_ticks: self.created_ticks,
+        });
+        while history.len() > 64 {
+            history.pop_front();
+        }
+        Ok(history)
+    }
+
+    pub fn inherit_exits(&mut self, history: VecDeque<ExitedSession>) {
+        self.exited_sessions = history;
+    }
+
+    fn confirms_exit(&self, id: &str, pid: u32, created_ticks: u64) -> bool {
+        (self.session_id == id && self.pid() == pid && self.created_ticks == created_ticks
+            && self.child.has_exited())
+            || self.exited_sessions.iter().any(|receipt| {
+                receipt.id == id && receipt.pid == pid && receipt.created_ticks == created_ticks
+            })
     }
 
     /// Verifies the held child handle, its original creation time, the OS TCP
     /// listener owner, and the exact page discovered when it was launched.
-    pub fn verify(&mut self) -> bool {
+    pub fn verify(&self) -> bool {
         self.is_running()
             && self.created_ticks != 0
             && self.profile.is_dir()
@@ -91,6 +132,15 @@ impl ManagedCodex {
                 .target
                 .as_ref()
                 .is_some_and(|target| fetch_target(self.port).ok().as_ref() == Some(target))
+    }
+
+    pub fn restore_window(&self) -> Result<String, String> {
+        let focused = crate::managed_window::restore(&self.child, || self.verify())?;
+        Ok(if focused {
+            "受管理 Codex 窗口已恢复；登录并选中项目后，可接入 Codex 侧栏"
+        } else {
+            "受管理 Codex 窗口已显示；请从任务栏选择它，登录并选中项目后可接入侧栏"
+        }.into())
     }
 
     pub fn await_binding(&mut self) -> Result<(), String> {
@@ -123,8 +173,24 @@ pub fn launch(data_directory: &Path) -> Result<ManagedCodex, String> {
 /// Developer-only native acceptance. It does not expand the installed app gate
 /// or the companion's separate host/draft allowlist.
 #[cfg(feature = "acceptance-probes")]
-pub fn launch_probe(data_directory: &Path) -> Result<ManagedCodex, String> {
-    launch_versions(data_directory, &["26.928.1915.0"])
+pub fn launch_probe(data_directory: &Path, version: &str) -> Result<ManagedCodex, String> {
+    validate_probe_version(version)?;
+    launch_versions(data_directory, &[version])
+}
+
+#[cfg(any(feature = "acceptance-probes", test))]
+fn validate_probe_version(version: &str) -> Result<(), String> {
+    let parts: Vec<_> = version.split('.').collect();
+    if parts.len() != 4
+        || parts.iter().any(|part| {
+            part.is_empty()
+                || !part.bytes().all(|byte| byte.is_ascii_digit())
+                || part.parse::<u16>().is_err()
+        })
+    {
+        return Err("The probe requires an exact four-part MSIX version".into());
+    }
+    Ok(())
 }
 
 fn launch_versions(data_directory: &Path, versions: &[&str]) -> Result<ManagedCodex, String> {
@@ -134,17 +200,9 @@ fn launch_versions(data_directory: &Path, versions: &[&str]) -> Result<ManagedCo
     let marker = managed_root.join("active.json");
     reject_running_previous(&marker)?;
     let (version, executable) = discover_executable(versions)?;
-    let launch_id: String = rand::thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(24)
-        .map(char::from)
-        .collect();
-    let root = managed_root.join(launch_id);
-    fs::create_dir(&root).map_err(|error| error.to_string())?;
-    let profile = root.join("profile");
-    let codex_home = root.join("codex-home");
-    fs::create_dir_all(&profile).map_err(|error| error.to_string())?;
-    fs::create_dir_all(&codex_home).map_err(|error| error.to_string())?;
+    let saved = crate::managed_profile::prepare(&managed_root)?;
+    let profile = saved.profile;
+    let codex_home = saved.codex_home;
     let reservation = TcpListener::bind("127.0.0.1:0").map_err(|error| error.to_string())?;
     let port = reservation
         .local_addr()
@@ -176,6 +234,7 @@ fn launch_versions(data_directory: &Path, versions: &[&str]) -> Result<ManagedCo
             .take(48)
             .map(char::from)
             .collect(),
+        exited_sessions: VecDeque::new(),
         profile,
         codex_home,
         port,
@@ -278,15 +337,24 @@ fn serve_control(
     }
     let path = path.expect("checked above");
     let mut guard = state.lock().map_err(|_| "Codex ownership lock poisoned")?;
-    let session = guard
-        .as_mut()
-        .and_then(|child| child.verify().then_some(child));
-    let body = if path == "/session" {
-        serde_json::json!({ "session": session.map(|child| child.session_description()) })
-    } else if let Some(id) = path.strip_prefix("/verify/") {
-        serde_json::json!({ "valid": session.is_some_and(|child| child.session_id == id) })
+    let body = if let Some(identity) = path.strip_prefix("/exited/") {
+        let parts: Vec<_> = identity.split('/').collect();
+        let exited = parts.len() == 3
+            && parts[0].len() == 48
+            && parts[0].bytes().all(|byte| byte.is_ascii_alphanumeric())
+            && parts[1].parse::<u32>().ok().zip(parts[2].parse::<u64>().ok())
+                .is_some_and(|(pid, ticks)| guard.as_ref()
+                    .is_some_and(|child| child.confirms_exit(parts[0], pid, ticks)));
+        serde_json::json!({ "exited": exited })
     } else {
-        serde_json::json!({ "error": "unknown control request" })
+        let session = guard.as_mut().and_then(|child| child.verify().then_some(child));
+        if path == "/session" {
+            serde_json::json!({ "session": session.map(|child| child.session_description()) })
+        } else if let Some(id) = path.strip_prefix("/verify/") {
+            serde_json::json!({ "valid": session.is_some_and(|child| child.session_id == id) })
+        } else {
+            serde_json::json!({ "error": "unknown control request" })
+        }
     };
     let body = body.to_string();
     let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
@@ -634,6 +702,63 @@ mod tests {
         assert!(request("wrong", "/session").starts_with("HTTP/1.1 403 Forbidden"));
         assert!(request(&"K".repeat(48), "/session").contains("{\"session\":null}"));
         assert!(request(&"K".repeat(48), "/verify/old").contains("{\"valid\":false}"));
+        assert!(request(&"K".repeat(48), &format!("/exited/{}/1/1", "S".repeat(48))).contains("{\"exited\":false}"));
+        assert!(request("wrong", "/exited/old/1/1").starts_with("HTTP/1.1 403 Forbidden"));
+    }
+
+    struct ReceiptChild(std::process::Child);
+    impl Drop for ReceiptChild {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    fn receipt_child(id: char) -> (ReceiptChild, ManagedCodex) {
+        use std::os::windows::process::CommandExt;
+        use std::process::Stdio;
+        let executable = std::env::current_exe().unwrap();
+        let child = Command::new(&executable)
+            .args(["--exact", "owned_process::tests::child_waits_for_stdin", "--ignored"])
+            .env("TASKBOARD_HANDLE_TEST_CHILD", "1")
+            .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null())
+            .creation_flags(0x08000000).spawn().unwrap();
+        let held = OwnedProcess::from_child(&child, &executable).unwrap();
+        let created_ticks = held.identity().created_ticks;
+        let managed = ManagedCodex {
+            child: held, created_ticks, version: "26.1007.9446.0".into(),
+            session_id: id.to_string().repeat(48), exited_sessions: VecDeque::new(),
+            profile: PathBuf::new(), codex_home: PathBuf::new(), port: 0, target: None,
+        };
+        (ReceiptChild(child), managed)
+    }
+
+    #[test]
+    fn exit_receipts_require_a_signalled_held_object_and_survive_replacement() {
+        let (mut old_child, mut old) = receipt_child('O');
+        let old_pid = old.pid();
+        let ticks = old.created_ticks;
+        assert!(old.confirmed_exit_history().is_err());
+        assert!(!old.confirms_exit(&"O".repeat(48), old_pid, ticks));
+        old_child.0.kill().unwrap();
+        old_child.0.wait().unwrap();
+        assert!(old.confirms_exit(&"O".repeat(48), old_pid, ticks));
+        for index in 0..64 {
+            old.exited_sessions.push_back(ExitedSession {
+                id: format!("{index:048}"), pid: index + 1, created_ticks: u64::from(index) + 1,
+            });
+        }
+        let history = old.confirmed_exit_history().unwrap();
+        assert_eq!(history.len(), 64);
+        assert_ne!(history.front().unwrap().id, format!("{:048}", 0));
+        let (_next_child, mut next) = receipt_child('N');
+        next.inherit_exits(history);
+        assert!(next.confirms_exit(&"O".repeat(48), old_pid, ticks));
+        assert!(!next.confirms_exit(&"O".repeat(48), old_pid + 1, ticks));
+        assert!(!next.confirms_exit(&"O".repeat(48), old_pid, ticks + 1));
+        assert!(!next.confirms_exit(&"X".repeat(48), old_pid, ticks));
+        assert!(!next.confirms_exit(&"N".repeat(48), next.pid(), next.created_ticks));
+        assert!(next.confirmed_exit_history().is_err());
     }
 
     #[test]
@@ -763,6 +888,23 @@ mod tests {
     }
 
     #[test]
+    fn acceptance_probe_requires_exact_msix_version() {
+        assert!(validate_probe_version("26.930.7945.0").is_ok());
+        for invalid in [
+            "",
+            "26.930.7945",
+            "26.930.7945.0-extra",
+            "26.930.7945.0|path",
+            "26.930..0",
+            "26.930.65536.0",
+            "26.930.+1.0",
+        ] {
+            assert!(validate_probe_version(invalid).is_err(), "accepted {invalid}");
+        }
+        assert!(!LAUNCHABLE_VERSIONS.contains(&"26.999.1.0"));
+    }
+
+    #[test]
     fn native_candidates_require_exact_version_and_existing_executable() {
         let root = std::env::temp_dir().join(format!("taskboard-package-selection-{}", rand::random::<u64>()));
         fs::create_dir(&root).unwrap();
@@ -772,6 +914,17 @@ mod tests {
         let listing = format!("26.928.1915.0-extra|{0}\n26.928.1915.0|{0}\n26.924.2738.0|{0}\n26.928.1915.0|{0}/missing", root.display());
         let probe = select_installed(&listing, &["26.928.1915.0"]).unwrap();
         assert_eq!(probe, ("26.928.1915.0".to_string(), executable.clone()));
+        let newer_listing = format!("26.930.7945.0|{}", root.display());
+        assert_eq!(
+            select_installed(&newer_listing, &["26.930.7945.0"]).unwrap(),
+            ("26.930.7945.0".to_string(), executable.clone())
+        );
+        assert_eq!(
+            select_installed(&newer_listing, LAUNCHABLE_VERSIONS).unwrap(),
+            ("26.930.7945.0".to_string(), executable.clone())
+        );
+        let unverified_listing = format!("26.999.1.0|{}", root.display());
+        assert!(select_installed(&unverified_listing, LAUNCHABLE_VERSIONS).is_err());
         // The normal discovery must reject two approved installed packages,
         // rather than silently select one with uncertain package identity.
         assert!(select_installed(&listing, LAUNCHABLE_VERSIONS).is_err());
