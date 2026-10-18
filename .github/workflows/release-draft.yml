@@ -1,3 +1,4 @@
+# Manual release entrypoint; execution remains pinned to the maintainer-selected tag.
 name: Prepare draft release
 on:
   workflow_dispatch:
