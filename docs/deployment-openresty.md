@@ -1,6 +1,25 @@
 # 预构建镜像与 OpenResty 部署
 
-适用于包含网页首次初始化功能的新服务端镜像。固定 `v0.1.1` 的旧镜像不支持这份 Compose；本分支添加构建与发布流程，不代表镜像已经发布到 GHCR。
+适用于服务端预览标签 [`vserver-preview-20261020`](https://github.com/i-am-yimin/codex-taskboard/tree/vserver-preview-20261020)，对应镜像 `ghcr.io/i-am-yimin/codex-taskboard:server-5da9dd14eb4b`。该镜像已发布并支持匿名拉取，[发布运行](https://github.com/i-am-yimin/codex-taskboard/actions/runs/39447656205)已通过。固定 `v0.1.1` 的旧镜像不支持这份 Compose。
+
+对应 OCI 索引摘要为 `sha256:2efea053756f59624f7f9d5b95f2671c473a19fa05f2da186e616a633e6d8714`。需要严格固定内容时，可将 Compose 顶部的 `x-app-image` 改为 `ghcr.io/i-am-yimin/codex-taskboard@sha256:2efea053756f59624f7f9d5b95f2671c473a19fa05f2da186e616a633e6d8714`，同时固定 init 和 app 的镜像。
+
+## 直接使用固定预览镜像
+
+以下命令在 **Linux 服务器 Bash** 中执行，选择一个新的部署目录，不需要在服务器安装编译工具。它下载固定标签的配置，并写入已选择的镜像版本；这版公共镜像无需登录 GHCR。
+
+```bash
+mkdir taskboard-server-preview
+cd taskboard-server-preview
+curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-preview-20261020/compose.openresty.yaml --output compose.yaml
+curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-preview-20261020/deploy/openresty.conf --output openresty.conf
+printf '%s\n' 'TASKBOARD_VERSION=server-5da9dd14eb4b' 'TASKBOARD_IMAGE=ghcr.io/i-am-yimin/codex-taskboard' 'TASKBOARD_PORT=47830' > .env
+docker compose pull
+docker compose up -d
+docker compose logs --tail=100 app
+```
+
+把下载的 `openresty.conf` 中的 `location /` 加到现有 HTTPS 域名的 `server {}` 中，检查并重载 OpenResty。随后在网页输入启动日志里的初始化口令，创建管理员并登录。端口、网络、备份与升级说明见后面的步骤。
 
 ## 1. 在本机或 CI 构建一次
 
@@ -43,7 +62,7 @@ CI 的容器测试成功后也会提供 `server-image-preview` artifact，内含
 建立一个独立部署目录，将仓库的 [`compose.openresty.yaml`](../compose.openresty.yaml) 保存为该目录的 **compose.yaml**，将 [`deploy/openresty.env.example`](../deploy/openresty.env.example) 保存为 **.env**，填写刚刚发布成功的镜像标签：
 
 ```dotenv
-TASKBOARD_VERSION=server-你的12位提交号
+TASKBOARD_VERSION=server-5da9dd14eb4b
 TASKBOARD_IMAGE=ghcr.io/i-am-yimin/codex-taskboard
 TASKBOARD_PORT=47830
 ```
