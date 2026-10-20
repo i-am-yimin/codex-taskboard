@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-20",
+  "version": "0.1.1",
+  "tag": "v0.1.1",
+  "sourceCommit": "c71eb870829371835e2b4ea9f3125f120f552d1e",
+  "releaseRun": 39386073539,
+  "releaseAttempt": 1,
+  "releaseDraft": true,
+  "releasePrerelease": true,
+  "windowsSignature": "NotSigned",
+  "assets": [
+    {
+      "name": "Codex.Taskboard_0.1.1_x64-setup.exe",
+      "bytes": 24653482,
+      "sha256": "e563c9d8c75e674e821ffe301635aee798ebcb0ff0f7d09a5eb99a82c3625c9a"
+    },
+    {
+      "name": "SHA256SUMS",
+      "bytes": 386,
+      "sha256": "48d97baf54554c72f6220f6fa733ae372fb58c58c3d79a7e3cf936dc44120d2d"
+    },
+    {
+      "name": "taskboard-linux-amd64.tar",
+      "bytes": 182313472,
+      "sha256": "3d7e94c1c7b413d9392a82abfd0bc2d0d46aca28e6720bff0572977e82fad92b"
+    },
+    {
+      "name": "taskboard.spdx.json",
+      "bytes": 4518539,
+      "sha256": "440ced092cf7ccc50029f7732c5b3653f7df0cc61326869e00d6938302696ae7"
+    },
+    {
+      "name": "tmp-taskboard-linux-amd64_tar.spdx.json",
+      "bytes": 4518539,
+      "sha256": "440ced092cf7ccc50029f7732c5b3653f7df0cc61326869e00d6938302696ae7"
+    }
+  ],
+  "checksumsAndStrictHostedRunnerSourceProvenancePassed": true,
+  "installedAcceptancePassed": true,
+  "exactCodexVersion": "26.1013.4894.0",
+  "upgrade": {
+    "oldDataSeed": "actual shipped 0.1.0 companion on isolated loopback; old desktop UI not started",
+    "actualOldThenNewNsis": true,
+    "pathContainsChineseAndSpaces": true,
+    "installerExitCodes": [
+      0,
+      0
+    ],
+    "realPayloadReplacement": true,
+    "firstStartWithoutLoginOrManualReload": true,
+    "sameDeviceUserServerMappingAndCredentialBytesRetained": true,
+    "syntheticTaskCount": 8,
+    "editedTaskVersion": 2
+  },
+  "host": {
+    "formalInstalledLaunchSidebarAndDraftButtons": true,
+    "processProfilePrivateReceiptListenerAndExactTargetChecks": true,
+    "nonceReady": true,
+    "nativeViewportWidths": [
+      742,
+      1920
+    ],
+    "embeddedViewportWidths": [
+      397,
+      1575
+    ],
+    "boardListDetailSmoke": true,
+    "noUnexpectedHorizontalOverflow": true,
+    "externalReloadRecovery": true,
+    "refusalCases": [
+      "wrong project directory",
+      "dialog",
+      "multiple editors",
+      "nonempty editor",
+      "exact page URL identity drift"
+    ],
+    "exactDraftDomAndProseMirrorModel": true,
+    "nativeNormalRestartPreservedLoginProjectAndDraft": true,
+    "cspEnforceEventAndNoProbeRequestAfterDraftAndRestart": true,
+    "messagesSent": false
+  },
+  "cleanup": {
+    "onlyExactSyntheticDraftRemoved": true,
+    "syntheticAccountAndCachesRemoved": true,
+    "nativeNormalExitCode": 0,
+    "guardedDedicatedSyntheticDatabaseDrop": true,
+    "apiAndPostgresStoppedNormally": true,
+    "desktopNormalExitCode": 0,
+    "companionNormalExitCode": 0,
+    "temporaryTestListenersAndNativeAbsent": true,
+    "registeredLoginDirectoryRetained": true,
+    "nativeAuthenticationNotCopied": true
+  },
+  "dailyUpgrade": {
+    "productVersion": "0.1.1",
+    "sameAcceptedPayload": true,
+    "originalDataBytesPreservedAcrossInstaller": true,
+    "originalCredentialBytesAndDataSemanticsRetained": true,
+    "cacheSavedAtExcludedFromRunningSemanticComparison": true,
+    "originalThreeOfflineCachedTasksVisible": true,
+    "originalServerConfigurationRetained": true,
+    "freshOnlineAuthenticationClaimed": false,
+    "defaultWebviewAndNoDebugFlags": true,
+    "registryVersionAndTargetVerified": true,
+    "existingShortcutCount": 2,
+    "preexistingStaleShortcutCorrectedCount": 1,
+    "originalProgramAndTaskboardDataRollbackRetained": true,
+    "ordinaryCodexPreserved": true
+  },
+  "limitations": [
+    "single exact Windows Codex version",
+    "local synthetic server for new installed upgrade test",
+    "no new dual-device, public HTTPS or local Linux rollback acceptance",
+    "one ready-workspace sidebar attempt failed board readiness and rolled back; visible-window retry succeeded; root cause unconfirmed; no product timeout change",
+    "PowerShell BOM, reused observer field and premature readiness observations corrected without changing product"
+  ],
+  "evidence": [
+    {
+      "file": "legacy-seed-verdict.json",
+      "sha256": "1bb2f3dbfc50ee215d68409471c5d834eca8aa65822aabb7562e8caad8348184"
+    },
+    {
+      "file": "installed-upgrade-verdict.json",
+      "sha256": "d75fd35affe7ef20e93c75ab468300b068c2aeddd31b900f1446288501918e06"
+    },
+    {
+      "file": "first-upgraded-start-verdict.json",
+      "sha256": "16350af10fdc0ccc1bd724a909fa0960ab7b604a680b44ec190c37c9bb4ce78a"
+    },
+    {
+      "file": "native-sidebar-retry-verdict.json",
+      "sha256": "e8f23d04b73b383845ec06ef564b282cfbf476d87a51885d5dca2073b0036054"
+    },
+    {
+      "file": "installed-draft-refusals.json",
+      "sha256": "c529b11e366fa16cfb3a44f53ebea23b9994d9a5f8f05fe4a9b3df5cbdf51b01"
+    },
+    {
+      "file": "installed-external-reload.json",
+      "sha256": "7b8b5ea018a23df3a5183b4c58e626c9aa192fd06946343f4203fbecf66cbec0"
+    },
+    {
+      "file": "installed-ui-draft.json",
+      "sha256": "97ca71b79cba1d8e5badf7b64955e1ea6df02161b7867b88ff0c53be522d468e"
+    },
+    {
+      "file": "installed-native-normal-restart.json",
+      "sha256": "3575d91e2968d715d412a522bb4ceb52cf9d537f7a1ef3cb4ab2ce43344b03d0"
+    },
+    {
+      "file": "csp-after-installed-ui-draft.json",
+      "sha256": "0ecc0eee823e6220c563946754a707e3105d14ea5e83c22e1084b9508b70643c"
+    },
+    {
+      "file": "csp-after-installed-native-restart.json",
+      "sha256": "f6f782e08a17a2a71c405a1fe476bc53772a022db2818fc253f49a716b10390a"
+    },
+    {
+      "file": "installed-synthetic-draft-cleanup.json",
+      "sha256": "10ec01ed6e94378728c356519c1101850bdeac8fd96b60ba8d788a4b725895f8"
+    },
+    {
+      "file": "installed-test-account-cleanup.json",
+      "sha256": "c1930815b01733e1146c4eb9f04d08b22c179e94e6c94a64226e11dcb0f26a79"
+    },
+    {
+      "file": "native-final-cleanup.json",
+      "sha256": "626410ab3e52752917417d0ba0f668d29954ac0ed24b0535950c58df307db859"
+    },
+    {
+      "file": "synthetic-server-cleanup-verdict.json",
+      "sha256": "aa0aeebe91b84027eb13a1773780b6a2c8f336bfd28556b10a926cc704e039f4"
+    },
+    {
+      "file": "installed-final-exit.json",
+      "sha256": "d5014dbb06cc5a0391a731c78f14235769a1642876cb615975b274c18fafd11c"
+    },
+    {
+      "file": "daily-post-exit-backup.json",
+      "sha256": "cbcddb3fd2bd8e5ca8e33a482f2b9ba72893be7ac536b60385003a5e623c57dd"
+    },
+    {
+      "file": "daily-upgrade-verdict.json",
+      "sha256": "96982ddc08103871912b11a87809702c6f8e07783e5e460c5ae1af8acac30ec1"
+    },
+    {
+      "file": "daily-process-verdict.json",
+      "sha256": "c6336178082af017e7ce40299828b473acb25eef2bdf18c0c2c4684864ff3207"
+    },
+    {
+      "file": "daily-data-retention-verdict.json",
+      "sha256": "80d2d24c01112175f789e241ff905d84ca6e9b240a757936492dff6c0a6a727b"
+    },
+    {
+      "file": "daily-upgraded-ui.json",
+      "sha256": "56467c72aaa4c6621603f2093b68c620c9ffeb7990d28678df6a53a5a617bbac"
+    },
+    {
+      "file": "frame-compact-board.json",
+      "sha256": "a7766756d655b428a7764de553a29de3289b7311940c6bbc6efb9132f5834341"
+    },
+    {
+      "file": "frame-compact-list.json",
+      "sha256": "9ea457cf5e413f88732cd743c19864bf3e4f0c95455088480f8de7c9af562da3"
+    },
+    {
+      "file": "frame-compact-detail.json",
+      "sha256": "7b8ba56cdd7bf3ff32a70c3bbc927a89b49f507fe6c59f85c76f43e3a00d39a2"
+    },
+    {
+      "file": "frame-wide-detail.json",
+      "sha256": "cbe4f11b4b81ce673683ab3fb92c8484da4dff7ff37b7d00d6c7b0e82cc5bf14"
+    },
+    {
+      "file": "native-installed-baseline.json",
+      "sha256": "ce5a02feff4187c3151f20f623000c0e5cd2fad8be4eae5f3f8f586c8542ecc6"
+    },
+    {
+      "file": "native-installed-binding.json",
+      "sha256": "6544b88feaf1df2db6f085761d37b1fbdb7865e4ff653f360cbb55e490fb7c59"
+    },
+    {
+      "file": "native-sidebar-first-failure.json",
+      "sha256": "39604a740d2693070e11eb5939a07ac3d427d1fa0e3c1b50d51ddceeebbbd3fe"
+    },
+    {
+      "file": "native-sidebar-first-transient.json",
+      "sha256": "b46e9bc3c5769f30517c02f2635f0a954ba3c3f17e05fbeeb29b1ececa64c685"
+    },
+    {
+      "file": "native-startup-observer-correction.json",
+      "sha256": "643fce0ad2b2587c1757ef8581d5e8d9415049ee6aadb490c4d6044fe8f01e39"
+    },
+    {
+      "file": "draft-refusals-initial-readiness.json",
+      "sha256": "5a6f6432f66860953d01954599f238bcdf6f7c4a8ecda50be7f2b0734c85e01c"
+    },
+    {
+      "file": "restart-observer-bom-correction.json",
+      "sha256": "ec7a7d74bf9b2c420f6a0f915f39257e1a10ad9b19740ac0bd316768af13ff29"
+    },
+    {
+      "file": "logout-observer-schema-correction.json",
+      "sha256": "b751a835f5e8bc64ed45879ee4e920ad17334b57f9cf5c7f18722bfdbe898aaf"
+    },
+    {
+      "file": "ui-automation-observer-corrections.json",
+      "sha256": "a8a3b3af1e83f4ba9e13e356d9ac39d29d81ace9eeaa40bb4b696026fa5bf0ab"
+    },
+    {
+      "file": "release/release-verification.json",
+      "sha256": "b55ca07f5aade822ff65132ca515a9ddf5da5224c684e3dee361e363970e1272"
+    },
+    {
+      "file": "release/draft-run-state.json",
+      "sha256": "7f0d5c168e90c0bfe78a330025f5bf07269cdc50c9c3a7caaf05d8b9f9a3ec2d"
+    },
+    {
+      "file": "release/local-validation.json",
+      "sha256": "775a270ec16ff518b2158ff0457fcca93aba1d7959fa36ddb72795cb18248f9d"
+    },
+    {
+      "file": "release/linux-image-verdict.json",
+      "sha256": "322cefb8a5a5adfb4751de135f09c91737427514e94447b00319f231b0281109"
+    }
+  ]
+}
