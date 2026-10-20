@@ -15,7 +15,7 @@ services:
       retries: 20
     restart: unless-stopped
   app:
-    image: ghcr.io/i-am-yimin/codex-taskboard:${TASKBOARD_VERSION:-0.1.0}
+    image: ghcr.io/i-am-yimin/codex-taskboard:${TASKBOARD_VERSION:-0.1.1}
     build: .
     environment:
       DATABASE_URL: postgres://taskboard:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/taskboard
