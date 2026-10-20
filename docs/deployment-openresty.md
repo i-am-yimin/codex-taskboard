@@ -32,6 +32,8 @@ Write-Output "TASKBOARD_VERSION=$taskboardImageTag"
 
 只构建、不推送时，把 `--push` 改成 `--load`。离线服务器可用 `docker save` / `docker load` 转移镜像，但数据库基础镜像也要提前准备。
 
+CI 的容器测试成功后也会提供 `server-image-preview` artifact，内含测试过的 Linux amd64 镜像归档、镜像引用和校验和（保留 14 天）。可在装有 Docker 的机器校验后导入，再推送到自己的镜像仓库；下载归档并不表示 GHCR 已经发布该镜像。
+
 ## 2. 在服务器准备两个文件
 
 需要 Linux amd64、Docker Engine 和 Compose v2。下面的回环地址用于 **OpenResty 与 Docker 在同一台宿主机** 的情况。

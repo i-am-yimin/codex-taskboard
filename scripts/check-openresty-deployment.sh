@@ -36,8 +36,10 @@ curlx "$api/admin/instance" --cookie "$artifacts/session.cookie" | jq -e '.data.
 curlx "$api/admin/logs" --cookie "$artifacts/session.cookie" | jq -e '.data.entries | length>0' >/dev/null
 database_secret=$(docker compose exec -T app node -e "process.stdout.write(require('fs').readFileSync('/var/lib/taskboard/postgres-password','utf8'))")
 # The API's direct host port must be loopback-only; PostgreSQL has no published port.
-docker compose port app 47830 | grep -qx "127.0.0.1:$TASKBOARD_PORT"
-test -z "$(docker compose port db 5432 2>/dev/null || true)"
+docker inspect "$(docker compose ps -q app)" --format '{{json .HostConfig.PortBindings}}' | \
+  jq -e --arg port "$TASKBOARD_PORT" '. == {"47830/tcp":[{"HostIp":"127.0.0.1","HostPort":$port}]}' >/dev/null
+docker inspect "$(docker compose ps -q db)" --format '{{json .HostConfig.PortBindings}}' | \
+  jq -e '(. // {}) | length == 0' >/dev/null
 backup=$(sh scripts/backup.sh "$artifacts" | sed -n 's/^Backup saved: //p')
 docker compose down
 docker compose up -d --wait --wait-timeout 180
@@ -48,3 +50,6 @@ sh scripts/restore.sh "$backup" --confirm-restore
 docker compose up -d --wait --wait-timeout 180
 curlx "$api/admin/instance" --cookie "$artifacts/session.cookie" | jq -e '.data.database.status=="ok"' >/dev/null
 echo 'Managed first-run, loopback binding, admin access, restart, stable secrets, backup and restore passed.'
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  printf 'image=%s\n' "$TASKBOARD_IMAGE:$TASKBOARD_VERSION" >> "$GITHUB_OUTPUT"
+fi
