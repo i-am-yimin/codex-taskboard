@@ -258,7 +258,7 @@ describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () =>
       <nav role="navigation" aria-label="首页" id="projects"></nav>
     </aside><div role="status" style="position:absolute;left:-1px;width:1px;height:1px"></div>
     <main data-app-shell-main-surface="default" id="content"></main></div>`);
-    for (const version of ['26.924.1866.0', '26.924.2738.0', '26.928.1915.0', '26.930.7945.0', '26.1007.9446.0']) {
+    for (const version of ['26.924.1866.0', '26.924.2738.0', '26.928.1915.0', '26.930.7945.0', '26.1007.9446.0', '26.1013.4894.0']) {
       const markers = codexHostMarkers(version);
       await expect(page.locator(markers.shellMarker).count()).resolves.toBe(1);
       await expect(page.locator(markers.sidebarMarker).evaluateAll(elements => elements.map(el => el.id)))
@@ -421,7 +421,7 @@ describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () =>
     } finally { await rm(home, { recursive: true, force: true }); }
   });
 
-  it('preserves the installed board on refusal and restores CSP before filling a verified draft', { timeout: 45000 }, async () => {
+  it.each(['26.1007.9446.0', '26.1013.4894.0'])('preserves the installed board on refusal and restores CSP before filling a verified draft on %s', { timeout: 45000 }, async (appVersion) => {
     const home = await mkdtemp(join(tmpdir(), 'taskboard-installed-draft-'));
     const root = join(home, 'repo');
     await mkdir(root);
@@ -438,7 +438,7 @@ describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () =>
       await waitForShell();
       const target = await boundPage();
       const instance = new CodexDesktopAdapter({
-        owner: { verify: async () => true }, appVersion: '26.917.9434.0', codexHome: home,
+        owner: { verify: async () => true }, appVersion, codexHome: home,
         endpoint: cdpEndpoint, boardUrl: `${boardOrigin}/board`,
         targetBinding: { targetId: target.id, exactPageUrl: `${hostOrigin}/`, pageWebSocketUrl: target.webSocketDebuggerUrl },
         shellMarker: '#codex-shell', sidebarMarker: '#codex-sidebar', contentMarker: '#codex-content',

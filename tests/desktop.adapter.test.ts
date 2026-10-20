@@ -1087,12 +1087,12 @@ describe('Codex desktop adapter safety boundary', () => {
       vi.useRealTimers();
     }
   });
-  it('does not treat a newer installed Codex version as verified compatibility', async () => {
+  it.each(['26.918.0.0', '26.1013.4894.0-extra', '26.1013.4894.1', '26.1013.4895.0'])('does not treat unverified Codex %s as compatible', async (appVersion) => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
     const adapter = new CodexDesktopAdapter({
       owner: { verify: async () => true },
-      appVersion: '26.918.0.0',
+      appVersion,
       endpoint: 'http://127.0.0.1:1',
     });
     await expect(adapter.probe()).resolves.toMatchObject({

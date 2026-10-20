@@ -20,8 +20,9 @@ use std::{
 // 26.928.1915.0 native probe evidence: 2026-09-30, source 92d1cde.
 // 26.930.7945.0 native probe evidence: 2026-10-08, source e72c648.
 // 26.1007.9446.0 native ownership and host project contract observed: 2026-10-16.
+// 26.1013.4894.0 native package/handle/listener/exact-page probe: 2026-10-20.
 // The companion keeps its separate host-DOM allowlist for injection and drafts.
-const LAUNCHABLE_VERSIONS: &[&str] = &["26.924.2738.0", "26.928.1915.0", "26.930.7945.0", "26.1007.9446.0"];
+const LAUNCHABLE_VERSIONS: &[&str] = &["26.924.2738.0", "26.928.1915.0", "26.930.7945.0", "26.1007.9446.0", "26.1013.4894.0"];
 const CODEX_PAGE: &str = "app://-/index.html";
 const START_TIMEOUT: Duration = Duration::from_secs(90);
 const CDP_TIMEOUT: Duration = Duration::from_millis(1200);
@@ -914,17 +915,21 @@ mod tests {
         let listing = format!("26.928.1915.0-extra|{0}\n26.928.1915.0|{0}\n26.924.2738.0|{0}\n26.928.1915.0|{0}/missing", root.display());
         let probe = select_installed(&listing, &["26.928.1915.0"]).unwrap();
         assert_eq!(probe, ("26.928.1915.0".to_string(), executable.clone()));
-        let newer_listing = format!("26.930.7945.0|{}", root.display());
-        assert_eq!(
-            select_installed(&newer_listing, &["26.930.7945.0"]).unwrap(),
-            ("26.930.7945.0".to_string(), executable.clone())
-        );
-        assert_eq!(
-            select_installed(&newer_listing, LAUNCHABLE_VERSIONS).unwrap(),
-            ("26.930.7945.0".to_string(), executable.clone())
-        );
-        let unverified_listing = format!("26.999.1.0|{}", root.display());
-        assert!(select_installed(&unverified_listing, LAUNCHABLE_VERSIONS).is_err());
+        for version in ["26.930.7945.0", "26.1007.9446.0", "26.1013.4894.0"] {
+            let newer_listing = format!("{version}|{}", root.display());
+            assert_eq!(
+                select_installed(&newer_listing, &[version]).unwrap(),
+                (version.to_string(), executable.clone())
+            );
+            assert_eq!(
+                select_installed(&newer_listing, LAUNCHABLE_VERSIONS).unwrap(),
+                (version.to_string(), executable.clone())
+            );
+        }
+        for version in ["26.1013.4894.0-extra", "26.1013.4894.1", "26.1013.4895.0", "26.999.1.0"] {
+            let unverified_listing = format!("{version}|{}", root.display());
+            assert!(select_installed(&unverified_listing, LAUNCHABLE_VERSIONS).is_err());
+        }
         // The normal discovery must reject two approved installed packages,
         // rather than silently select one with uncertain package identity.
         assert!(select_installed(&listing, LAUNCHABLE_VERSIONS).is_err());
