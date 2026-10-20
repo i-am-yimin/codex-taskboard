@@ -119,9 +119,9 @@ Taskboard 共享任务内容与执行摘要，完整 Codex 对话仍留在原来
 
 推荐的新部署方式：**预构建镜像 → 服务器拉取 → `127.0.0.1:47830` → OpenResty HTTPS 反代**。服务器不需要编译代码；首次打开网页创建管理员，数据库密码和会话密钥自动生成并持久保存。管理员登录后可以查看运行状态和日志、修改账号与日志级别，并验证密码查看密钥。
 
-完整步骤及本机 Bash / PowerShell 构建命令见[镜像与 OpenResty 部署手册](docs/deployment-openresty.md)，配置见 [compose.openresty.yaml](compose.openresty.yaml) 和 [OpenResty 片段](deploy/openresty.conf)。这套功能需要包含本次改动的新镜像，不能使用旧 `0.1.1` 镜像；镜像是否可拉取，以实际构建推送结果为准。
+完整步骤及本机 Bash / PowerShell 构建命令见[镜像与 OpenResty 部署手册](docs/deployment-openresty.md)，配置见 [compose.openresty.yaml](compose.openresty.yaml) 和 [OpenResty 片段](deploy/openresty.conf)。服务端预览标签为 [`vserver-preview-20261020`](https://github.com/i-am-yimin/codex-taskboard/tree/vserver-preview-20261020)，镜像已发布到 `ghcr.io/i-am-yimin/codex-taskboard:server-5da9dd14eb4b`，支持匿名拉取。[发布运行](https://github.com/i-am-yimin/codex-taskboard/actions/runs/39447656205)已通过；旧 `0.1.1` 镜像不支持网页初始化。
 
-新部署目录里将配置保存为 `compose.yaml`，`.env` 只填已发布的镜像版本（可选修改仓库和端口），然后执行：
+新部署目录里将上述配置保存为 `compose.yaml`，将 [openresty.env.example](deploy/openresty.env.example) 保存为 `.env`，其中已填固定镜像版本（可选修改仓库和端口），然后执行：
 
 ```bash
 docker compose pull
