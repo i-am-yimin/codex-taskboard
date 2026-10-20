@@ -43,5 +43,15 @@ export async function migrate(db: Database): Promise<void> {
       );
       await client.query("INSERT INTO schema_migrations(id) VALUES ('0002_owner_integrity')");
     }
+    if (
+      !(await client.query("SELECT 1 FROM schema_migrations WHERE id='0003_instance_settings'"))
+        .rowCount
+    ) {
+      await client.query(`CREATE TABLE instance_settings (
+        id integer PRIMARY KEY CHECK(id=1), public_origin text,
+        log_level text NOT NULL DEFAULT 'info' CHECK(log_level IN ('debug','info','warn','error'))
+      )`);
+      await client.query("INSERT INTO schema_migrations(id) VALUES ('0003_instance_settings')");
+    }
   });
 }

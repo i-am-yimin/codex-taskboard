@@ -1,0 +1,109 @@
+import { test, expect } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+import { mkdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { buildApp } from '../../apps/server/src/app';
+import { migrate } from '../../apps/server/src/migrate';
+import { createDatabase, type Database } from '../../apps/server/src/db';
+import { RuntimeLogs } from '../../apps/server/src/runtime';
+
+test.describe('first-run server administration with PostgreSQL', () => {
+  test.skip(!process.env.TEST_DATABASE_URL, 'Requires isolated PostgreSQL and built web assets');
+  let db: Database;
+  let control: Database;
+  let app: ReturnType<typeof buildApp>;
+  let base: string;
+  const schema = `browser_setup_${randomUUID().replaceAll('-', '')}`;
+  const token = 'e'.repeat(64);
+  const password = 'browser-setup-password-2026';
+  test.beforeAll(async () => {
+    const url = new URL(process.env.TEST_DATABASE_URL!);
+    if (!url.pathname.endsWith('_test')) throw new Error('Use an isolated *_test database');
+    control = createDatabase(url.toString());
+    await control.query(`CREATE SCHEMA "${schema}"`);
+    url.searchParams.set('options', `-csearch_path=${schema}`);
+    db = createDatabase(url.toString());
+    await migrate(db);
+    app = buildApp({
+      db,
+      setupToken: token,
+      sessionSecret: 'f'.repeat(64),
+      logger: true,
+      databaseUrl: url.toString(),
+      runtimeLogs: new RuntimeLogs([token], false),
+      managedSecrets: true,
+    });
+    base = await app.listen({ host: '127.0.0.1', port: 0 });
+  });
+  test.afterAll(async () => {
+    await app?.close();
+    await db?.end();
+    if (control) {
+      await control.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await control.end();
+    }
+  });
+  test('creates the only administrator, manages settings and account, and reveals secrets only after verification', async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    const output = resolve('.impeccable/review');
+    await mkdir(output, { recursive: true });
+    await page.goto(base);
+    await expect(page.getByRole('heading', { name: '设置你的 Taskboard' })).toBeVisible();
+    if (test.info().project.name === 'desktop') {
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await page.screenshot({ path: resolve(output, 'setup-desktop.png'), fullPage: true });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.screenshot({ path: resolve(output, 'setup-mobile.png'), fullPage: true });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+      await page.setViewportSize({ width: 1440, height: 1000 });
+    }
+    await page.getByLabel('初始化口令', { exact: true }).fill(token);
+    await page.getByLabel('管理员名称', { exact: true }).fill('部署管理员');
+    await page.getByLabel('管理员邮箱', { exact: true }).fill('browser-owner@example.test');
+    await page.getByLabel('密码', { exact: true }).fill(password);
+    await page.getByLabel('确认密码', { exact: true }).fill(password);
+    await page.getByRole('button', { name: '创建管理员并登录' }).click();
+    await page.getByRole('button', { name: '服务器管理', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '服务器管理' })).toBeVisible();
+    await expect(page.getByLabel('对外访问地址', { exact: true })).toHaveValue(base);
+    if (test.info().project.name === 'desktop') {
+      await page.screenshot({ path: resolve(output, 'desktop.png'), fullPage: true });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.screenshot({ path: resolve(output, 'mobile.png'), fullPage: true });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+      await page.emulateMedia({ colorScheme: 'dark' });
+      await page.screenshot({ path: resolve(output, 'mobile-dark.png'), fullPage: true });
+      await page.emulateMedia({ colorScheme: 'light' });
+      await page.setViewportSize({ width: 1440, height: 1000 });
+    }
+    await page.getByRole('button', { name: '数据库与密钥', exact: true }).click();
+    await expect(page.getByLabel('数据库密码明文')).toHaveCount(0);
+    await page.getByLabel('验证管理员密码以查看').fill('wrong-password-long');
+    await page.getByRole('button', { name: '验证并显示密钥' }).click();
+    await expect(page.getByRole('alert')).toHaveText('当前管理员密码不正确');
+    await expect(page.getByLabel('数据库密码明文')).toHaveCount(0);
+    await page.getByLabel('验证管理员密码以查看').fill(password);
+    await page.getByRole('button', { name: '验证并显示密钥' }).click();
+    await expect(page.getByLabel('会话密钥明文')).toHaveValue('f'.repeat(64));
+    await page.getByRole('button', { name: '立即隐藏' }).click();
+    await expect(page.getByLabel('会话密钥明文')).toHaveCount(0);
+    await page.getByRole('button', { name: '管理员账号', exact: true }).click();
+    await page.getByLabel('名称', { exact: true }).fill('更新后的管理员');
+    await page.getByLabel('当前密码', { exact: true }).fill(password);
+    await page.getByRole('button', { name: '保存管理员账号' }).click();
+    await expect(page.getByRole('status')).toHaveText('管理员账号已更新。');
+    await page.getByRole('button', { name: '运行日志', exact: true }).click();
+    await expect(page.getByRole('log')).toContainText('Instance administrator account updated');
+    await page.goto(`${base}/#admin`);
+    await expect(page.getByRole('heading', { name: '服务器管理' })).toBeVisible();
+    await expect(page.getByText('更新后的管理员', { exact: true })).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+});

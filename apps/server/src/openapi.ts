@@ -62,6 +62,86 @@ export const openapiDocument = {
     },
   },
   paths: {
+    '/setup': {
+      get: {
+        description:
+          'Reports whether browser initialization is required; never reveals the operator token.',
+        responses: { '200': json({ type: 'object' }) },
+      },
+      post: {
+        description:
+          'Creates the first instance administrator using the operator token printed in server startup logs. Closes after initialization.',
+        requestBody: json({
+          type: 'object',
+          required: ['token', 'name', 'email', 'password', 'publicOrigin'],
+          properties: {
+            token: { type: 'string' },
+            name: { type: 'string' },
+            email: { type: 'string', format: 'email' },
+            password: { type: 'string', minLength: 12, maxLength: 256 },
+            publicOrigin: { type: 'string', format: 'uri' },
+          },
+        }),
+        responses: { '201': json({ type: 'object' }), '403': json(error), '409': json(error) },
+      },
+    },
+    '/admin/instance': {
+      get: {
+        security: [{ session: [] }],
+        responses: { '200': json({ type: 'object' }), '403': json(error) },
+      },
+      patch: {
+        security: [{ session: [] }],
+        parameters: [writeHeaders[0]],
+        requestBody: json({
+          type: 'object',
+          required: ['publicOrigin', 'logLevel'],
+          properties: {
+            publicOrigin: { type: 'string', format: 'uri' },
+            logLevel: { enum: ['debug', 'info', 'warn', 'error'] },
+          },
+        }),
+        responses: { '200': json({ type: 'object' }), '403': json(error) },
+      },
+    },
+    '/admin/account': {
+      patch: {
+        security: [{ session: [] }],
+        parameters: [writeHeaders[0]],
+        requestBody: json({
+          type: 'object',
+          required: ['name', 'email', 'currentPassword'],
+          properties: {
+            name: { type: 'string' },
+            email: { type: 'string', format: 'email' },
+            currentPassword: { type: 'string', minLength: 12 },
+            newPassword: { type: 'string', minLength: 12 },
+          },
+        }),
+        responses: { '200': json({ type: 'object' }), '403': json(error) },
+      },
+    },
+    '/admin/logs': {
+      get: {
+        security: [{ session: [] }],
+        description:
+          'Redacted application logs from the current process. Browser instance administrators only.',
+        responses: { '200': json({ type: 'object' }), '403': json(error) },
+      },
+    },
+    '/admin/secrets/reveal': {
+      post: {
+        security: [{ session: [] }],
+        description:
+          'Reauthenticate the browser instance administrator before revealing deployment secrets. Response is not cached or stored in idempotency records.',
+        requestBody: json({
+          type: 'object',
+          required: ['currentPassword'],
+          properties: { currentPassword: { type: 'string', minLength: 12 } },
+        }),
+        responses: { '200': json({ type: 'object' }), '403': json(error) },
+      },
+    },
     '/health': { get: { responses: { '200': json({ type: 'object' }) } } },
     '/auth/login': {
       post: {

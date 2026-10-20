@@ -3,6 +3,8 @@ import { hash, Algorithm } from '@node-rs/argon2';
 import { z } from 'zod';
 import { createDatabase, type Database, withTransaction } from './db.ts';
 import { migrate } from './migrate.ts';
+import { loadRuntimeEnvironment } from './runtime.ts';
+import { readInstanceSettings } from './instance.ts';
 
 const emailSchema = z
   .email()
@@ -64,7 +66,11 @@ export async function runAdmin(
       "INSERT INTO recovery_links (id,user_id,token_hash,expires_at) VALUES ($1,$2,$3,now()+interval '24 hours')",
       [randomUUID(), user.rows[0].id, createHash('sha256').update(token).digest('hex')],
     );
-    const origin = (process.env.PUBLIC_ORIGIN ?? 'http://127.0.0.1:47830').replace(/\/$/, '');
+    const origin = (
+      process.env.PUBLIC_ORIGIN ??
+      (await readInstanceSettings(db)).publicOrigin ??
+      'http://127.0.0.1:47830'
+    ).replace(/\/$/, '');
     return `${origin}/#recovery=${encodeURIComponent(token)}`;
   }
   throw new Error(
@@ -72,6 +78,7 @@ export async function runAdmin(
   );
 }
 export async function main() {
+  loadRuntimeEnvironment();
   const db = createDatabase();
   try {
     await migrate(db);

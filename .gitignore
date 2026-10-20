@@ -14,3 +14,4 @@ apps/desktop/runtime/
 apps/desktop/binaries/
 *.log
 *.tsbuildinfo
+.impeccable/review/

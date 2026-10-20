@@ -54,7 +54,7 @@ try {
     if (rows.rows[0].count !== 1)
       throw new Error('Compiled bootstrap did not create exactly one admin');
     const migrations = await db.query('SELECT id FROM schema_migrations');
-    if (migrations.rowCount !== 2) throw new Error('Unexpected migration state');
+    if (migrations.rowCount !== 3) throw new Error('Unexpected migration state');
   } finally {
     await db.end();
   }

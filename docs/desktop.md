@@ -1,6 +1,6 @@
 # Windows 桌面版
 
-> 当前状态（2026-10-18）：`v0.1.0` / `f6a363e` 已通过 G0–G4 开发预览验收，包含两台真实 Windows 安装程序及 Codex `26.1007.9446.0` 的完整实机流程。Windows 安装包仍未签名，Release 保持草稿。详见 [验收摘要](acceptance-0.1.0.md)。
+> 当前状态（2026-10-20）：`v0.1.1` / `c71eb87` 已完成 Codex `26.1013.4894.0` 的标签新包、旧 companion 数据升级及日常安装复验，见 [0.1.1 验收](acceptance-0.1.1.md)。`v0.1.0` / `f6a363e` 的双设备完整基线见 [0.1.0 验收](acceptance-0.1.0.md)。安装器未签名，Release 保持草稿预览。安装、服务器、CLI 登录、Skill 限制和任务流程的逐步操作见 [README 使用手册](../README.md#使用手册)。
 
 桌面版是 Windows x64 的 Tauri 启动器。它在当前用户范围安装，使用安装资源目录中自带的 Node 运行时启动本机伴随服务，因此不要求安装系统 Node 或 Codex CLI。共享任务数据存放在服务器；本机凭据和仓库映射保存在 `%APPDATA%\CodexTaskboard`。卸载保留数据并重装恢复已在隔离测试目录实机通过，正式用户目录未参与该试验。
 
@@ -43,6 +43,8 @@ Remove-Variable taskboardPassword
 连接页预览：[浅色](screenshots/desktop-connection-light.png) · [深色](screenshots/desktop-connection-dark.png) · [窄窗口](screenshots/desktop-connection-narrow.png)。截图来自完整生产 Web 页面及隔离的桌面连接模拟，不使用真实账户，也不代表安装后的 Tauri 程序已通过验收。
 
 `runtime\install-taskboard-skill.cmd` 是明确的 Skill 安装操作。它只在 `%USERPROFILE%\.codex\skills\taskboard` 不存在时复制随包 Skill；如果同名用户 Skill 已存在，它会退出而不会覆盖。
+
+该脚本不自动配置独立 Codex 的数据目录。当前独立启动器会移除继承的 `TASKBOARD_*` 环境变量，因此默认 Skill wrapper 所需的 `TASKBOARD_TASKBOARD_RUNTIME` 不保证存在；仅运行脚本或重启窗口不能证明配对成功。0.1.1 可让 Agent 读取随包 `runtime\skills\taskboard\SKILL.md`，并明确使用 `runtime\taskctl.cmd` 的绝对路径，操作范例见 [README 第 4 步](../README.md#4-配置-agent-的任务读写)。本轮未验证 Skill 自动发现与 Agent 自动执行，一键配对应在后续版本补齐。
 
 ## Codex 桌面集成状态
 

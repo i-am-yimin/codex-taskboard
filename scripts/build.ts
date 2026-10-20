@@ -7,6 +7,7 @@ await build({
     server: 'apps/server/src/main.ts',
     admin: 'apps/server/src/admin-entry.ts',
     migrate: 'apps/server/src/migrate-entry.ts',
+    'container-init': 'apps/server/src/container-init.ts',
     companion: 'apps/companion/src/main.ts',
     taskctl: 'packages/cli/src/main.ts',
   },

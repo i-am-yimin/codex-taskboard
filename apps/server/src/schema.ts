@@ -20,6 +20,11 @@ export const users = pgTable('users', {
   createdAt: created(),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
 });
+export const instanceSettings = pgTable('instance_settings', {
+  id: integer('id').primaryKey(),
+  publicOrigin: text('public_origin'),
+  logLevel: text('log_level').notNull(),
+});
 export const devices = pgTable('devices', {
   id: uuid('id').primaryKey(),
   userId: uuid('user_id').notNull(),

@@ -1,0 +1,55 @@
+name: codex-taskboard
+x-app-image: &app-image ${TASKBOARD_IMAGE:-ghcr.io/i-am-yimin/codex-taskboard}:${TASKBOARD_VERSION:?Set TASKBOARD_VERSION to a published server image tag}
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+services:
+  init:
+    image: *app-image
+    command: ['node', 'dist/container-init.js']
+    environment:
+      TASKBOARD_STATE_DIR: /var/lib/taskboard
+    volumes:
+      - taskboard-state:/var/lib/taskboard
+    logging: *logging
+  db:
+    image: postgres:17.6-bookworm
+    environment:
+      POSTGRES_DB: taskboard
+      POSTGRES_USER: taskboard
+      POSTGRES_PASSWORD_FILE: /run/taskboard/postgres-password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - taskboard-state:/run/taskboard:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U taskboard -d taskboard']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    logging: *logging
+  app:
+    image: *app-image
+    environment:
+      TASKBOARD_STATE_DIR: /var/lib/taskboard
+      TASKBOARD_VERSION: ${TASKBOARD_VERSION}
+      HOST: 0.0.0.0
+      PORT: 47830
+      TRUST_PROXY: '1'
+    volumes:
+      - taskboard-state:/var/lib/taskboard
+    ports:
+      - '127.0.0.1:${TASKBOARD_PORT:-47830}:47830'
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+volumes:
+  taskboard-state:
+  postgres-data:
