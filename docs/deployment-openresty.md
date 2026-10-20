@@ -28,7 +28,9 @@ Write-Output "TASKBOARD_VERSION=$taskboardImageTag"
 
 需要对目标 GHCR 包有写入权限。首次创建的包可能是私有包；如果要让服务器匿名拉取，在 GitHub Package 设置中将包设为 Public。私有分发则在服务器上用有 `read:packages` 权限的账号执行 `docker login ghcr.io`。发布镜像不包含数据库密码、会话密钥或账号。
 
-也可在 GitHub Actions 手动运行 **Publish server image**，选择包含本功能的分支。流程先验证隔离部署，再推送 `server-<12 位提交号>`，运行摘要给出标签和 digest。它不会创建 GitHub Release，也不会覆盖 `0.1.1` 或 `latest`。长期部署可在 Compose 中把整个 `image:` 固定为流程输出的 `ghcr.io/...@sha256:...`。
+也可在 GitHub Actions 手动运行 **Publish server image**。该流程仅接受维护者从标签启动，并使用仓库现有的 `release` 环境保护：先创建包含本功能的新标签，将该标签加入环境的允许列表，再选择该标签运行并完成维护者审批。不要移动已有 `v0.1.0` / `v0.1.1` 标签；流程不会自动放宽发布权限。
+
+流程先验证隔离部署，再推送 `server-<12 位提交号>`，运行摘要给出标签和 digest。它不会创建 GitHub Release，也不会覆盖 `0.1.1` 或 `latest`。长期部署可在 Compose 中把整个 `image:` 固定为流程输出的 `ghcr.io/...@sha256:...`。
 
 只构建、不推送时，把 `--push` 改成 `--load`。离线服务器可用 `docker save` / `docker load` 转移镜像，但数据库基础镜像也要提前准备。
 
