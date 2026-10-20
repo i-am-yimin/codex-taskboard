@@ -1,0 +1,245 @@
+.server-loading {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.server-first-run {
+  max-width: 1080px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  padding: 64px 32px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 72px;
+  align-items: start;
+}
+.server-first-run h1 {
+  font-size: clamp(28px, 3vw, 38px);
+  line-height: 1.25;
+  margin: 24px 0 16px;
+  letter-spacing: -0.025em;
+}
+.server-setup-intro > svg {
+  color: var(--accent);
+}
+.server-setup-form {
+  background: var(--glass-solid);
+  padding: 28px;
+  border-radius: 16px;
+}
+.server-first-run form,
+.server-admin form {
+  display: grid;
+  gap: 18px;
+}
+.server-first-run input,
+.server-admin input,
+.server-admin select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: var(--field);
+  color: var(--ink);
+  border-color: var(--divider);
+}
+.server-first-run .form-label,
+.server-admin .form-label {
+  margin: 0;
+}
+.server-first-run .muted,
+.server-admin .muted {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.server-command {
+  display: block;
+  padding: 14px 16px;
+  margin: 16px 0;
+  background: var(--tint);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.server-facts {
+  margin: 28px 0 32px;
+}
+.server-facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.server-facts dt {
+  color: var(--muted);
+}
+.server-facts dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.server-admin {
+  min-height: 100dvh;
+  background: var(--canvas);
+}
+.server-admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border-bottom: 1px solid var(--divider);
+  padding: 20px 32px;
+}
+.server-admin-header > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.server-admin h1 {
+  font-size: 20px;
+  margin: 0;
+}
+.server-admin h2 {
+  font-size: 22px;
+  margin: 0 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.server-admin-layout {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 48px;
+  padding: 40px 32px;
+}
+.server-admin-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}
+.server-admin-nav button {
+  text-align: left;
+  padding: 12px 16px;
+  border-radius: 8px;
+  min-height: 44px;
+}
+.server-admin-nav button:hover {
+  background: var(--hover);
+}
+.server-admin-nav button[aria-current] {
+  background: var(--tint);
+  color: var(--accent);
+  font-weight: 650;
+}
+.server-admin-content {
+  min-width: 0;
+  max-width: 800px;
+}
+.server-admin-content form,
+.server-secret-values {
+  max-width: 580px;
+}
+.server-admin .button {
+  justify-self: start;
+}
+.server-success {
+  padding: 12px 16px;
+  background: var(--tint);
+  color: var(--ink);
+  border-radius: 8px;
+}
+.server-log-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+}
+.server-log-list {
+  max-height: 55dvh;
+  min-height: 180px;
+  overflow: auto;
+  background: var(--glass-solid);
+  border-radius: 8px;
+  padding: 16px;
+}
+.server-log-line {
+  display: grid;
+  grid-template-columns: 160px 54px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--divider);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.server-log-line span {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.server-log-line time {
+  color: var(--muted);
+}
+.server-admin button:focus-visible,
+.server-first-run button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.server-management-shortcut {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  z-index: 2;
+}
+@media (max-width: 760px) {
+  .server-first-run {
+    grid-template-columns: 1fr;
+    gap: 28px;
+    padding: 28px 20px;
+  }
+  .server-setup-form {
+    padding: 22px 18px;
+  }
+  .server-admin-header {
+    padding: 16px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .server-admin-header > .muted {
+    display: none;
+  }
+  .server-admin-layout {
+    grid-template-columns: 1fr;
+    padding: 20px 16px;
+    gap: 28px;
+  }
+  .server-admin-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 4px;
+    padding-bottom: 4px;
+  }
+  .server-admin-nav button {
+    flex-shrink: 0;
+    padding: 10px 12px;
+  }
+  .server-log-line {
+    grid-template-columns: 1fr 54px;
+    gap: 6px;
+  }
+  .server-log-line span {
+    grid-column: 1 / -1;
+  }
+  .server-facts > div {
+    gap: 12px;
+  }
+  .server-management-shortcut {
+    top: 12px;
+    right: 12px;
+  }
+}

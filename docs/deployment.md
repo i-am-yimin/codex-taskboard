@@ -1,5 +1,7 @@
 # 部署、备份与升级
 
+新实例使用预构建镜像、网页初始化和宿主机 OpenResty 反代时，先阅读[镜像与 OpenResty 部署手册](deployment-openresty.md)。下面保留原 Caddy / 显式环境变量部署方式，适用于现有实例。
+
 ## Linux Docker Compose
 
 需求：Linux amd64、Docker Engine + Compose plugin、指向服务器的域名，开放 80/443。数据库不映射公网端口。配置文件必须限制读取权限。

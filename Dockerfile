@@ -17,11 +17,13 @@ RUN pnpm build
 RUN CI=true pnpm install --prod --frozen-lockfile --offline
 
 FROM node:22.16.0-bookworm-slim AS runtime
+LABEL org.opencontainers.image.source="https://github.com/i-am-yimin/codex-taskboard"
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=47830 WEB_ROOT=/app/dist/web
 WORKDIR /app
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/package.json ./package.json
+RUN mkdir -p /var/lib/taskboard && chown node:node /var/lib/taskboard
 USER node
 EXPOSE 47830
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD node -e "fetch('http://127.0.0.1:47830/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

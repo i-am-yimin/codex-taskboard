@@ -8,7 +8,7 @@ A collaborative task layer for Codex Desktop. Share task intent, progress, and r
 
 ## Getting started
 
-The [step-by-step user manual in README](README.md#使用手册) covers server deployment, installation, sign-in, repository mapping, Codex integration, Agent CLI access, review, upgrades and troubleshooting.
+The [step-by-step user manual in README](README.md#使用手册) covers server deployment, installation, sign-in, repository mapping, Codex integration, Agent CLI access, review, upgrades and troubleshooting. New server deployments can use [prebuilt images, browser setup and host OpenResty](docs/deployment-openresty.md): the application binds to host loopback, secrets persist in a volume, and browser administrators can manage their account, settings and logs. This requires an image built from the new code; the fixed 0.1.1 image does not support managed setup.
 
 1. Obtain a running Taskboard HTTPS server and an administrator-created account or invitation. Installing the desktop app does not create a hosted server or account.
 2. Install the Windows x64 package, verify `SHA256SUMS`, save the server root URL on the sign-in screen, then sign in. The installer bundles Node; system Node and pnpm are not required for desktop use.
@@ -24,12 +24,12 @@ Features include isolated customizable spaces, role-based membership, board and 
 
 ## Compatibility
 
-| Component | Accepted scope |
-| --- | --- |
-| Browser | Chrome; board and list views, cached read-only offline views |
-| Server | Linux amd64 / PostgreSQL 16+; deployment, backup/restore and upgrade rollback; HTTPS with an internal CA |
-| Desktop | Windows x64; two installed applications; unsigned development preview |
-| Codex host | 26.1013.4894.0 checked with 0.1.1; 26.1007.9446.0 full 0.1.0 baseline; unknown versions refused |
+| Component  | Accepted scope                                                                                           |
+| ---------- | -------------------------------------------------------------------------------------------------------- |
+| Browser    | Chrome; board and list views, cached read-only offline views                                             |
+| Server     | Linux amd64 / PostgreSQL 16+; deployment, backup/restore and upgrade rollback; HTTPS with an internal CA |
+| Desktop    | Windows x64; two installed applications; unsigned development preview                                    |
+| Codex host | 26.1013.4894.0 checked with 0.1.1; 26.1007.9446.0 full 0.1.0 baseline; unknown versions refused          |
 
 Acceptance applies to the fixed candidate and the environments recorded in the summary. Later source merges run their own CI. Full Codex conversations are not synchronized across devices. Automatic task scheduling, GitHub data synchronization, and full offline editing are outside the first release.
 

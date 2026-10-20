@@ -22,6 +22,8 @@ import {
 } from '@taskboard/core';
 import { createDatabase, type Database, withTransaction, afterCommit } from './db.ts';
 import type pg from 'pg';
+import { readInstanceSettings, registerInstanceRoutes } from './instance.ts';
+import { RuntimeLogs } from './runtime.ts';
 
 type Auth = {
   id: string;
@@ -42,6 +44,10 @@ type AppOptions = {
   sessionSecret?: string;
   origin?: string;
   logger?: boolean;
+  setupToken?: string;
+  runtimeLogs?: RuntimeLogs;
+  databaseUrl?: string;
+  managedSecrets?: boolean;
 };
 const id = () => randomUUID();
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -51,6 +57,7 @@ const publicPaths = new Set([
   '/api/v1/auth/login',
   '/api/v1/auth/invitations/accept',
   '/api/v1/auth/recovery/complete',
+  '/api/v1/setup',
 ]);
 const defaultStatuses = [
   ['待办', 'todo', '#94a3b8'],
@@ -150,7 +157,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     !/^[a-fA-F0-9]{64}$/.test(options.sessionSecret ?? process.env.SESSION_KEY ?? '')
   )
     throw new Error('SESSION_KEY must be 64 random hexadecimal characters in production');
-  // Caddy is the sole reverse proxy in production. Do not accept arbitrary
+  // A single trusted reverse proxy (Caddy or host OpenResty) fronts production. Do not accept arbitrary
   // truthy values, because trusting client-provided forwarding headers would
   // weaken origin and rate-limit decisions.
   const trustProxy =
@@ -159,20 +166,41 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
       : process.env.TRUST_PROXY === 'loopback'
         ? 'loopback'
         : false;
+  const databaseUrl = options.databaseUrl ?? process.env.DATABASE_URL;
+  const logs =
+    options.runtimeLogs ??
+    new RuntimeLogs([
+      secret,
+      options.setupToken ?? '',
+      databaseUrl ? decodeURIComponent(new URL(databaseUrl).password) : '',
+    ]);
   const app = Fastify({
     trustProxy,
     logger: options.logger
       ? {
+          stream: logs,
+          serializers: {
+            req: (request: { method?: string; url?: string }) => ({
+              method: request.method,
+              url: request.url?.split('?')[0],
+            }),
+          },
           redact: [
             'req.headers.authorization',
             'req.headers.cookie',
             'req.body.password',
             'req.body.token',
+            'req.body.currentPassword',
+            'req.body.newPassword',
           ],
         }
       : false,
   });
   const origin = options.origin ?? process.env.PUBLIC_ORIGIN;
+  const effectiveOrigin = async () => origin ?? (await readInstanceSettings(db)).publicOrigin;
+  app.addHook('onReady', async () => {
+    app.log.level = (await readInstanceSettings(db)).logLevel;
+  });
   const subscribers = new Map<string, Set<(event: unknown) => void>>();
   const closeSubscriptions = new Set<() => void>();
   const recheckSubscriptions = () =>
@@ -222,7 +250,8 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   app.register(rateLimit, { global: true, max: 300, timeWindow: '1 minute' });
   app.addHook('onRequest', async (request, _reply) => {
     if (!request.url.startsWith('/api/')) return;
-    if (origin && request.headers.origin && request.headers.origin !== origin)
+    const expectedOrigin = await effectiveOrigin();
+    if (expectedOrigin && request.headers.origin && request.headers.origin !== expectedOrigin)
       throw new BoardError('ORIGIN_FORBIDDEN', '请求来源不受信任', 403);
     if (publicPaths.has(request.url.split('?')[0])) return;
     const bearer = request.headers.authorization?.match(/^Bearer (.+)$/i)?.[1];
@@ -398,6 +427,17 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     return { fields, values };
   }
 
+  registerInstanceRoutes(app, {
+    db,
+    setupToken: options.setupToken,
+    logs,
+    sessionKey: secret,
+    databaseUrl,
+    managedSecrets: options.managedSecrets ?? false,
+    environmentOrigin: origin,
+    beginWrite: stored,
+    finishWrite: saveIdempotency,
+  });
   app.get('/api/v1/health', async (_request, reply) => {
     await db.query('SELECT 1');
     return ok(reply, { status: 'ok', database: 'ok' });
@@ -443,7 +483,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
         signed: true,
         httpOnly: true,
         sameSite: 'lax',
-        secure: Boolean(origin?.startsWith('https://')),
+        secure: Boolean((await effectiveOrigin())?.startsWith('https://')),
         path: '/',
         maxAge: 60 * 60 * 24 * 30,
       });

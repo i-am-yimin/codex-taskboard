@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { ConnectionSettings } from './ConnectionSettings';
 import { DesktopServerSetup } from './DesktopServerSetup';
+import { ServerAdministration, ServerSetupGate } from './ServerAdministration';
 import {
   api,
   ApiError,
@@ -123,6 +124,7 @@ function App() {
   const [view, setView] = useState<'board' | 'list'>('board');
   const [spaceMenu, setSpaceMenu] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [serverAdmin, setServerAdmin] = useState(location.hash === '#admin');
   const [newTask, setNewTask] = useState(false);
   const [newSpace, setNewSpace] = useState(false);
   const [drawer, setDrawer] = useState<string | null>(null);
@@ -422,12 +424,15 @@ function App() {
   if (
     userQuery.isLoading ||
     (user && spacesQuery.isLoading) ||
-    (!isDemo && userQuery.isFetching && spacesQuery.data?.length === 0)
+    (!isDemo &&
+      userQuery.isFetching &&
+      spacesQuery.data?.length === 0 &&
+      !(serverAdmin && user?.instanceAdmin))
   )
     return <Loading />;
   if (!isDemo && (userQuery.error || !user))
     return (
-      <Onboarding
+      <ServerLogin
         error={
           userQuery.error instanceof ApiError && userQuery.error.status === 401
             ? undefined
@@ -439,14 +444,35 @@ function App() {
     );
   if (location.hash.startsWith('#invite=') || location.hash.startsWith('#recovery='))
     return <Onboarding />;
-  if (!isDemo && spacesQuery.data?.length === 0)
+  if (user?.instanceAdmin && !isDemo && !hasLocalCompanion() && serverAdmin)
     return (
-      <EmptySpace
-        onCreated={(id) => {
-          setSpaceId(id);
-          client.invalidateQueries({ queryKey: ['spaces', user?.id] });
+      <ServerAdministration
+        user={user}
+        onClose={() => {
+          setServerAdmin(false);
+          history.replaceState(null, '', location.pathname + location.search);
         }}
       />
+    );
+  if (!isDemo && spacesQuery.data?.length === 0)
+    return (
+      <>
+        {user?.instanceAdmin && !hasLocalCompanion() && (
+          <button
+            className="button ghost server-management-shortcut"
+            onClick={() => setServerAdmin(true)}
+          >
+            <Settings size={16} />
+            服务器管理
+          </button>
+        )}
+        <EmptySpace
+          onCreated={(id) => {
+            setSpaceId(id);
+            client.invalidateQueries({ queryKey: ['spaces', user?.id] });
+          }}
+        />
+      </>
     );
   if (boardQuery.error)
     return (
@@ -698,6 +724,11 @@ function App() {
       )}
       {settings && (
         <SettingsPanel
+          onServerAdmin={
+            user?.instanceAdmin && !isDemo && !hasLocalCompanion()
+              ? () => setServerAdmin(true)
+              : undefined
+          }
           board={board}
           demo={isDemo}
           offline={readOnlyCached}
@@ -1144,6 +1175,7 @@ function NewTask({
 }
 
 function SettingsPanel({
+  onServerAdmin,
   board,
   demo,
   offline,
@@ -1154,6 +1186,7 @@ function SettingsPanel({
   onNotice,
   onLogout,
 }: {
+  onServerAdmin?: () => void;
   board: Board;
   demo: boolean;
   offline: boolean;
@@ -1196,6 +1229,12 @@ function SettingsPanel({
         </header>
         <div className="settings-body">
           <nav className="settings-nav">
+            {onServerAdmin && (
+              <button onClick={onServerAdmin}>
+                <Settings size={16} />
+                服务器管理
+              </button>
+            )}
             <button
               className={section === 'space' ? 'active' : ''}
               onClick={() => setSection('space')}
@@ -1579,6 +1618,10 @@ function StatusEditor({
   );
 }
 
+function ServerLogin({ error }: { error?: string }) {
+  const login = <Onboarding error={error} />;
+  return hasLocalCompanion() ? login : <ServerSetupGate>{login}</ServerSetupGate>;
+}
 function Onboarding({ error }: { error?: string }) {
   const hash = new URLSearchParams(location.hash.slice(1));
   const inviteToken = hash.get('invite');

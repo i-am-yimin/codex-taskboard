@@ -2,7 +2,7 @@ import EmbeddedPostgres from 'embedded-postgres';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-const databaseDir = resolve('.data/test-postgres');
+const databaseDir = resolve(process.env.TEST_PG_DIR ?? '.data/test-postgres');
 const port = Number(process.env.TEST_PG_PORT ?? 55439);
 const db = new EmbeddedPostgres({
   databaseDir,
@@ -38,9 +38,17 @@ if (process.argv.includes('--serve')) {
   await new Promise(() => {});
 } else {
   try {
+    const args = process.argv.slice(2);
+    const browserTests = args.includes('--playwright');
     const child = spawn(
       process.execPath,
-      [resolve('node_modules/vitest/vitest.mjs'), 'run', ...process.argv.slice(2)],
+      browserTests
+        ? [
+            resolve('node_modules/@playwright/test/cli.js'),
+            'test',
+            ...args.filter((arg) => arg !== '--playwright'),
+          ]
+        : [resolve('node_modules/vitest/vitest.mjs'), 'run', ...args],
       { stdio: 'inherit', env: { ...process.env, TEST_DATABASE_URL: url } },
     );
     process.exitCode = await new Promise<number>((res) =>
