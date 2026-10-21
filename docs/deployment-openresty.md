@@ -1,8 +1,8 @@
 # 预构建镜像与 OpenResty 部署
 
-适用于服务端预览标签 [`vserver-preview-20261020`](https://github.com/i-am-yimin/codex-taskboard/tree/vserver-preview-20261020)，对应镜像 `ghcr.io/i-am-yimin/codex-taskboard:server-5da9dd14eb4b`。该镜像已发布并支持匿名拉取，[发布运行](https://github.com/i-am-yimin/codex-taskboard/actions/runs/39447656205)已通过。固定 `v0.1.1` 的旧镜像不支持这份 Compose。
+适用于服务端预览标签 [`vserver-0.1.2-preview.1`](https://github.com/i-am-yimin/codex-taskboard/tree/vserver-0.1.2-preview.1)，对应镜像 `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1`，支持匿名拉取。服务端版本独立维护在 `apps/server/package.json`，Windows 客户端仍为 `0.1.1`；服务端升级不要求客户端使用相同版本号。固定 `v0.1.1` 的旧镜像不支持这份 Compose。
 
-对应 OCI 索引摘要为 `sha256:2efea053756f59624f7f9d5b95f2671c473a19fa05f2da186e616a633e6d8714`。需要严格固定内容时，可将 Compose 顶部的 `x-app-image` 改为 `ghcr.io/i-am-yimin/codex-taskboard@sha256:2efea053756f59624f7f9d5b95f2671c473a19fa05f2da186e616a633e6d8714`，同时固定 init 和 app 的镜像。
+发布标签按 `server-<服务端版本>` 命名，预览版如 `server-0.1.2-preview.1`，正式版如 `server-0.1.2`。已发布版本不能覆盖；提交号标签仍保留供追溯。OCI 索引摘要见[发布运行摘要](https://github.com/i-am-yimin/codex-taskboard/actions/workflows/publish-server-image.yml)，也可执行 `docker buildx imagetools inspect ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1` 查看。需要严格固定内容时，可将 Compose 顶部的 `x-app-image` 改为 `ghcr.io/i-am-yimin/codex-taskboard@sha256:<发布摘要>`，同时固定 init 和 app 的镜像。
 
 ## 直接使用固定预览镜像
 
@@ -11,9 +11,9 @@
 ```bash
 mkdir taskboard-server-preview
 cd taskboard-server-preview
-curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-preview-20261020/compose.openresty.yaml --output compose.yaml
-curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-preview-20261020/deploy/openresty.conf --output openresty.conf
-printf '%s\n' 'TASKBOARD_VERSION=server-5da9dd14eb4b' 'TASKBOARD_IMAGE=ghcr.io/i-am-yimin/codex-taskboard' 'TASKBOARD_PORT=47830' > .env
+curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.2-preview.1/compose.openresty.yaml --output compose.yaml
+curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.2-preview.1/deploy/openresty.conf --output openresty.conf
+printf '%s\n' 'TASKBOARD_VERSION=server-0.1.2-preview.1' 'TASKBOARD_IMAGE=ghcr.io/i-am-yimin/codex-taskboard' 'TASKBOARD_PORT=47830' > .env
 docker compose pull
 docker compose up -d
 docker compose logs --tail=100 app
@@ -25,11 +25,11 @@ docker compose logs --tail=100 app
 
 构建机器需要 Docker Engine / Docker Desktop 和 Buildx。Windows 构建 Linux 镜像时，Docker Desktop 使用 Linux containers 模式；服务器不需要 Node.js、pnpm、Git 或编译器。
 
-在包含本功能的代码版本、干净的工作区中执行，使用提交号作为固定镜像标签：
+在待发布服务端版本的干净工作区中执行，使用服务端自己的版本号作为镜像标签。发布前递增 `apps/server/package.json` 的版本，不覆盖现有版本标签：
 
 ```bash
 docker login ghcr.io
-taskboard_image_tag="server-$(git rev-parse --short=12 HEAD)"
+taskboard_image_tag="server-$(node -p "require('./apps/server/package.json').version")"
 docker buildx build --platform linux/amd64 \
   -t "ghcr.io/i-am-yimin/codex-taskboard:$taskboard_image_tag" \
   --push .
@@ -40,16 +40,16 @@ PowerShell 对应命令：
 
 ```powershell
 docker login ghcr.io
-$taskboardImageTag = 'server-' + (git rev-parse --short=12 HEAD)
+$taskboardImageTag = 'server-' + (node -p "require('./apps/server/package.json').version")
 docker buildx build --platform linux/amd64 --tag "ghcr.io/i-am-yimin/codex-taskboard:$taskboardImageTag" --push .
 Write-Output "TASKBOARD_VERSION=$taskboardImageTag"
 ```
 
 需要对目标 GHCR 包有写入权限。首次创建的包可能是私有包；如果要让服务器匿名拉取，在 GitHub Package 设置中将包设为 Public。私有分发则在服务器上用有 `read:packages` 权限的账号执行 `docker login ghcr.io`。发布镜像不包含数据库密码、会话密钥或账号。
 
-也可在 GitHub Actions 手动运行 **Publish server image**。该流程仅接受维护者从标签启动，并使用仓库现有的 `release` 环境保护：先创建包含本功能的新标签，将该标签加入环境的允许列表，再选择该标签运行并完成维护者审批。不要移动已有 `v0.1.0` / `v0.1.1` 标签；流程不会自动放宽发布权限。
+也可在 GitHub Actions 手动运行 **Publish server image**。该流程仅接受维护者从 `vserver-<服务端版本>` 标签启动，并校验标签与 `apps/server/package.json` 一致，不能使用客户端的 `v0.1.1` 标签。先创建包含本功能的新服务端标签，将该标签加入现有 `release` 环境的允许列表，再选择该标签运行并完成维护者审批。不要移动已有客户端或服务端标签；流程不会自动放宽发布权限。
 
-流程先验证隔离部署，再推送 `server-<12 位提交号>`，运行摘要给出标签和 digest。它不会创建 GitHub Release，也不会覆盖 `0.1.1` 或 `latest`。长期部署可在 Compose 中把整个 `image:` 固定为流程输出的 `ghcr.io/...@sha256:...`。
+流程检查目标版本尚未发布、验证隔离部署，再同时推送 `server-<服务端版本>` 和 `server-<12 位提交号>`，运行摘要给出两种标签和 digest。同一源码标签的发布会串行执行，已有版本或无法确认镜像是否存在时停止，防止覆盖版本。它不会创建客户端 GitHub Release，也不会发布 `latest`。长期部署可在 Compose 中把整个 `image:` 固定为流程输出的 `ghcr.io/...@sha256:...`。
 
 只构建、不推送时，把 `--push` 改成 `--load`。离线服务器可用 `docker save` / `docker load` 转移镜像，但数据库基础镜像也要提前准备。
 
@@ -62,10 +62,12 @@ CI 的容器测试成功后也会提供 `server-image-preview` artifact，内含
 建立一个独立部署目录，将仓库的 [`compose.openresty.yaml`](../compose.openresty.yaml) 保存为该目录的 **compose.yaml**，将 [`deploy/openresty.env.example`](../deploy/openresty.env.example) 保存为 **.env**，填写刚刚发布成功的镜像标签：
 
 ```dotenv
-TASKBOARD_VERSION=server-5da9dd14eb4b
+TASKBOARD_VERSION=server-0.1.2-preview.1
 TASKBOARD_IMAGE=ghcr.io/i-am-yimin/codex-taskboard
 TASKBOARD_PORT=47830
 ```
+
+这里的 `TASKBOARD_VERSION` 仅选择服务端镜像标签，管理页显示镜像内的真实服务端版本。客户端版本不从此变量读取。
 
 这是新实例部署方式。已有 `0.1.1` 数据卷时，先保留旧 Compose 和备份，不能直接换成此配置：新生成的密码不会修改旧 PostgreSQL 用户密码。旧实例可继续使用原部署方式运行新代码；转换到自动管理密钥需要另行迁移。
 

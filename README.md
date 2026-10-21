@@ -4,7 +4,7 @@
 
 嵌入 Codex 桌面版的任务协作层。把待办、进度与验收放在同一个看板中，让个人多设备和可信团队共享任务；Codex 继续管理原有项目和执行会话。
 
-> 当前源码为 **0.1.1 兼容开发预览**，新增 Codex `26.1013.4894.0` 精确版本支持，标签实际安装包已完成旧版数据升级、侧栏、草稿、正常重启及日常安装升级，见 [0.1.1 验收记录](docs/acceptance-0.1.1.md)。固定 `v0.1.0`（`f6a363e`）的 G0–G4 范围见 [0.1.0 验收摘要](docs/acceptance-0.1.0.md)。**Windows 安装包未签名，发布流程保持草稿预览。**
+> Windows 客户端为 **0.1.1 兼容开发预览**，新增 Codex `26.1013.4894.0` 精确版本支持，标签实际安装包已完成旧版数据升级、侧栏、草稿、正常重启及日常安装升级，见 [0.1.1 验收记录](docs/acceptance-0.1.1.md)。服务端独立发布 **0.1.2-preview.1**，不要求同步升级客户端。固定 `v0.1.0`（`f6a363e`）的 G0–G4 范围见 [0.1.0 验收摘要](docs/acceptance-0.1.0.md)。**Windows 安装包未签名，发布流程保持草稿预览。**
 
 已支持浏览器看板、服务端、随包 CLI/伴随服务，以及经验证 Codex 版本中的侧栏内嵌和项目草稿填写。草稿只填入编辑器，由用户决定是否发送。
 
@@ -20,6 +20,15 @@
 - 浅色、深色、系统主题，中文界面，邀请制自部署。
 
 ## 当前发布状态
+
+服务端与客户端独立维护版本：
+
+| 组件                     | 当前版本          | 发布标识                                                          |
+| ------------------------ | ----------------- | ----------------------------------------------------------------- |
+| 服务端                   | `0.1.2-preview.1` | 镜像 `server-0.1.2-preview.1`，源码标签 `vserver-0.1.2-preview.1` |
+| Windows 客户端 Taskboard | `0.1.1`           | 安装包和源码标签 `v0.1.1`                                         |
+
+服务端版本来自 `apps/server/package.json`；客户端仍沿用原版本文件与发布流程。仅升级其中一端不会自动更改另一端版本，跨端兼容性按 API 和验收记录判断。
 
 **0.1.1 适合个人和可信团队试用，定位为兼容开发预览。** 已完成实际安装升级、侧栏、草稿保护与正常重启保留验证；安装包、Linux 镜像归档、校验和及 GitHub 来源证明已经准备好。GitHub Release 当前仍为草稿，维护者公开发布并标记为 **pre-release** 后，普通访问者才能下载。
 
@@ -119,7 +128,7 @@ Taskboard 共享任务内容与执行摘要，完整 Codex 对话仍留在原来
 
 推荐的新部署方式：**预构建镜像 → 服务器拉取 → `127.0.0.1:47830` → OpenResty HTTPS 反代**。服务器不需要编译代码；首次打开网页创建管理员，数据库密码和会话密钥自动生成并持久保存。管理员登录后可以查看运行状态和日志、修改账号与日志级别，并验证密码查看密钥。
 
-完整步骤及本机 Bash / PowerShell 构建命令见[镜像与 OpenResty 部署手册](docs/deployment-openresty.md)，配置见 [compose.openresty.yaml](compose.openresty.yaml) 和 [OpenResty 片段](deploy/openresty.conf)。服务端预览标签为 [`vserver-preview-20261020`](https://github.com/i-am-yimin/codex-taskboard/tree/vserver-preview-20261020)，镜像已发布到 `ghcr.io/i-am-yimin/codex-taskboard:server-5da9dd14eb4b`，支持匿名拉取。[发布运行](https://github.com/i-am-yimin/codex-taskboard/actions/runs/39447656205)已通过；旧 `0.1.1` 镜像不支持网页初始化。
+完整步骤及本机 Bash / PowerShell 构建命令见[镜像与 OpenResty 部署手册](docs/deployment-openresty.md)，配置见 [compose.openresty.yaml](compose.openresty.yaml) 和 [OpenResty 片段](deploy/openresty.conf)。服务端预览标签为 [`vserver-0.1.2-preview.1`](https://github.com/i-am-yimin/codex-taskboard/tree/vserver-0.1.2-preview.1)，部署镜像为 `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1`，支持匿名拉取；发布结果与摘要见[服务端发布流程](https://github.com/i-am-yimin/codex-taskboard/actions/workflows/publish-server-image.yml)。原提交号镜像保留，旧 `0.1.1` 镜像不支持网页初始化。
 
 新部署目录里将上述配置保存为 `compose.yaml`，将 [openresty.env.example](deploy/openresty.env.example) 保存为 `.env`，其中已填固定镜像版本（可选修改仓库和端口），然后执行：
 

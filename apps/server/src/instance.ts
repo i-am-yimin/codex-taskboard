@@ -6,6 +6,7 @@ import { BoardError } from '@taskboard/core';
 import type { Database } from './db.ts';
 import { afterCommit } from './db.ts';
 import type { RuntimeLogs } from './runtime.ts';
+import serverPackage from '../package.json';
 
 export const instanceSettingsSchema = z
   .object({
@@ -163,7 +164,7 @@ export function registerInstanceRoutes(app: FastifyInstance, options: InstanceOp
       database: { ...database(), status: 'ok' },
       sessionKeyConfigured: Boolean(options.sessionKey),
       uptimeSeconds: Math.floor(process.uptime()),
-      version: process.env.TASKBOARD_VERSION ?? '0.1.1',
+      version: serverPackage.version,
     });
   });
   app.patch('/api/v1/admin/instance', async (request, reply) => {
