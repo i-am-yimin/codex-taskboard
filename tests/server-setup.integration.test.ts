@@ -5,7 +5,7 @@ import { createDatabase, type Database } from '../apps/server/src/db.ts';
 import { migrate } from '../apps/server/src/migrate.ts';
 import { buildApp } from '../apps/server/src/app.ts';
 import { RuntimeLogs } from '../apps/server/src/runtime.ts';
-import serverPackage from '../apps/server/package.json';
+import serverPackage from '../apps/server/package.json' with { type: 'json' };
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 describe.skipIf(!databaseUrl)('browser server initialization and administration', () => {

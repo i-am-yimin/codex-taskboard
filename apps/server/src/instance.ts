@@ -6,7 +6,7 @@ import { BoardError } from '@taskboard/core';
 import type { Database } from './db.ts';
 import { afterCommit } from './db.ts';
 import type { RuntimeLogs } from './runtime.ts';
-import serverPackage from '../package.json';
+import serverPackage from '../package.json' with { type: 'json' };
 
 export const instanceSettingsSchema = z
   .object({
