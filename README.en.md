@@ -4,9 +4,11 @@
 
 A collaborative task layer for Codex Desktop. Share task intent, progress, and review across devices and trusted teams while Codex continues to own local projects and conversations.
 
-**0.1.1 compatibility preview.** The fixed `v0.1.1` package at `c71eb87` passed installed upgrade, sidebar, draft, native restart and daily installation checks with Codex `26.1013.4894.0`; see [0.1.1 acceptance](docs/acceptance-0.1.1.md). The earlier `v0.1.0` / `f6a363e` two-device and deployment baseline remains separately recorded in [0.1.0 acceptance](docs/acceptance-0.1.0.md). **The Windows installer is unsigned; the release remains a draft intended for pre-release distribution.**
+**0.1.1 compatibility preview.** The fixed `v0.1.1` package at `c71eb87` passed installed upgrade, sidebar, draft, native restart and daily installation checks with Codex `26.1013.4894.0`; see [0.1.1 acceptance](docs/acceptance-0.1.1.md). The earlier `v0.1.0` / `f6a363e` two-device and deployment baseline remains separately recorded in [0.1.0 acceptance](docs/acceptance-0.1.0.md). **The Windows installer is unsigned; version 0.1.1 is now a public pre-release.**
 
 ## Getting started
+
+[Download the Windows x64 client 0.1.1](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.1/Codex.Taskboard_0.1.1_x64-setup.exe) (about 24.7 MB) and [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.1/SHA256SUMS), or visit the [release page](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.1). GitHub sign-in is not required. The release was made public on 2026-10-21 with the original verified binaries and source tag.
 
 The server is versioned independently as **0.1.2-preview.1**, published as `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1` from source tag `vserver-0.1.2-preview.1`. Its version comes from `apps/server/package.json`; the Windows Taskboard client remains at **0.1.1** with its existing release process. Updating the server does not change the client version.
 

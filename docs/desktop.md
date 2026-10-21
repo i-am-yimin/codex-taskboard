@@ -1,6 +1,6 @@
 # Windows 桌面版
 
-> 当前状态（2026-10-20）：`v0.1.1` / `c71eb87` 已完成 Codex `26.1013.4894.0` 的标签新包、旧 companion 数据升级及日常安装复验，见 [0.1.1 验收](acceptance-0.1.1.md)。`v0.1.0` / `f6a363e` 的双设备完整基线见 [0.1.0 验收](acceptance-0.1.0.md)。安装器未签名，Release 保持草稿预览。安装、服务器、CLI 登录、Skill 限制和任务流程的逐步操作见 [README 使用手册](../README.md#使用手册)。
+> 当前状态（2026-10-21）：`v0.1.1` / `c71eb87` 已完成 Codex `26.1013.4894.0` 的标签新包、旧 companion 数据升级及日常安装复验，见 [0.1.1 验收](acceptance-0.1.1.md)。[客户端 0.1.1 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.1) 已公开为预发布版，无需登录 GitHub 即可下载，原安装包与来源标签保持不变。`v0.1.0` / `f6a363e` 的双设备完整基线见 [0.1.0 验收](acceptance-0.1.0.md)。安装器仍未签名。安装、服务器、CLI 登录、Skill 限制和任务流程的逐步操作见 [README 使用手册](../README.md#使用手册)。
 
 桌面版是 Windows x64 的 Tauri 启动器。它在当前用户范围安装，使用安装资源目录中自带的 Node 运行时启动本机伴随服务，因此不要求安装系统 Node 或 Codex CLI。共享任务数据存放在服务器；本机凭据和仓库映射保存在 `%APPDATA%\CodexTaskboard`。卸载保留数据并重装恢复已在隔离测试目录实机通过，正式用户目录未参与该试验。
 
