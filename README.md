@@ -4,7 +4,7 @@
 
 嵌入 Codex 桌面版的任务协作层。把待办、进度与验收放在同一个看板中，让个人多设备和可信团队共享任务；Codex 继续管理原有项目和执行会话。
 
-> Windows 客户端为 **0.1.1 兼容开发预览**，新增 Codex `26.1013.4894.0` 精确版本支持，标签实际安装包已完成旧版数据升级、侧栏、草稿、正常重启及日常安装升级，见 [0.1.1 验收记录](docs/acceptance-0.1.1.md)。服务端独立发布 **0.1.2-preview.1**，不要求同步升级客户端。固定 `v0.1.0`（`f6a363e`）的 G0–G4 范围见 [0.1.0 验收摘要](docs/acceptance-0.1.0.md)。**Windows 安装包未签名，发布流程保持草稿预览。**
+> Windows 客户端为 **0.1.1 兼容开发预览**，新增 Codex `26.1013.4894.0` 精确版本支持，标签实际安装包已完成旧版数据升级、侧栏、草稿、正常重启及日常安装升级，见 [0.1.1 验收记录](docs/acceptance-0.1.1.md)。服务端独立发布 **0.1.2-preview.1**，不要求同步升级客户端。固定 `v0.1.0`（`f6a363e`）的 G0–G4 范围见 [0.1.0 验收摘要](docs/acceptance-0.1.0.md)。**Windows 安装包未签名，0.1.1 已公开为预发布版。**
 
 已支持浏览器看板、服务端、随包 CLI/伴随服务，以及经验证 Codex 版本中的侧栏内嵌和项目草稿填写。草稿只填入编辑器，由用户决定是否发送。
 
@@ -30,7 +30,7 @@
 
 服务端版本来自 `apps/server/package.json`；客户端仍沿用原版本文件与发布流程。仅升级其中一端不会自动更改另一端版本，跨端兼容性按 API 和验收记录判断。
 
-**0.1.1 适合个人和可信团队试用，定位为兼容开发预览。** 已完成实际安装升级、侧栏、草稿保护与正常重启保留验证；安装包、Linux 镜像归档、校验和及 GitHub 来源证明已经准备好。GitHub Release 当前仍为草稿，维护者公开发布并标记为 **pre-release** 后，普通访问者才能下载。
+**0.1.1 适合个人和可信团队试用，定位为兼容开发预览。** 已完成实际安装升级、侧栏、草稿保护与正常重启保留验证；安装包、Linux 镜像归档、校验和及 GitHub 来源证明已经准备好。[客户端 0.1.1 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.1) 已于 2026-10-21 公开为 **pre-release**，普通访问者无需登录 GitHub 即可下载。
 
 Windows 安装包未签名；真实公网域名的 HTTPS 部署尚未纳入本轮实测，Skill 的独立环境配对也仍需手动处理。当前不声明面向任意 Codex 版本、无需配置即可使用的稳定版。准备正式稳定版前，应完成真实部署试用、备份恢复演练和首次使用流程，代码签名作为分发改进继续推进。
 
@@ -53,7 +53,7 @@ Taskboard 账号和 Codex 账号分别登录。纯浏览器使用无需安装 Wi
 
 ### 2. 安装并登录 Windows 客户端
 
-1. 从仓库 [Releases](https://github.com/i-am-yimin/codex-taskboard/releases) 获取 0.1.1 的 Windows x64 安装器和 `SHA256SUMS`。若看不到 0.1.1，说明维护者还未公开草稿。GitHub 可能将文件名中的空格改为点号，按内容摘要核验即可。
+1. 下载 [0.1.1 Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.1/Codex.Taskboard_0.1.1_x64-setup.exe)（约 24.7 MB）和 [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.1/SHA256SUMS)，也可从[版本页面](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.1)下载。无需登录 GitHub。GitHub 可能将文件名中的空格改为点号，按内容摘要核验即可。
 2. 核对安装器 SHA-256：`e563c9d8c75e674e821ffe301635aee798ebcb0ff0f7d09a5eb99a82c3625c9a`。PowerShell 可运行 `Get-FileHash -Algorithm SHA256 -LiteralPath '下载文件的完整路径'`。当前文件为 `NotSigned`，系统显示的发布者状态应与此一致。
 3. 安装后从开始菜单打开 **Codex Taskboard**。客户端自带 Node 运行时，普通使用无需安装 Node.js、pnpm 或 Codex CLI。
 4. 在登录页输入服务器根地址，点击“保存服务器”，再填写 Taskboard 邮箱、密码并点击“登录并继续”。密码至少 12 字符。
