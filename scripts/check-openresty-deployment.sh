@@ -32,7 +32,8 @@ token=$(docker compose exec -T app node -e "process.stdout.write(require('fs').r
 payload=$(jq -n --arg token "$token" --arg origin "http://127.0.0.1:$TASKBOARD_PORT" '{token:$token,publicOrigin:$origin,email:"managed@example.test",name:"Managed Owner",password:"managed-test-password-2026"}')
 curlx -X POST "$api/setup" -H 'content-type: application/json' --data "$payload" | jq -e '.data.initialized==true' >/dev/null
 curlx -X POST "$api/auth/login" -H 'content-type: application/json' --cookie-jar "$artifacts/session.cookie" --data '{"email":"managed@example.test","password":"managed-test-password-2026"}' >/dev/null
-curlx "$api/admin/instance" --cookie "$artifacts/session.cookie" | jq -e '.data.database.managed==true and .data.database.status=="ok"' >/dev/null
+server_version=$(node -p "require('./apps/server/package.json').version")
+curlx "$api/admin/instance" --cookie "$artifacts/session.cookie" | jq -e --arg version "$server_version" '.data.database.managed==true and .data.database.status=="ok" and .data.version==$version' >/dev/null
 curlx "$api/admin/logs" --cookie "$artifacts/session.cookie" | jq -e '.data.entries | length>0' >/dev/null
 database_secret=$(docker compose exec -T app node -e "process.stdout.write(require('fs').readFileSync('/var/lib/taskboard/postgres-password','utf8'))")
 # The API's direct host port must be loopback-only; PostgreSQL has no published port.

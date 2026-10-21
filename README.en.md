@@ -8,6 +8,8 @@ A collaborative task layer for Codex Desktop. Share task intent, progress, and r
 
 ## Getting started
 
+The server is versioned independently as **0.1.2-preview.1**, published as `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1` from source tag `vserver-0.1.2-preview.1`. Its version comes from `apps/server/package.json`; the Windows Taskboard client remains at **0.1.1** with its existing release process. Updating the server does not change the client version.
+
 The [step-by-step user manual in README](README.md#使用手册) covers server deployment, installation, sign-in, repository mapping, Codex integration, Agent CLI access, review, upgrades and troubleshooting. New server deployments can use [prebuilt images, browser setup and host OpenResty](docs/deployment-openresty.md): the application binds to host loopback, secrets persist in a volume, and browser administrators can manage their account, settings and logs. This requires an image built from the new code; the fixed 0.1.1 image does not support managed setup.
 
 1. Obtain a running Taskboard HTTPS server and an administrator-created account or invitation. Installing the desktop app does not create a hosted server or account.

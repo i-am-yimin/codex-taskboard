@@ -37,7 +37,6 @@ services:
     image: *app-image
     environment:
       TASKBOARD_STATE_DIR: /var/lib/taskboard
-      TASKBOARD_VERSION: ${TASKBOARD_VERSION}
       HOST: 0.0.0.0
       PORT: 47830
       TRUST_PROXY: '1'
