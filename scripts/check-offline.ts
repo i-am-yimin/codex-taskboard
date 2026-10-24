@@ -60,7 +60,10 @@ try {
   // A fixed port can already be an outgoing socket's ephemeral port on CI.
   // Keep this profile's origin stable across restarts without sharing a port.
   origin = await app.listen({ host: '127.0.0.1', port: 0 });
-  await db.query('UPDATE instance_settings SET public_origin = $1 WHERE id = 1', [origin]);
+  await db.query(
+    "INSERT INTO instance_settings(id,public_origin,log_level) VALUES (1,$1,'info') ON CONFLICT(id) DO UPDATE SET public_origin=excluded.public_origin",
+    [origin],
+  );
   const launch = (offline: boolean) =>
     chromium.launchPersistentContext(profile, {
       channel: process.env.CI ? undefined : 'chrome',
