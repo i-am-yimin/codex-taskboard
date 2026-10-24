@@ -1,6 +1,6 @@
 # 预构建镜像与 OpenResty 部署
 
-适用于服务端预览标签 [`vserver-0.1.2-preview.1`](https://github.com/i-am-yimin/codex-taskboard/tree/vserver-0.1.2-preview.1)，对应镜像 `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1`，支持匿名拉取。服务端版本独立维护在 `apps/server/package.json`，Windows 客户端仍为 `0.1.1`；服务端升级不要求客户端使用相同版本号。固定 `v0.1.1` 的旧镜像不支持这份 Compose。
+适用于服务端预览标签 [`vserver-0.1.2-preview.1`](https://github.com/i-am-yimin/codex-taskboard/tree/vserver-0.1.2-preview.1)，对应镜像 `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1`，支持匿名拉取。服务端版本独立维护在 `apps/server/package.json`，当前 Windows 客户端与操作说明见[使用手册](user-guide.md)；两端版本号无需相同，实际兼容范围以验收记录为准。固定 `v0.1.1` 的旧镜像不支持这份 Compose。
 
 发布标签按 `server-<服务端版本>` 命名，预览版如 `server-0.1.2-preview.1`，正式版如 `server-0.1.2`。已发布版本不能覆盖；提交号标签仍保留供追溯。OCI 索引摘要见[发布运行摘要](https://github.com/i-am-yimin/codex-taskboard/actions/workflows/publish-server-image.yml)，也可执行 `docker buildx imagetools inspect ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1` 查看。需要严格固定内容时，可将 Compose 顶部的 `x-app-image` 改为 `ghcr.io/i-am-yimin/codex-taskboard@sha256:<发布摘要>`，同时固定 init 和 app 的镜像。
 

@@ -1,6 +1,6 @@
 # Codex Taskboard
 
-[简体中文](README.md) · [Changelog](CHANGELOG.md) · [Development standards](CONTRIBUTING.md) · [Handoff](HANDOFF.md) · [Architecture](docs/architecture.md) · [Deployment](docs/deployment.md) · [Acceptance record](docs/acceptance.md)
+[简体中文](README.md) · [User guide (Chinese)](docs/user-guide.md) · [Deployment](docs/deployment-openresty.md) · [Changelog](CHANGELOG.md) · [Development standards](CONTRIBUTING.md) · [Architecture](docs/architecture.md) · [Acceptance record](docs/acceptance.md)
 
 A collaborative task layer for Codex Desktop. Share task intent, progress, and review across devices and trusted teams while Codex continues to own local projects and conversations.
 
@@ -12,13 +12,13 @@ A collaborative task layer for Codex Desktop. Share task intent, progress, and r
 
 The server is versioned independently as **0.1.2-preview.1**, published as `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1` from source tag `vserver-0.1.2-preview.1`. Its version comes from `apps/server/package.json`; the Windows Taskboard client is **0.1.4** with its existing release process. Updating the server does not change the client version.
 
-The [step-by-step user manual in README](README.md#使用手册) covers server deployment, installation, sign-in, repository mapping, Codex integration, Agent CLI access, review, upgrades and troubleshooting. New server deployments can use [prebuilt images, browser setup and host OpenResty](docs/deployment-openresty.md): the application binds to host loopback, secrets persist in a volume, and browser administrators can manage their account, settings and logs. This requires an image built from the new code; the fixed 0.1.1 image does not support managed setup.
+The [user guide (Chinese)](docs/user-guide.md) covers installation, sign-in, repository mapping, Codex integration, manual execution and review, optional CLI access, upgrades and troubleshooting. Deploy the server with [Docker Compose and OpenResty HTTPS](docs/deployment-openresty.md), then use its root URL in each client. The desktop installer does not provide a hosted server or account.
 
 1. Obtain a running Taskboard HTTPS server and an administrator-created account or invitation. Installing the desktop app does not create a hosted server or account.
 2. Install the Windows x64 package, verify `SHA256SUMS`, save the server root URL on the sign-in screen, then sign in. The installer bundles Node; system Node and pnpm are not required for desktop use.
 3. Map the repository to an existing local folder. Click “连接 Codex” in the main Taskboard window to connect or open your normal Codex environment. If the running Codex has not enabled connection, save your work and normally exit it once; Taskboard waits and continues automatically. No special shortcut is required. After success, ordinary Taskboard startup restores the sidebar; Settings → Connections and devices can disable this preference. Manual connection preserves an explicitly disabled choice.
 4. Agent writes require a separate bundled CLI login. The default Skill installer does not automatically pair the isolated Codex environment; its inherited `TASKBOARD_*` variables are removed. Follow the manual's absolute CLI/Skill path instructions rather than assuming the default Skill wrapper works.
-5. In daily mode, copy the task draft and paste it into the intended Codex project, review it, and send it yourself. The independent test environment retains automatic draft filling. Reading and atomically claiming precede Agent work; submitted results require human acceptance. Draft creation does not send a message or claim a task.
+5. For the manual workflow, claim the task, manually copy its title, requirements and acceptance criteria to the intended Codex project, then review and send. Daily mode has no automatic draft insertion or one-click draft/UUID copy. CLI automation requires known full task IDs and a separate login; do not also claim the same task manually. The independent test environment retains automatic unsent draft filling. Results require human acceptance.
 
 Offline views are cached read-only data, not a complete offline task manager. Use the same reachable server across devices, with a local project mapping and CLI login on each. The client release workflow distributes a Linux Docker archive; the independently versioned server image is published separately.
 

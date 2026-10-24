@@ -1,6 +1,6 @@
 # Windows 桌面版
 
-> 当前状态（2026-10-24）：[客户端 0.1.4 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.4) 已公开为未签名预发布。固定标签 `v0.1.4` / `a8ed9f4` 的实际安装包通过应用内连接、自动恢复、连续打开及原数据保留验收，见 [0.1.4 验收](acceptance-0.1.4.md)。操作见 [README 使用手册](../README.md#使用手册)。
+> 当前状态（2026-10-24）：[客户端 0.1.4 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.4) 已公开为未签名预发布。固定标签 `v0.1.4` / `a8ed9f4` 的实际安装包通过应用内连接、自动恢复、连续打开及原数据保留验收，见 [0.1.4 验收](acceptance-0.1.4.md)。安装与操作见[使用手册](user-guide.md)；本页保留桌面技术说明与历史验证。
 
 桌面版是 Windows x64 的 Tauri 启动器。它在当前用户范围安装，使用安装资源目录中自带的 Node 运行时启动本机伴随服务，因此不要求安装系统 Node 或 Codex CLI。共享任务数据存放在服务器；本机凭据和仓库映射保存在 `%APPDATA%\CodexTaskboard`。卸载保留数据并重装恢复已在隔离测试目录实机通过，正式用户目录未参与该试验。
 
@@ -28,13 +28,7 @@ apps\desktop\runtime\taskctl.cmd --help
 
 PowerShell 调用 `.cmd` 并传入 JSON 时，CMD 会剥离参数内的双引号。`create`、`update` 等 JSON 写操作请直接调用同目录的随包 `node.exe` 和 `taskctl.cjs`，例如 `& "$runtime\node.exe" "$runtime\taskctl.cjs" create $spaceId $payloadJson`；这样 PowerShell 会保留 JSON 参数。`$runtime` 为安装目录中的 `runtime` 路径。
 
-浏览器与 Agent 使用独立会话。首次使用 CLI，先启动伴随服务，再通过标准输入登录（密码不会成为进程参数）：
-
-```powershell
-$taskboardPassword = Read-Host 'Taskboard 密码' -AsSecureString
-[System.Net.NetworkCredential]::new('', $taskboardPassword).Password | apps\desktop\runtime\taskctl.cmd login owner@example.com
-Remove-Variable taskboardPassword
-```
+浏览器与 Agent 使用独立会话。已安装版 CLI 登录使用实际安装目录下的 `runtime\taskctl.cmd`，保持 Taskboard 运行，并通过标准输入传密码；路径示例和 Windows PowerShell UTF-8 处理统一见[使用手册的 Agent CLI 说明](user-guide.md#agent-cli)。
 
 已验收安装包的桌面登录页提供“任务看板服务器”设置：输入服务器根地址（例如 `https://taskboard.example.com`），点击“保存服务器”，再使用管理员创建或邀请获得的账号登录。其他设备填写相同地址即可连接同一实例；成员只能看到获授权的空间。保存地址本身不会验证远程连接，实际连通性和账号验证在登录时完成。
 
@@ -46,7 +40,7 @@ Remove-Variable taskboardPassword
 
 `runtime\install-taskboard-skill.cmd` 是明确的 Skill 安装操作。它只在 `%USERPROFILE%\.codex\skills\taskboard` 不存在时复制随包 Skill；如果同名用户 Skill 已存在，它会退出而不会覆盖。
 
-该脚本不自动配置独立 Codex 的数据目录。当前独立启动器会移除继承的 `TASKBOARD_*` 环境变量，因此默认 Skill wrapper 所需的 `TASKBOARD_TASKBOARD_RUNTIME` 不保证存在；仅运行脚本或重启窗口不能证明配对成功。可让 Agent 读取随包 `runtime\skills\taskboard\SKILL.md`，并明确使用 `runtime\taskctl.cmd` 的绝对路径，操作范例见 [README 第 4 步](../README.md#4-配置-agent-的任务读写)。本轮未验证 Skill 自动发现与 Agent 自动执行，一键配对应在后续版本补齐。
+该脚本不自动配置独立 Codex 的数据目录。当前独立启动器会移除继承的 `TASKBOARD_*` 环境变量，因此默认 Skill wrapper 所需的 `TASKBOARD_TASKBOARD_RUNTIME` 不保证存在；仅运行脚本或重启窗口不能证明配对成功。可让 Agent 读取随包 `runtime\skills\taskboard\SKILL.md`，并明确使用 `runtime\taskctl.cmd` 的绝对路径。完整任务 UUID 与配对限制见[使用手册](user-guide.md#agent-cli)。本轮未验证 Skill 自动发现与 Agent 自动执行，一键配对应在后续版本补齐。
 
 ## Codex 桌面集成状态
 
