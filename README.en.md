@@ -1,6 +1,6 @@
 # Codex Taskboard
 
-[简体中文](README.md) · [Changelog](CHANGELOG.md) · [Handoff](HANDOFF.md) · [Architecture](docs/architecture.md) · [Deployment](docs/deployment.md) · [Acceptance record](docs/acceptance.md)
+[简体中文](README.md) · [Changelog](CHANGELOG.md) · [Development standards](CONTRIBUTING.md) · [Handoff](HANDOFF.md) · [Architecture](docs/architecture.md) · [Deployment](docs/deployment.md) · [Acceptance record](docs/acceptance.md)
 
 A collaborative task layer for Codex Desktop. Share task intent, progress, and review across devices and trusted teams while Codex continues to own local projects and conversations.
 
