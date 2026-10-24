@@ -1,238 +1,91 @@
 # Codex Taskboard
 
-[使用手册](#使用手册) · [更新日志](CHANGELOG.md) · [开发规范](CONTRIBUTING.md) · [服务端部署](#部署服务端) · [常见问题](#常见问题) · [English](README.en.md) · [架构](docs/architecture.md) · [开发](docs/development.md) · [验收记录](docs/acceptance.md)
+嵌入 Codex 侧栏的任务看板。共享待办、进度和验收，保留原有项目与聊天，适合个人多设备和可信团队协作。
 
-嵌入 Codex 桌面版的任务协作层。把待办、进度与验收放在同一个看板中，让个人多设备和可信团队共享任务；Codex 继续管理原有项目和执行会话。
+[下载 0.1.4](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.4) · [使用手册](docs/user-guide.md) · [服务端部署](docs/deployment-openresty.md) · [更新日志](CHANGELOG.md) · [English](README.en.md)
 
-> Windows 客户端为 **0.1.4 应用内接入开发预览**，可沿用日常 Codex 的登录、项目和会话，精确支持 `26.1016.8622.0`。固定标签安装包已完成实际升级、应用内连接、自动恢复、连续打开及同进程重连验收，见 [0.1.4 验收记录](docs/acceptance-0.1.4.md)。服务端独立保持 **0.1.2-preview.1**。**Windows 安装包未签名，0.1.4 已公开为预发布版。**
+![看板预览](docs/screenshots/board-light.png)
 
-已支持浏览器看板、服务端、随包 CLI/伴随服务，以及经验证 Codex 版本中的侧栏内嵌。日常模式由用户复制、粘贴任务草稿；独立测试环境保留自动填写，均由用户决定是否发送。
+## 产品功能
 
-![看板浅色预览](docs/screenshots/board-light.png)
+- **任务管理**：工作与个人空间、看板与列表、优先级、检查清单、评论和活动记录。
+- **协作验收**：成员角色控制访问，领取任务、提交结果、人工验收，多设备同步进度。
+- **日常 Codex 接入**：在 Taskboard 内连接或打开原环境，保留登录、项目与聊天，成功后可随 Taskboard 启动恢复侧栏。
+- **任务执行**：日常模式手动复制需求到 Codex；随包 CLI 可另行登录后读取、领取和回写。独立测试环境保留自动草稿能力。
+- **离线浏览**：查看已缓存任务、保留本机草稿，联网后再保存；支持浅色、深色和系统主题。
 
-## 功能
-
-- 自定义工作/个人空间、任务状态列与成员权限。
-- 看板、列表、Markdown 详情、评论、检查清单和活动记录。
-- PostgreSQL 集中存储，按空间实时通知，版本冲突提示和幂等提交。
-- 通过 Skill + `taskctl` 领取、回写和提交验收；桌面可打开项目并填写未发送草稿，能力或目标身份未验证时明确停止。
-- 每台设备独立映射已有项目目录；任务可关联多次执行会话。
-- 浅色、深色、系统主题，中文界面，邀请制自部署。
-
-## 当前发布状态
-
-服务端与客户端独立维护版本：
-
-| 组件                     | 当前版本          | 发布标识                                                          |
-| ------------------------ | ----------------- | ----------------------------------------------------------------- |
-| 服务端                   | `0.1.2-preview.1` | 镜像 `server-0.1.2-preview.1`，源码标签 `vserver-0.1.2-preview.1` |
-| Windows 客户端 Taskboard | `0.1.4`           | 安装包和源码标签 `v0.1.4`                                         |
-
-服务端版本来自 `apps/server/package.json`；客户端仍沿用原版本文件与发布流程。仅升级其中一端不会自动更改另一端版本，跨端兼容性按 API 和验收记录判断。
-
-**0.1.4 适合个人和可信团队试用，定位为应用内接入开发预览。** [客户端 0.1.4 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.4) 已公开为 **pre-release**，普通访问者无需登录 GitHub 即可下载。固定标签安装器、校验和、GitHub 来源证明及实际升级验收均已通过；旧版标签与资产保持。
-
-Windows 安装包未签名；真实公网域名的 HTTPS 部署尚未纳入本轮实测，Skill 的独立环境配对也仍需手动处理。当前不声明面向任意 Codex 版本、无需配置即可使用的稳定版。准备正式稳定版前，应完成真实部署试用、备份恢复演练和首次使用流程，代码签名作为分发改进继续推进。
-
-| 你要做什么          | 需要准备什么                                                        |
-| ------------------- | ------------------------------------------------------------------- |
-| 只看界面            | [源码交互演示](#只预览界面与开发运行)，无需账号和服务器             |
-| 浏览器管理任务      | 一台运行 Taskboard 的服务器、HTTPS 地址及 Taskboard 账号            |
-| Windows 内嵌 Codex  | 上述服务，再加 Windows x64 客户端、已验证版本的 Codex、本机已有项目 |
-| 让 Agent 领取与回写 | 保持 Windows 客户端运行，另行登录随包 CLI，按下文配置调用路径       |
+Windows 客户端为 **0.1.4 未签名预发布版**，日常 Codex 本轮精确验收版本为 `26.1016.8622.0`。服务端独立保持 `0.1.2-preview.1`。当前不提供完整离线编辑、自动发送消息、完整聊天同步、历史会话跳转或 GitHub 自动同步。
 
 ## 使用手册
 
-Taskboard 包含**共享服务端**和**每台设备的客户端**。服务端保存任务、成员与执行摘要；Windows 客户端连接服务端并接入本机 Codex。安装一个 `.exe` 不会自动提供云服务器，也不会获得 Taskboard 账号。
+快速使用分为六步，详细操作与故障处理见[完整使用手册](docs/user-guide.md)。安装客户端不会创建云服务器或 Taskboard 账号。
 
 ### 1. 准备服务器和账号
 
-已有管理员提供的服务器时，取得类似 `https://board.your-domain.com` 的根地址、账号或邀请链接，直接进入第 2 步。自行使用则先按[部署服务端](#部署服务端)启动一个长期运行的实例，创建首个管理员，再在浏览器中登录并创建空间。默认没有公开注册。
-
-Taskboard 账号和 Codex 账号分别登录。纯浏览器使用无需安装 Windows 客户端；用同一 HTTPS 地址即可管理任务，但浏览器不负责接入本机 Codex。
+向管理员取得 HTTPS 根地址和 Taskboard 账号，或先在浏览器接受邀请。自行使用时按下方部署服务，创建首个管理员。Taskboard 与 Codex 分别登录。
 
 ### 2. 安装并登录 Windows 客户端
 
-1. 下载 [0.1.4 Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/Codex.Taskboard_0.1.4_x64-setup.exe)（约 24.7 MB）和 [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/SHA256SUMS)，也可从[版本页面](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.4)下载。无需登录 GitHub。GitHub 可能将文件名中的空格改为点号，按内容摘要核验即可。
-2. 核对安装器 SHA-256：`317fbaef9e25b36d29b0dbcf16d7abb191f5e2d17f609998aabb1523f9314db0`。PowerShell 可运行 `Get-FileHash -Algorithm SHA256 -LiteralPath '下载文件的完整路径'`。当前文件为 `NotSigned`，系统显示的发布者状态应与此一致。
-3. 安装后从开始菜单打开 **Codex Taskboard**。客户端自带 Node 运行时，普通使用无需安装 Node.js、pnpm 或 Codex CLI。
-4. 在登录页输入服务器根地址，点击“保存服务器”，再填写 Taskboard 邮箱、密码并点击“登录并继续”。密码至少 12 字符。
-5. 进入空间，确认右上角显示“已同步”，再开始新建或修改真实任务。
-
-地址使用 HTTPS，不加 `/api/v1`、子路径、查询参数或片段。本机开发可使用 `http://127.0.0.1:47830`；另一台设备上的 `127.0.0.1` 指向它自己，应使用共同可达的 HTTPS 地址。
+下载 [Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/Codex.Taskboard_0.1.4_x64-setup.exe)并核对[校验和](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/SHA256SUMS)。安装后打开 **Codex Taskboard**，填写 HTTPS 根地址并点“保存服务器”，再点“登录并继续”。看到“已同步”后再修改任务，无需另装 Node.js、pnpm 或 Codex CLI。
 
 ### 3. 连接本机项目与 Codex
 
-1. 先把项目准备到本机已有目录，例如 `D:\work\my-project`。在“设置”→“连接与设备”的“本机仓库映射”保存任务仓库和本机目录，供 CLI 与任务工作流使用。
-2. 在 Taskboard 主界面点击 **“连接 Codex”**。已经启用连接的日常 Codex 会被直接接入；没有运行时，由 Taskboard 打开日常环境，沿用原登录、项目和聊天。
-3. 已经打开但尚未启用连接时，Taskboard 会等待你保存工作并正常退出 Codex，然后自动继续。首次正常重开一次后即可使用；等待可取消，无需创建或使用连接快捷方式。
-4. Codex 左侧出现 **“任务看板”** 后，点击可切换到看板。Taskboard 的按钮变为 **“打开 Codex”**，可以恢复最小化或隐藏的原窗口。首次成功后记住自动连接选择，之后普通启动 Taskboard 即可恢复侧栏；可在“设置 → 连接与设备”关闭。显式关闭后手动连接也保留该选择。
-5. 日常模式的任务草稿使用复制、手动粘贴，由你确认项目、内容并发送。**“独立测试环境”** 折叠项保留独立目录和自动草稿能力，用于兼容测试。
+在“设置 → 连接与设备”保存已有项目的仓库映射，再从主界面点击 **“连接 Codex”**。已运行但未启用连接时，保存工作并正常退出 Codex 一次，Taskboard 等待后自动继续。看到 Codex 侧栏的“任务看板”即接入成功，无需专用快捷方式。
 
-关闭 Taskboard 窗口会收起到托盘；从托盘退出后 Codex 继续运行。程序不复制 Codex 认证资料，不改写安装文件；未知宿主版本或身份校验失败时停止接入。若从其他入口启动了未启用连接的 Codex，仍需按应用内提示正常退出一次。详细流程见[应用内接入说明](docs/in-app-codex-connection.md)，身份边界见 [ADR 0004](docs/adr/0004-daily-codex-connection.md)。
+首次成功后普通启动 Taskboard 可恢复侧栏；设置中可关闭自动连接。主界面的 **“打开 Codex”** 可返回原窗口。
 
 ### 4. 配置 Agent 的任务读写
 
-**看板登录与 CLI 登录相互独立。** 只浏览任务、手动编辑或填写 Codex 草稿时可跳过本步；让 Agent 真正领取、评论和提交结果前，需要在同一 Windows 用户下完成 CLI 登录。
-
-在 PowerShell 执行下面示例，把 `$taskboardRuntime` 换成实际安装目录下的 `runtime`，邮箱换成自己的 Taskboard 邮箱。保持客户端运行。示例通过标准输入传密码，并临时使用 UTF-8 兼容 Windows PowerShell 5：
-
-```powershell
-$taskboardRuntime = 'G:\codex-taskboard\Codex Taskboard\runtime'
-$taskboardCli = Join-Path $taskboardRuntime 'taskctl.cmd'
-$taskboardPassword = Read-Host 'Taskboard 密码' -AsSecureString
-$taskboardPreviousEncoding = $OutputEncoding
-try {
-    $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-    [System.Net.NetworkCredential]::new('', $taskboardPassword).Password |
-        & $taskboardCli login 'you@your-domain.com'
-} finally {
-    $OutputEncoding = $taskboardPreviousEncoding
-    Remove-Variable taskboardPassword
-}
-```
-
-成功后可用 `& $taskboardCli --help` 查看命令。读取一张任务使用 `get <任务UUID>`；完整 UUID 在“在 Codex 中打开”产生的草稿首行中，`TB-1` 这类展示编号不能代替 UUID。
-
-**Skill 配对限制：** 随包 `install-taskboard-skill.cmd` 只写入默认 `%USERPROFILE%\.codex\skills\taskboard` 并设置用户环境变量；它不自动配置独立 Codex。独立启动器还会清理继承的 `TASKBOARD_*` 变量，因此不能假设该窗口中的 Skill wrapper 已完成配对。本版可直接调用随包 CLI：在任务草稿后追加下面说明，替换其中安装路径，再由你检查并发送：
-
-```text
-请先读取 G:\codex-taskboard\Codex Taskboard\runtime\skills\taskboard\SKILL.md。
-本机 CLI 是 G:\codex-taskboard\Codex Taskboard\runtime\taskctl.cmd，
-请用这个绝对路径调用，不依赖 Skill 中的相对 wrapper 或配对环境变量。
-先 get 核对任务与当前版本，再用当前 CODEX_THREAD_ID 领取，
-完成工作和验证后提交摘要与验证记录，交给我验收。
-```
-
-这条手动配置路线依据随包命令接口；本轮 0.1.1 实机验收覆盖了侧栏和草稿，没有新增验证 Skill 自动发现或 Agent 自动执行。后续版本应补齐独立环境的一键配对。自行安装项目级 Skill 可参考 [OpenAI 官方 Skill 文档](https://learn.chatgpt.com/docs/build-skills)，并先确认当前 Codex 确实已加载该 Skill。
+这是可选步骤。看板与 CLI 独立登录；需要 Agent 自动领取或回写时，按[手册的 Agent CLI 说明](docs/user-guide.md#agent-cli)配置随包 CLI，并确认完整任务 UUID。只做手动执行和验收可跳过。
 
 ### 5. 从任务到完成
 
-1. 在看板中新建任务，填写标题、描述、优先级、验收要求及仓库地址，保存。
-2. 打开任务详情，点击“在 Codex 中打开”。它只把任务填成未发送草稿，不会自动领取，也不会发送消息。
-3. 核对目标项目和草稿，按上一节提供 CLI 路径，然后由你发送。Agent 应读取最新任务、原子领取，工作中回写进度，完成后提交摘要与验证记录。
-4. 任务进入“待验收”后，查看改动和验证结果，再点击“验收并完成”。也可手动使用“领取任务”和“提交结果至待验收”管理流程；同一任务只选择一个执行者，避免重复领取。
-5. 如出现版本冲突，先保留草稿并读取最新任务，合并后再保存；不要直接覆盖其他设备的修改。
-
-Taskboard 共享任务内容与执行摘要，完整 Codex 对话仍留在原来的 Codex 环境中，不会跨设备复制。打开历史会话的 `openThread` 当前不可用。
+新建并保存需求与验收条件 → 领取 → 手动复制需求到正确的 Codex 项目并确认发送 → 回看板提交完成说明与验证记录 → 人工“验收并完成”。日常模式不会自动填写草稿，“在 Codex 中打开”不会自动领取或发送消息。
 
 ### 6. 多设备、退出与升级
 
-多台设备使用同一服务器地址；同一人可登录自己的账号，不同成员使用邀请获得的独立账号。每台设备分别准备项目目录并保存本机映射，Agent CLI 也分别登录。成员只能访问获授权的空间。
-
-断网后可查看此前已缓存的任务，界面显示“离线缓存”；新建、领取和在线保存暂停，本机草稿不代表已同步。恢复联网后重新核验权限。没有服务器时不能把客户端当成完整离线任务工具。
-
-关闭窗口会收至系统托盘；需要彻底退出时，从托盘菜单选择“退出”。升级前先处理未同步工作、正常退出独立 Codex 和 Taskboard，并备份 `%APPDATA%\CodexTaskboard` 及原安装目录，再运行新安装器。此数据目录包含凭据，应保存在本机受保护位置。服务端数据库需[单独备份](docs/deployment.md#备份与恢复)，客户端备份不能替代服务器备份。
+各设备登录同一服务器，分别保存本机项目映射。关闭窗口只会收至托盘；彻底退出使用托盘菜单。升级前保存工作、退出 Taskboard 并备份本机数据，已启用连接的日常 Codex 可保持打开。离线、更换服务器及备份细节见[完整使用手册](docs/user-guide.md)。
 
 ## 部署服务端
 
-推荐的新部署方式：**预构建镜像 → 服务器拉取 → `127.0.0.1:47830` → OpenResty HTTPS 反代**。服务器不需要编译代码；首次打开网页创建管理员，数据库密码和会话密钥自动生成并持久保存。管理员登录后可以查看运行状态和日志、修改账号与日志级别，并验证密码查看密钥。
-
-完整步骤及本机 Bash / PowerShell 构建命令见[镜像与 OpenResty 部署手册](docs/deployment-openresty.md)，配置见 [compose.openresty.yaml](compose.openresty.yaml) 和 [OpenResty 片段](deploy/openresty.conf)。服务端预览标签为 [`vserver-0.1.2-preview.1`](https://github.com/i-am-yimin/codex-taskboard/tree/vserver-0.1.2-preview.1)，部署镜像为 `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1`，支持匿名拉取；发布结果与摘要见[服务端发布流程](https://github.com/i-am-yimin/codex-taskboard/actions/workflows/publish-server-image.yml)。原提交号镜像保留，旧 `0.1.1` 镜像不支持网页初始化。
-
-新部署目录里将上述配置保存为 `compose.yaml`，将 [openresty.env.example](deploy/openresty.env.example) 保存为 `.env`，其中已填固定镜像版本（可选修改仓库和端口），然后执行：
+推荐 **Linux amd64 + Docker Compose + OpenResty HTTPS**。以下在 Linux Bash 的新目录中使用已发布镜像，无需在服务器编译代码：
 
 ```bash
+mkdir taskboard-server
+cd taskboard-server
+curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.2-preview.1/compose.openresty.yaml --output compose.yaml
+curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.2-preview.1/deploy/openresty.conf --output openresty.conf
+printf '%s\n' 'TASKBOARD_VERSION=server-0.1.2-preview.1' 'TASKBOARD_IMAGE=ghcr.io/i-am-yimin/codex-taskboard' 'TASKBOARD_PORT=47830' > .env
 docker compose pull
 docker compose up -d
-docker compose logs app
+docker compose logs --tail=100 app
 ```
 
-配置 OpenResty 后打开 HTTPS 域名，输入日志中的一次性初始化口令并创建管理员。数据库密钥在登录前由容器准备，登录后可以验证查看，页面不直接更改数据库密码。既有 `0.1.1` 数据卷不能直接换用自动生成密码的新配置，迁移说明见上述手册。
+把 `openresty.conf` 的 `location /` 加入同机 OpenResty 的 HTTPS 域名配置，检查并重载。打开域名，用日志中的初始化口令创建首个管理员，再把根地址交给客户端。服务仅绑定宿主机回环 `127.0.0.1:47830`，PostgreSQL 不对外发布端口。
 
-### 旧 0.1.1 / Caddy 部署方式
-
-适合维护者在 Linux amd64 上自部署。需要 Docker Engine、Compose plugin、域名及其 DNS 指向服务器，开放 80/443；PostgreSQL 不向公网映射端口。完整备份、升级和回滚步骤见[部署文档](docs/deployment.md)。
-
-以下在服务器的 Bash 中执行，从固定 0.1.1 源码构建。已有仓库时另选新目录，避免覆盖正在运行的部署：
-
-```bash
-git clone --branch v0.1.1 --depth 1 https://github.com/i-am-yimin/codex-taskboard.git taskboard-0.1.1
-cd taskboard-0.1.1
-cp .env.example .env
-chmod 600 .env
-```
-
-编辑 `.env`，至少设置以下三项，均不要保留示例值：
-
-| 变量                | 内容                                                                  |
-| ------------------- | --------------------------------------------------------------------- |
-| `DOMAIN`            | 已指向服务器的域名，例如 `board.your-domain.com`，不带 `https://`     |
-| `POSTGRES_PASSWORD` | 数据库随机密码；使用随机十六进制可避免连接串转义问题                  |
-| `SESSION_KEY`       | 64 位十六进制随机值，可用 `openssl rand -hex 32` 生成；部署后保持稳定 |
-
-Compose 根据这些值生成应用的数据库连接和 HTTPS 来源地址；`.env.example` 中的回环 `DATABASE_URL`、`PUBLIC_ORIGIN` 用于源码本机开发。随后构建、迁移并创建首个管理员，把示例邮箱替换成自己的：
-
-```bash
-docker compose build app
-docker compose up -d db
-docker compose run --rm app node dist/migrate.js
-read -rsp '管理员密码（至少 12 字符）: ' taskboard_admin_password
-printf '\n'
-printf '%s' "$taskboard_admin_password" | docker compose run --rm -T app node dist/admin.js bootstrap --email owner@your-domain.com --name Owner
-unset taskboard_admin_password
-docker compose up -d
-docker compose ps
-```
-
-打开 `https://你的域名`，检查 HTTPS 证书、登录、创建空间及一张测试任务，再让各客户端连接。首个管理员只能初始化一次。正式长期使用前，还应在独立环境演练数据库备份与恢复。本仓库 CI 验证过内部 CA HTTPS；真实公网证书和服务器网络由实际部署核验。
-
-也可核对 [0.1.1 历史 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.1) 的发布资产后用 `docker load -i taskboard-linux-amd64.tar` 导入镜像，替代 `docker compose build app`；归档内标签为 `ghcr.io/i-am-yimin/codex-taskboard:0.1.1`。旧草稿发布流程不向 GHCR 推送镜像；新的 **Publish server image** 流程独立手动运行，未运行成功前不要假定镜像存在。
+详细配置、备份与升级见[部署文档](docs/deployment-openresty.md)。已有实例先备份数据库与密钥，旧 0.1.1 数据卷不能直接套用新的自动密钥配置；客户端升级不会自动升级服务端。
 
 ## 常见问题
 
-| 现象                                | 处理方式                                                                                                                     |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| 只有“离线缓存”，不能新建            | 先确认原服务器在线、地址可达，再检查登录。离线缓存不是重新认证成功的证明                                                     |
-| 要更换服务器地址                    | 先处理未同步草稿和待提交结果，再在“连接与设备”退出当前设备，回登录页保存新地址。退出会清除该账号的本机缓存、草稿及两类会话   |
-| 地址无法编辑                        | 已有会话或显式 `TASKBOARD_UPSTREAM` 启动配置会锁定编辑，先确认当前配置来源                                                   |
-| 未检测到 Codex 或版本未验证         | 点击“接入日常 Codex”，按提示正常退出一次并从连接入口重开；核对精确版本。浏览器页面无法接入本机 Codex                         |
-| 侧栏接入失败                        | 查看完整连接说明，等待工作区挂载并保持空编辑器、无弹窗；已启用连接的日常窗口可再次检测。原 ChatGPT 图标不带连接参数          |
-| 草稿未写入                          | 日常模式使用手动复制、粘贴；独立测试模式才提供自动填写，并核对任务仓库、当前项目和空编辑器                                   |
-| 找不到 taskboard Skill 或提示未配对 | 按第 4 节提供随包 CLI 和 Skill 文件绝对路径；当前不保证独立窗口自动加载默认目录中的 Skill                                    |
-| CLI 提示未认证                      | 桌面与 CLI 分别登录，按第 4 节登录同一个账号，并保持 Taskboard 运行                                                          |
-| 已安装但启动失败                    | 查看 `%APPDATA%\CodexTaskboard\launcher-diagnostic.txt`；同一用户只运行一个 Taskboard，固定本机端口 47831 不能被其他实例占用 |
+| 现象 | 处理 |
+| --- | --- |
+| 找不到连接按钮 | 在 Windows Taskboard 主窗口操作，浏览器与内嵌看板不显示原生连接按钮 |
+| 等待 Codex 退出 | 保存工作后正常退出 Codex；可取消等待，准备好再连接 |
+| 已接入但设置未保存 | 检查本机存储后“重试保存”，当前连接仍可使用 |
+| 草稿没有自动写入 | 日常模式手动复制需求，自动填写仅限已验证的独立测试环境 |
+| 离线或 CLI 未认证 | 核对服务器、权限和独立 CLI 登录，详见[完整故障处理](docs/user-guide.md#常见问题) |
 
 ## 只预览界面与开发运行
 
-开发环境需要 Node.js 22.16+、pnpm 10.28.0。仅看合成界面可执行：
+只看合成演示可在 Node.js 22.16+、pnpm 10.28.0 环境执行：
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm dev:web
 ```
 
-在 Chrome 打开 [交互演示](http://127.0.0.1:4173/?demo=1)，不连接真实账号或 Codex。需要本机真实服务时，另准备 PostgreSQL，按[开发说明](docs/development.md)配置 `.env`、运行迁移并初始化管理员。Windows 安装包的普通使用不需要这些开发依赖。
+打开 [交互演示](http://127.0.0.1:4173/?demo=1)，演示不连接真实账号或执行任务。
 
-## 兼容范围
+[开发指南](docs/development.md) · [开发规范](CONTRIBUTING.md) · [架构](docs/architecture.md) · [桌面技术说明](docs/desktop.md) · [安全说明](SECURITY.md) · [0.1.4 验收](docs/acceptance-0.1.4.md)
 
-| 组件                   | 首版目标                           | 验证状态                                                   |
-| ---------------------- | ---------------------------------- | ---------------------------------------------------------- |
-| 浏览器看板             | Chrome，1280×800 / 1920×1080       | 开发预览验收通过                                           |
-| 服务端                 | Linux amd64 / PostgreSQL 16+       | 部署、备份与回滚验收通过；HTTPS 使用内部 CA                |
-| 桌面启动器             | Windows x64                        | 0.1.4 固定包升级与日常安装验收；未签名                     |
-| Codex 内嵌             | 26.1016.8622.0；较早版本见历史验收 | 0.1.4 日常侧栏与同进程重连，独立测试草稿保护；未知版本拒绝 |
-| Codex CLI / 其他 Agent | 后续版本                           | 首版保留接口                                               |
-
-兼容性按精确宿主版本核验；清单中的其他版本见源码和历史记录，完整门槛结论仅对应上述验收基线。历史会话导航 `openThread` 尚未验证，保持不可用。共享的是任务内容与执行摘要，完整 Codex 会话不会自动跨设备同步。首版不提供自动排队调度、GitHub 数据同步或完整离线编辑。
-
-`v0.1.1` 的标签实际安装包已完成 Codex `26.1013.4894.0` 的侧栏、草稿、正常重启、真实旧 companion 数据升级保留及日常安装升级，具体范围与摘要见 [0.1.1 验收记录](docs/acceptance-0.1.1.md)。此前 `92873ed` 的完整布局验证保留在[历史兼容验收](docs/acceptance-host-26-1013.md)。固定 `v0.1.0` 资产保持，安装包仍未签名。
-
-## 验证与维护
-
-```sh
-pnpm exec playwright install chromium
-pnpm check
-pnpm test:db
-pnpm test:e2e
-pnpm test:offline
-pnpm desktop:diagnose
-```
-
-`test:db` 在项目 `.data` 下启动独立本机 PostgreSQL，不使用生产数据库。CI 使用专用 PostgreSQL 服务。桌面诊断无法连接受管理的 Codex 时会明确失败，而非报告兼容。
-
-`test:offline` 需要已构建的 Web 和独立测试数据库，验证缓存页面后真正关闭、断网重开浏览器。离线只读缓存需要此前成功联网访问；联网后重新校验权限，不支持离线领取或保存任务。
-
-欢迎通过 Issue 与 fork PR 参与。主仓库合并、标签和发布由 [@i-am-yimin](https://github.com/i-am-yimin) 维护；自动化只准备构建产物和草稿 Release。参见 [贡献指南](CONTRIBUTING.md) 和 [安全说明](SECURITY.md)。
-
-MIT License。独立实现，产品行为参考 [dashi-taskboard](https://github.com/chuspeeism/dashi-taskboard)，未复制其源码或素材。本项目为社区工具，不代表 OpenAI 官方产品。
+欢迎通过 Issue 和 fork PR 参与。MIT License；产品灵感来自 [dashi-taskboard](https://github.com/chuspeeism/dashi-taskboard)。本项目独立实现，是社区工具，不代表 OpenAI 官方产品。

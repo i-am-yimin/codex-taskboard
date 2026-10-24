@@ -4,7 +4,7 @@
 
 - [Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/Codex.Taskboard_0.1.4_x64-setup.exe)
 - [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/SHA256SUMS)
-- [使用手册](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/README.md#使用手册)
+- [使用手册](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/docs/user-guide.md)
 - [验收记录](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/docs/acceptance-0.1.4.md)
 
 ### 新增

@@ -25,6 +25,10 @@
 - 实际发布安装包通过升级保留数据、普通启动自动连接、关闭偏好保留、连续 20 次打开及正常退出重连检查；校验和、GitHub 构建来源证明和匿名下载已核验。
 - 首次未启用连接时的等待、取消和超时由浏览器回归覆盖；本轮没有退出日常 Codex 重测首次冷启动，详细范围见验收记录。
 
+### 文档维护
+
+- 发布后补充[独立使用手册](docs/user-guide.md)，精简首页的产品功能、快速使用与部署说明，修正日常草稿、CLI 完整 ID 和升级操作的描述；此项不改变已发布安装包。
+
 [下载与 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.4) · [完整发布说明](docs/release-notes.md) · [0.1.4 验收记录](docs/acceptance-0.1.4.md)
 
 ## 0.1.1 — Compatibility preview
