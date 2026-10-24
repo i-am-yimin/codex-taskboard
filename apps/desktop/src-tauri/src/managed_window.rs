@@ -140,6 +140,7 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
     static WINDOWS: Mutex<()> = Mutex::new(());
+    const WS_CLIPSIBLINGS: u32 = 0x0400_0000;
     #[repr(C)]
     struct WindowClass {
         style: u32,
@@ -195,7 +196,10 @@ mod tests {
                 // instead of accidentally testing a captioned window again.
                 unsafe { SetWindowLongPtrW(window, GWL_STYLE, style as isize); }
                 assert_ne!(unsafe { SetWindowPos(window, 0, 0, 0, 0, 0, 0x0037) }, 0);
-                assert_eq!(unsafe { GetWindowLongPtrW(window, GWL_STYLE) } as u32, style);
+                // Windows keeps WS_CLIPSIBLINGS on top-level windows. Every
+                // frame/visibility bit under test must still match exactly.
+                assert_eq!(unsafe { GetWindowLongPtrW(window, GWL_STYLE) } as u32 & !WS_CLIPSIBLINGS,
+                    style & !WS_CLIPSIBLINGS);
                 send.send(window).unwrap();
                 let mut message: Message = unsafe { std::mem::zeroed() };
                 while unsafe { GetMessageW(&mut message, 0, 0, 0) } > 0 {
