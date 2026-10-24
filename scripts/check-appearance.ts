@@ -121,13 +121,11 @@ try {
     light: { accent: '#285040' },
     dark: { accent: '#b8d8a5' },
   };
-  await embedded
-    .getByLabel('主题文件', { exact: true })
-    .setInputFiles({
-      name: 'forest.json',
-      mimeType: 'application/json',
-      buffer: Buffer.from(JSON.stringify(manifest)),
-    });
+  await embedded.getByLabel('主题文件', { exact: true }).setInputFiles({
+    name: 'forest.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(manifest)),
+  });
   await expect(embedded.locator('.theme-choice').filter({ hasText: '验收森林' })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -210,8 +208,25 @@ try {
   await demo.getByRole('button', { name: '应用主题', exact: true }).click();
   await demo.reload();
   await expect(demo.locator('html')).toHaveAttribute('data-style', 'paper');
-  expect((await db.query('SELECT preferences FROM user_appearance WHERE user_id=$1', [userId])).rows[0].preferences.themeId).toBe('glass');
+  expect(
+    (await db.query('SELECT preferences FROM user_appearance WHERE user_id=$1', [userId])).rows[0]
+      .preferences.themeId,
+  ).toBe('glass');
   observations.push('内嵌演示模式独立保存外观，不读取或覆盖已登录账号的主题');
+  for (const target of [embedded, second]) {
+    expect(
+      await target.locator('.appearance-field .segmented button').evaluateAll((buttons) =>
+        buttons.every((button) => {
+          const range = document.createRange();
+          range.selectNodeContents(button);
+          return range.getClientRects().length === 1;
+        }),
+      ),
+    ).toBe(true);
+    await target.locator('.settings-content').evaluate((element) => {
+      element.scrollTop = 0;
+    });
+  }
   await embedded.screenshot({ path: resolve(evidence, 'embedded-final-dark.png') });
   await second.screenshot({ path: resolve(evidence, 'browser-final-dark.png') });
   console.log(

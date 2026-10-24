@@ -378,6 +378,11 @@
   max-width: 100%;
   flex-wrap: wrap;
 }
+.appearance-field .segmented button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-height: 44px;
+}
 .appearance-field .muted {
   font-size: 12px;
   margin: 8px 0 0;
