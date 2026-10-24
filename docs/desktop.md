@@ -1,6 +1,6 @@
 # Windows 桌面版
 
-> 当前状态（2026-10-21）：`v0.1.1` / `c71eb87` 已完成 Codex `26.1013.4894.0` 的标签新包、旧 companion 数据升级及日常安装复验，见 [0.1.1 验收](acceptance-0.1.1.md)。[客户端 0.1.1 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.1) 已公开为预发布版，无需登录 GitHub 即可下载，原安装包与来源标签保持不变。`v0.1.0` / `f6a363e` 的双设备完整基线见 [0.1.0 验收](acceptance-0.1.0.md)。安装器仍未签名。安装、服务器、CLI 登录、Skill 限制和任务流程的逐步操作见 [README 使用手册](../README.md#使用手册)。
+> 当前状态（2026-10-24）：[客户端 0.1.3 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.3) 已公开为未签名预发布版。固定 `v0.1.3` / `69c865b` 的实际安装器已完成旧版数据升级、日常安装升级、真实侧栏、并发接入及正常退出重连验收，见 [0.1.3 验收](acceptance-0.1.3.md)。旧版标签与资产保持。逐步操作见 [README 使用手册](../README.md#使用手册)。
 
 桌面版是 Windows x64 的 Tauri 启动器。它在当前用户范围安装，使用安装资源目录中自带的 Node 运行时启动本机伴随服务，因此不要求安装系统 Node 或 Codex CLI。共享任务数据存放在服务器；本机凭据和仓库映射保存在 `%APPDATA%\CodexTaskboard`。卸载保留数据并重装恢复已在隔离测试目录实机通过，正式用户目录未参与该试验。
 
@@ -46,11 +46,11 @@ Remove-Variable taskboardPassword
 
 `runtime\install-taskboard-skill.cmd` 是明确的 Skill 安装操作。它只在 `%USERPROFILE%\.codex\skills\taskboard` 不存在时复制随包 Skill；如果同名用户 Skill 已存在，它会退出而不会覆盖。
 
-该脚本不自动配置独立 Codex 的数据目录。当前独立启动器会移除继承的 `TASKBOARD_*` 环境变量，因此默认 Skill wrapper 所需的 `TASKBOARD_TASKBOARD_RUNTIME` 不保证存在；仅运行脚本或重启窗口不能证明配对成功。0.1.1 可让 Agent 读取随包 `runtime\skills\taskboard\SKILL.md`，并明确使用 `runtime\taskctl.cmd` 的绝对路径，操作范例见 [README 第 4 步](../README.md#4-配置-agent-的任务读写)。本轮未验证 Skill 自动发现与 Agent 自动执行，一键配对应在后续版本补齐。
+该脚本不自动配置独立 Codex 的数据目录。当前独立启动器会移除继承的 `TASKBOARD_*` 环境变量，因此默认 Skill wrapper 所需的 `TASKBOARD_TASKBOARD_RUNTIME` 不保证存在；仅运行脚本或重启窗口不能证明配对成功。可让 Agent 读取随包 `runtime\skills\taskboard\SKILL.md`，并明确使用 `runtime\taskctl.cmd` 的绝对路径，操作范例见 [README 第 4 步](../README.md#4-配置-agent-的任务读写)。本轮未验证 Skill 自动发现与 Agent 自动执行，一键配对应在后续版本补齐。
 
 ## Codex 桌面集成状态
 
-**2026-10-24 源码新增，尚未发布到 0.1.1 安装包：** 设置页优先提供“接入日常 Codex”。普通已运行窗口未开启连接时，先保存工作并正常退出，再从该入口打开；沿用日常 profile，不再要求另一个账号环境。可创建开始菜单入口“Codex（任务看板连接）”，以后从它打开。原 Codex 启动入口不自动获得调试参数。独立环境移到折叠项，仅作兼容测试。日常模式目前使用手动复制草稿；宿主版本验证仍独立生效。`26.1016.8622.0` 已在登记的隔离宿主实测侧栏、刷新恢复、CSP 撤销、草稿保护及正常退出重启；日常窗口、快捷方式和 0.1.2 安装升级仍待完成。实现与验收边界见 [ADR 0004](adr/0004-daily-codex-connection.md)及 [0.1.2 验收记录](acceptance-0.1.2.md)。
+**0.1.3 已发布：** 设置页优先提供“接入日常 Codex”。普通已运行窗口未开启连接时，先保存工作并正常退出，再从该入口打开，沿用日常 profile。创建并持续使用开始菜单入口“Codex（任务看板连接）”；原 ChatGPT/Codex 图标不会自动获得连接参数。启动时等待工作区挂载，同一窗口的并发接入共用一次安装；登录页、草稿、弹窗和身份漂移仍会拒绝。日常模式使用手动复制草稿，独立环境保留为兼容测试选项。精确版本 `26.1016.8622.0` 的日常侧栏、原项目与聊天、原 Taskboard 账号、正常退出、同一 Codex 进程重连和 CSP 恢复已通过实际安装器验收。边界见 [ADR 0004](adr/0004-daily-codex-connection.md)与 [0.1.3 验收记录](acceptance-0.1.3.md)。
 
 设置页的“启动独立 Codex”使用独立 profile 和 Codex 数据目录，不接管用户已有实例。启动器只接受列入隔离启动清单的 MSIX 版本，并逐次核对进程句柄、回环监听者和精确页面。当前完整 G1 实机基线为 `26.1007.9446.0`：已验证侧栏开关、自适应看板和详情、未发送草稿的成功与拒绝路径、原生窗口退出和重启，以及受管理登录信息保留。其他精确版本的阶段性证据保留在[验收记录](acceptance.md)，不自动扩大为版本范围。
 
@@ -58,7 +58,7 @@ Remove-Variable taskboardPassword
 
 2026-10-20 的 `92873ed` 后续兼容候选已在实际 NSIS 安装版验证精确版本 `26.1013.4894.0`：产品按钮启动、真实侧栏与任务交互、三种原生窗口宽度、nonce 就绪、外部重载及实际 CSP 恢复、草稿成功和拒绝、正常原生退出/重启保留，以及安装器覆盖升级后的 Taskboard 冷启动保留。托盘恢复为用户报告，退出后的进程和端口由 OS 核对；未冒称自动捕获恢复。安装包仍为 `NotSigned`。具体结果、观察器失败及范围见[安装版兼容验收](acceptance-host-26-1013.md)；`v0.1.0` 已固定资产和原验收范围保持。
 
-`pnpm desktop:diagnose` 只探测指定回环 CDP 端点，并输出 `probe-only`、`unavailable` 或诊断信息；它不会注入页面，也不能单独证明宿主兼容。程序不修改 Codex 安装文件或用户原有实例。
+`pnpm desktop:diagnose` 只探测指定回环 CDP 端点，并输出 `probe-only`、`unavailable` 或诊断信息；它不会注入页面，也不能单独证明宿主兼容。程序不改写 Codex 安装文件；仅在归属校验通过后接入日常窗口，退出时撤销 DOM/CSP 更改。
 
 ## 早期开发预览验证（2026-09-08，历史）
 

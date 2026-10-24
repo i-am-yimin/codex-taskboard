@@ -1,15 +1,19 @@
-# Codex Taskboard 0.1.3 日常接入开发预览
+# Codex Taskboard 客户端 0.1.3（预发布）
 
-本版优先连接日常 Codex，沿用原登录、项目和会话。首次已打开的窗口尚未启用连接时，需要保存工作并正常退出一次，再从连接入口重开；以后使用开始菜单的“Codex（任务看板连接）”入口打开同一个日常环境。已启用连接的窗口可直接复用。Windows x64 安装包仍未签名（`NotSigned`），定位为开发预览。
+本版可以接入日常 Codex，沿用原登录、项目和聊天。首次未启用连接时，请保存工作并正常退出 Codex，再从“Codex（任务看板连接）”入口打开；以后使用这个入口，已打开的日常环境会被直接复用，无需另开独立环境。
 
-修复 Windows 随包运行时在较长中文安装路径下被 Node 错误识别模块格式的问题。伴随服务和 CLI 改用明确的 `.cjs` 文件名，并在 Windows CI 和标签构建中执行真实打包模块检查：从较长中文路径与 ES module 上级目录运行，不依赖就近运行时清单，验证伴随服务健康请求、正常停止和 CLI 帮助。
+- [Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.3/Codex.Taskboard_0.1.3_x64-setup.exe)
+- [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.3/SHA256SUMS)
+- [使用手册](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/README.md#使用手册)
 
-0.1.2 的固定标签构建和来源证明已通过，但实际安装首次启动失败，因此保持草稿，没有公开；原标签及资产不替换。0.1.3 仍在验收，最终标签包与公开下载完成前，不把源码检查当作交付。详见 [0.1.3 验收记录](acceptance-0.1.3.md)。
+Windows 安装器未签名（NotSigned），本版为开发预览，不设为 latest。客户端自带运行时。首次使用请在登录页填写自己的 HTTPS 服务端根地址并保存，再登录 Taskboard。
 
-日常模式目前使用手动复制草稿，由用户确认发送；原有独立环境保留为兼容测试选项，并继续提供已验证的自动草稿能力。程序不复制认证资料，不改写 Codex 安装文件，也不把未知宿主版本加入兼容范围。
+伴随服务和 CLI 改用明确的 .cjs 入口，修复本机 Node 在较长中文安装路径中的模块识别问题。Windows CI 和标签构建都验证实际随包运行时在 ES module 上级目录、缺少就近运行时清单时仍能执行。0.1.2 的实际安装首次启动失败，因此保留草稿，原标签与资产保持。
 
-新增 Codex `26.1016.8622.0` 精确版本支持，保留原生进程句柄、当前用户与 Windows 会话、MSIX 身份、回环监听者和唯一页面校验。修复隐藏 iframe 在首次绘制前无法响应就绪的问题，保留 nonce、来源、CSP 和未发送草稿保护；原生返回的重开或拒绝说明也会完整显示。维护参数 `--quit-taskboard` 支持正常收尾，Zod 生产依赖已更新至 4.6.7。
+保留日常 Codex 连接入口、首次工作区挂载等待、并发接入共享安装、隐藏 iframe 就绪响应及完整原生拒绝说明。精确支持 Codex 26.1016.8622.0；保留进程、MSIX、用户、会话、回环监听者、唯一页面、nonce 和 CSP 校验。日常模式使用手动复制草稿，由用户确认发送；独立测试环境保留自动草稿能力。
 
-前序候选已实测旧版数据升级、8 张合成任务与旧版修改保留、日常原账号和映射、真实侧栏、正常退出与同进程重连。隔离宿主的外部刷新、CSP 撤销、草稿拒绝及正常宿主重启分别记录；最终 0.1.3 安装器仍需重新验收。
+完整 CI、固定标签构建、校验和及严格 GitHub 来源证明已通过。实际发布安装器已验证 0.1.1 升级、首次免登录、8 张合成任务和旧修改保留，以及日常 G: 安装升级、原账号与映射保留、真实侧栏、并发接入、看板正常退出和重开复用同一 Codex、CSP 恢复；真实用户草稿未被修改或发送。
 
-服务端独立保持 `0.1.2-preview.1`，现有独立部署继续使用 `server-0.1.2-preview.1`，见[部署手册](deployment-openresty.md)。客户端发布不移动旧标签、不替换旧资产，也不自动升级服务端；后续附带的 Linux 归档属于本次客户端源码标签的独立构建，不替代已有服务端发布。
+客户端版本为 0.1.3。独立服务端保持 0.1.2-preview.1，继续使用镜像 `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1`，见[部署手册](https://github.com/i-am-yimin/codex-taskboard/blob/vserver-0.1.2-preview.1/docs/deployment-openresty.md)。本 Release 的 Linux 归档属于客户端源码标签的独立构建，不替代已有服务端发布。旧标签和资产保持。
+
+来源提交：`69c865bbdc5458834a2b0debddc56a283e1dac38`。Windows 安装器 SHA-256：`07948800bb32757e2acd904b9b6c28d41e8931334bf666b56696565200ba3f9d`。

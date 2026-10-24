@@ -4,9 +4,9 @@
 
 嵌入 Codex 桌面版的任务协作层。把待办、进度与验收放在同一个看板中，让个人多设备和可信团队共享任务；Codex 继续管理原有项目和执行会话。
 
-> Windows 客户端为 **0.1.1 兼容开发预览**，新增 Codex `26.1013.4894.0` 精确版本支持，标签实际安装包已完成旧版数据升级、侧栏、草稿、正常重启及日常安装升级，见 [0.1.1 验收记录](docs/acceptance-0.1.1.md)。服务端独立发布 **0.1.2-preview.1**，不要求同步升级客户端。固定 `v0.1.0`（`f6a363e`）的 G0–G4 范围见 [0.1.0 验收摘要](docs/acceptance-0.1.0.md)。**Windows 安装包未签名，0.1.1 已公开为预发布版。**
+> Windows 客户端为 **0.1.3 日常接入开发预览**，可沿用日常 Codex 的登录、项目和会话，精确支持 `26.1016.8622.0`。实际标签安装包已完成升级、侧栏、并发接入、正常退出和同进程重连验收，见 [0.1.3 验收记录](docs/acceptance-0.1.3.md)。服务端独立保持 **0.1.2-preview.1**。**Windows 安装包未签名，0.1.3 已公开为预发布版。**
 
-已支持浏览器看板、服务端、随包 CLI/伴随服务，以及经验证 Codex 版本中的侧栏内嵌和项目草稿填写。草稿只填入编辑器，由用户决定是否发送。
+已支持浏览器看板、服务端、随包 CLI/伴随服务，以及经验证 Codex 版本中的侧栏内嵌。日常模式由用户复制、粘贴任务草稿；独立测试环境保留自动填写，均由用户决定是否发送。
 
 ![看板浅色预览](docs/screenshots/board-light.png)
 
@@ -26,11 +26,11 @@
 | 组件                     | 当前版本          | 发布标识                                                          |
 | ------------------------ | ----------------- | ----------------------------------------------------------------- |
 | 服务端                   | `0.1.2-preview.1` | 镜像 `server-0.1.2-preview.1`，源码标签 `vserver-0.1.2-preview.1` |
-| Windows 客户端 Taskboard | `0.1.1`           | 安装包和源码标签 `v0.1.1`                                         |
+| Windows 客户端 Taskboard | `0.1.3`           | 安装包和源码标签 `v0.1.3`                                         |
 
 服务端版本来自 `apps/server/package.json`；客户端仍沿用原版本文件与发布流程。仅升级其中一端不会自动更改另一端版本，跨端兼容性按 API 和验收记录判断。
 
-**0.1.1 适合个人和可信团队试用，定位为兼容开发预览。** 已完成实际安装升级、侧栏、草稿保护与正常重启保留验证；安装包、Linux 镜像归档、校验和及 GitHub 来源证明已经准备好。[客户端 0.1.1 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.1) 已于 2026-10-21 公开为 **pre-release**，普通访问者无需登录 GitHub 即可下载。
+**0.1.3 适合个人和可信团队试用，定位为日常接入开发预览。** [客户端 0.1.3 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.3) 已公开为 **pre-release**，普通访问者无需登录 GitHub 即可下载。固定标签安装器、校验和、GitHub 来源证明及实际升级验收均已通过；旧版标签与资产保持。
 
 Windows 安装包未签名；真实公网域名的 HTTPS 部署尚未纳入本轮实测，Skill 的独立环境配对也仍需手动处理。当前不声明面向任意 Codex 版本、无需配置即可使用的稳定版。准备正式稳定版前，应完成真实部署试用、备份恢复演练和首次使用流程，代码签名作为分发改进继续推进。
 
@@ -53,8 +53,8 @@ Taskboard 账号和 Codex 账号分别登录。纯浏览器使用无需安装 Wi
 
 ### 2. 安装并登录 Windows 客户端
 
-1. 下载 [0.1.1 Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.1/Codex.Taskboard_0.1.1_x64-setup.exe)（约 24.7 MB）和 [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.1/SHA256SUMS)，也可从[版本页面](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.1)下载。无需登录 GitHub。GitHub 可能将文件名中的空格改为点号，按内容摘要核验即可。
-2. 核对安装器 SHA-256：`e563c9d8c75e674e821ffe301635aee798ebcb0ff0f7d09a5eb99a82c3625c9a`。PowerShell 可运行 `Get-FileHash -Algorithm SHA256 -LiteralPath '下载文件的完整路径'`。当前文件为 `NotSigned`，系统显示的发布者状态应与此一致。
+1. 下载 [0.1.3 Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.3/Codex.Taskboard_0.1.3_x64-setup.exe)（约 24.7 MB）和 [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.3/SHA256SUMS)，也可从[版本页面](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.3)下载。无需登录 GitHub。GitHub 可能将文件名中的空格改为点号，按内容摘要核验即可。
+2. 核对安装器 SHA-256：`07948800bb32757e2acd904b9b6c28d41e8931334bf666b56696565200ba3f9d`。PowerShell 可运行 `Get-FileHash -Algorithm SHA256 -LiteralPath '下载文件的完整路径'`。当前文件为 `NotSigned`，系统显示的发布者状态应与此一致。
 3. 安装后从开始菜单打开 **Codex Taskboard**。客户端自带 Node 运行时，普通使用无需安装 Node.js、pnpm 或 Codex CLI。
 4. 在登录页输入服务器根地址，点击“保存服务器”，再填写 Taskboard 邮箱、密码并点击“登录并继续”。密码至少 12 字符。
 5. 进入空间，确认右上角显示“已同步”，再开始新建或修改真实任务。
@@ -63,15 +63,13 @@ Taskboard 账号和 Codex 账号分别登录。纯浏览器使用无需安装 Wi
 
 ### 3. 连接本机项目与 Codex
 
-> 源码中的后续改动已新增日常 Codex 接入和连接快捷方式，沿用原登录、项目和会话；首次需正常退出并从连接入口重开一次。该改动尚未打包发布，日常环境及新宿主版本仍待实机验收，见 [ADR 0004](docs/adr/0004-daily-codex-connection.md)。下列步骤对应已发布的 0.1.1 安装包。
+1. 先把项目准备到本机已有目录，例如 `D:\work\my-project`。在“设置”→“连接与设备”的“本机仓库映射”保存任务仓库和本机目录，供 CLI 与任务工作流使用。
+2. 点击 **“接入日常 Codex”**。如果已经打开的 Codex 尚未启用连接，请先保存工作并正常退出，再点击该按钮打开日常环境。原登录、项目和聊天会保留。
+3. 点击 **“创建日常连接快捷方式”**。以后从开始菜单的 **“Codex（任务看板连接）”** 打开；它会连接或打开同一个日常环境。原来的 ChatGPT/Codex 图标不带连接参数，从原图标打开后可能仍需正常退出再用连接入口重开。
+4. 等待页面准备好后，Codex 左侧会出现 **“任务看板”**。点击可切换到看板，再次点击返回 Codex。关闭看板窗口会收起到托盘；从托盘退出 Taskboard 后，Codex 继续运行，再打开连接入口即可重新接入。
+5. 日常模式的任务草稿使用复制、手动粘贴，由你确认项目、内容并发送。**“独立测试环境”** 折叠项保留独立目录和自动草稿能力，用于兼容测试。
 
-1. 先把项目克隆或准备到本机已有目录，例如 `D:\work\my-project`。客户端不会自动克隆仓库。
-2. 打开空间右上角“设置”→“连接与设备”，在“本机仓库映射”中保存仓库地址与该目录。任务“仓库”字段使用相同仓库身份，例如 `https://github.com/your-org/my-project`。
-3. 点击“启动独立 Codex”。首次在这个独立窗口中自行登录 Codex，并打开对应的本机项目；之后登录和项目配置会保留。
-4. 等项目和编辑器加载完成，保持独立窗口可见、编辑器为空，再点击 Taskboard 中的“接入 Codex 侧栏”。
-5. 在独立 Codex 左侧点击“任务看板”，可以切换看板/列表并打开任务详情；再次点击入口返回 Codex。
-
-本轮精确验收版本为 Codex `26.1013.4894.0`。独立窗口使用单独的数据目录，日常已有 Codex 窗口不被接管。未知版本、错误项目、弹窗或非空编辑器会拒绝填写草稿；不应通过修改版本清单来跳过检查。更多配置见[桌面说明](docs/desktop.md)。
+首次启用连接只需正常重开日常 Codex，之后持续使用连接入口。程序不复制 Codex 认证资料，不改写安装文件；未知宿主版本或身份校验失败时会停止接入。详细边界见 [ADR 0004](docs/adr/0004-daily-codex-connection.md)。
 
 ### 4. 配置 Agent 的任务读写
 
@@ -96,7 +94,7 @@ try {
 
 成功后可用 `& $taskboardCli --help` 查看命令。读取一张任务使用 `get <任务UUID>`；完整 UUID 在“在 Codex 中打开”产生的草稿首行中，`TB-1` 这类展示编号不能代替 UUID。
 
-**0.1.1 的 Skill 配对限制：** 随包 `install-taskboard-skill.cmd` 只写入默认 `%USERPROFILE%\.codex\skills\taskboard` 并设置用户环境变量；它不自动配置独立 Codex。独立启动器还会清理继承的 `TASKBOARD_*` 变量，因此不能假设该窗口中的 Skill wrapper 已完成配对。本版可直接调用随包 CLI：在任务草稿后追加下面说明，替换其中安装路径，再由你检查并发送：
+**Skill 配对限制：** 随包 `install-taskboard-skill.cmd` 只写入默认 `%USERPROFILE%\.codex\skills\taskboard` 并设置用户环境变量；它不自动配置独立 Codex。独立启动器还会清理继承的 `TASKBOARD_*` 变量，因此不能假设该窗口中的 Skill wrapper 已完成配对。本版可直接调用随包 CLI：在任务草稿后追加下面说明，替换其中安装路径，再由你检查并发送：
 
 ```text
 请先读取 G:\codex-taskboard\Codex Taskboard\runtime\skills\taskboard\SKILL.md。
@@ -179,7 +177,7 @@ docker compose ps
 
 打开 `https://你的域名`，检查 HTTPS 证书、登录、创建空间及一张测试任务，再让各客户端连接。首个管理员只能初始化一次。正式长期使用前，还应在独立环境演练数据库备份与恢复。本仓库 CI 验证过内部 CA HTTPS；真实公网证书和服务器网络由实际部署核验。
 
-也可核对发布资产后用 `docker load -i taskboard-linux-amd64.tar` 导入镜像，替代 `docker compose build app`；归档内标签为 `ghcr.io/i-am-yimin/codex-taskboard:0.1.1`。旧草稿发布流程不向 GHCR 推送镜像；新的 **Publish server image** 流程独立手动运行，未运行成功前不要假定镜像存在。
+也可核对 [0.1.1 历史 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.1) 的发布资产后用 `docker load -i taskboard-linux-amd64.tar` 导入镜像，替代 `docker compose build app`；归档内标签为 `ghcr.io/i-am-yimin/codex-taskboard:0.1.1`。旧草稿发布流程不向 GHCR 推送镜像；新的 **Publish server image** 流程独立手动运行，未运行成功前不要假定镜像存在。
 
 ## 常见问题
 
@@ -188,10 +186,10 @@ docker compose ps
 | 只有“离线缓存”，不能新建            | 先确认原服务器在线、地址可达，再检查登录。离线缓存不是重新认证成功的证明                                                     |
 | 要更换服务器地址                    | 先处理未同步草稿和待提交结果，再在“连接与设备”退出当前设备，回登录页保存新地址。退出会清除该账号的本机缓存、草稿及两类会话   |
 | 地址无法编辑                        | 已有会话或显式 `TASKBOARD_UPSTREAM` 启动配置会锁定编辑，先确认当前配置来源                                                   |
-| 未检测到 Codex 或版本未验证         | 使用“启动独立 Codex”，在独立窗口登录并打开项目；核对精确版本。浏览器页面无法接入本机 Codex                                   |
-| 侧栏接入失败                        | 等项目和编辑器加载完成，保持窗口可见、空编辑器、无弹窗，再检查连接。状态未确认时先看独立窗口，避免反复填写                   |
-| 草稿未写入                          | 核对任务仓库与本机映射、当前项目、编辑器是否为空；未知版本与身份不明确时会拒绝                                               |
-| 找不到 taskboard Skill 或提示未配对 | 按第 4 节提供随包 CLI 和 Skill 文件绝对路径；0.1.1 不保证独立窗口自动加载默认目录中的 Skill                                  |
+| 未检测到 Codex 或版本未验证         | 点击“接入日常 Codex”，按提示正常退出一次并从连接入口重开；核对精确版本。浏览器页面无法接入本机 Codex                         |
+| 侧栏接入失败                        | 查看完整连接说明，等待工作区挂载并保持空编辑器、无弹窗；已启用连接的日常窗口可再次检测。原 ChatGPT 图标不带连接参数          |
+| 草稿未写入                          | 日常模式使用手动复制、粘贴；独立测试模式才提供自动填写，并核对任务仓库、当前项目和空编辑器                                   |
+| 找不到 taskboard Skill 或提示未配对 | 按第 4 节提供随包 CLI 和 Skill 文件绝对路径；当前不保证独立窗口自动加载默认目录中的 Skill                                    |
 | CLI 提示未认证                      | 桌面与 CLI 分别登录，按第 4 节登录同一个账号，并保持 Taskboard 运行                                                          |
 | 已安装但启动失败                    | 查看 `%APPDATA%\CodexTaskboard\launcher-diagnostic.txt`；同一用户只运行一个 Taskboard，固定本机端口 47831 不能被其他实例占用 |
 
@@ -208,13 +206,13 @@ pnpm dev:web
 
 ## 兼容范围
 
-| 组件                   | 首版目标                                | 验证状态                                               |
-| ---------------------- | --------------------------------------- | ------------------------------------------------------ |
-| 浏览器看板             | Chrome，1280×800 / 1920×1080            | 开发预览验收通过                                       |
-| 服务端                 | Linux amd64 / PostgreSQL 16+            | 部署、备份与回滚验收通过；HTTPS 使用内部 CA            |
-| 桌面启动器             | Windows x64                             | 0.1.0 双设备基线；0.1.1 本机升级与日常安装验证；未签名 |
-| Codex 内嵌             | 26.1013.4894.0；26.1007.9446.0 历史基线 | 按对应候选验证侧栏、草稿及正常重启；未知版本拒绝       |
-| Codex CLI / 其他 Agent | 后续版本                                | 首版保留接口                                           |
+| 组件                   | 首版目标                           | 验证状态                                                   |
+| ---------------------- | ---------------------------------- | ---------------------------------------------------------- |
+| 浏览器看板             | Chrome，1280×800 / 1920×1080       | 开发预览验收通过                                           |
+| 服务端                 | Linux amd64 / PostgreSQL 16+       | 部署、备份与回滚验收通过；HTTPS 使用内部 CA                |
+| 桌面启动器             | Windows x64                        | 0.1.3 固定包升级与日常安装验收；未签名                     |
+| Codex 内嵌             | 26.1016.8622.0；较早版本见历史验收 | 0.1.3 日常侧栏与同进程重连，独立测试草稿保护；未知版本拒绝 |
+| Codex CLI / 其他 Agent | 后续版本                           | 首版保留接口                                               |
 
 兼容性按精确宿主版本核验；清单中的其他版本见源码和历史记录，完整门槛结论仅对应上述验收基线。历史会话导航 `openThread` 尚未验证，保持不可用。共享的是任务内容与执行摘要，完整 Codex 会话不会自动跨设备同步。首版不提供自动排队调度、GitHub 数据同步或完整离线编辑。
 
