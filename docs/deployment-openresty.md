@@ -4,6 +4,10 @@
 
 发布标签按 `server-<服务端版本>` 命名，预览版如 `server-0.1.2-preview.1`，正式版如 `server-0.1.2`。已发布版本不能覆盖；提交号标签仍保留供追溯。OCI 索引摘要见[发布运行摘要](https://github.com/i-am-yimin/codex-taskboard/actions/workflows/publish-server-image.yml)，也可执行 `docker buildx imagetools inspect ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1` 查看。需要严格固定内容时，可将 Compose 顶部的 `x-app-image` 改为 `ghcr.io/i-am-yimin/codex-taskboard@sha256:<发布摘要>`，同时固定 init 和 app 的镜像。
 
+## 0.1.5 主题同步的部署变化（未发布）
+
+配套服务端开发版本为 `0.1.3-preview.1`，新增 `0004_user_themes` 迁移，仅增加个人外观和主题表。先备份数据库，再按原流程部署包含该迁移的版本。旧客户端兼容；新客户端连接旧服务端时仅使用本机主题。升级及回退边界见[主题指南](themes.md#服务端升级)。该版本镜像尚未公开，以下仍为现有已发布版本的部署方法。
+
 ## 直接使用固定预览镜像
 
 以下命令在 **Linux 服务器 Bash** 中执行，选择一个新的部署目录，不需要在服务器安装编译工具。它下载固定标签的配置，并写入已选择的镜像版本；这版公共镜像无需登录 GHCR。

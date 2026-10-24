@@ -42,6 +42,7 @@ export async function request<T>(
       method: init.method ?? 'GET',
       headers,
       credentials: desktop ? 'omit' : 'include',
+      signal: AbortSignal.timeout(12000),
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
     });
   } catch {
@@ -198,7 +199,8 @@ export function clearAccountCache(accountId: string) {
       (k) =>
         k.startsWith(`tb:board:${accountId}:`) ||
         k.startsWith(`tb:draft:${accountId}:`) ||
-        k.startsWith(`tb:result:${accountId}:`),
+        k.startsWith(`tb:result:${accountId}:`) ||
+        (k.startsWith('tb:appearance:') && k.endsWith(`:${accountId}`)),
     )
     .forEach((k) => localStorage.removeItem(k));
 }

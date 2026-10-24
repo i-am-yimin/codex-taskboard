@@ -1,4 +1,11 @@
 /** Static OpenAPI supplement for clients; handlers remain the authorization authority. */
+import { z } from 'zod';
+import {
+  appearanceSchema,
+  appearanceRecordSchema,
+  themeManifestSchema,
+  themePackageSchema,
+} from '@taskboard/core';
 const error = {
   type: 'object',
   required: ['error'],
@@ -41,6 +48,9 @@ export const openapiDocument = {
       deviceToken: { type: 'http', scheme: 'bearer' },
     },
     schemas: {
+      ThemeManifestV1: z.toJSONSchema(themeManifestSchema),
+      ThemePackage: z.toJSONSchema(themePackageSchema),
+      Appearance: z.toJSONSchema(appearanceRecordSchema),
       Error: error,
       TaskInput: {
         type: 'object',
@@ -62,6 +72,62 @@ export const openapiDocument = {
     },
   },
   paths: {
+    '/me/appearance': {
+      get: {
+        summary: '读取当前账号外观（未设置时版本为 1）',
+        responses: {
+          '200': json({
+            type: 'object',
+            properties: { data: { $ref: '#/components/schemas/Appearance' } },
+          }),
+        },
+      },
+      put: {
+        summary: '保存个人外观；主题包须先上传',
+        parameters: writeHeaders.map((h) => ({ ...h, required: true })),
+        requestBody: json(z.toJSONSchema(appearanceSchema)),
+        responses: {
+          '200': json({ type: 'object' }),
+          '409': json(error),
+          '422': json(error),
+          '428': json(error),
+        },
+      },
+    },
+    '/me/themes': {
+      get: {
+        summary: '列出当前账号的主题包',
+        responses: {
+          '200': json({
+            type: 'object',
+            properties: {
+              data: { type: 'array', items: { $ref: '#/components/schemas/ThemePackage' } },
+            },
+          }),
+        },
+      },
+      post: {
+        summary: '上传最多 64 KiB 的声明式主题；同内容自动去重，每账号上限 100 套',
+        parameters: [writeHeaders[0]],
+        requestBody: json({ $ref: '#/components/schemas/ThemeManifestV1' }),
+        responses: { '200': json({ type: 'object' }), '413': json(error), '422': json(error) },
+      },
+    },
+    '/me/themes/{id}': {
+      delete: {
+        summary: '移除个人主题；若正在使用则在同一事务中回退玻璃主题',
+        parameters: [
+          {
+            in: 'path',
+            name: 'id',
+            required: true,
+            schema: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+          },
+          writeHeaders[0],
+        ],
+        responses: { '200': json({ type: 'object' }) },
+      },
+    },
     '/setup': {
       get: {
         description:

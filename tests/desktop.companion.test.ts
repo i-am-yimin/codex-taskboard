@@ -135,6 +135,19 @@ describe('companion loopback boundary', () => {
         expect(proxy.json()).toMatchObject({ data: [{ id: 'task-from-server' }] });
         expect(calls.at(-1)?.headers.get('cookie')).toBe('tb_session=browser-session');
         expect(calls.at(-1)?.url).toContain('query=ship&priority=2');
+        const appearance = await runtime.app.inject({
+          method: 'PUT', url: '/api/v1/me/appearance',
+          headers: { ...headers, 'if-match': '2', 'idempotency-key': 'appearance-save' },
+          payload: { themeId: 'island', mode: 'dark', layout: 'auto' },
+        });
+        expect(appearance.statusCode).toBe(200);
+        expect(calls.at(-1)?.method).toBe('PUT');
+        expect(calls.at(-1)?.headers.get('cookie')).toBe('tb_session=browser-session');
+        expect(calls.at(-1)?.headers.get('if-match')).toBe('2');
+        const preflight = await runtime.app.inject({ method: 'OPTIONS', url: '/api/v1/me/appearance', headers: { origin: 'http://127.0.0.1:4173', 'access-control-request-method': 'PUT' } });
+        expect(preflight.headers['access-control-allow-methods']).toContain('PUT');
+        expect((await runtime.app.inject({ method: 'GET', url: '/v1/api/me/themes', headers })).statusCode).toBe(403);
+
         const cliKey = await new SecretStore(join(directory, 'cli-key.dpapi')).read();
         const denied = await runtime.app.inject({
           method: 'POST',

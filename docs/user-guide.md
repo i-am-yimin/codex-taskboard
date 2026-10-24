@@ -4,6 +4,10 @@
 
 [下载](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.4) · [服务端部署](deployment-openresty.md) · [更新日志](../CHANGELOG.md)
 
+## 0.1.5 开发版：外观与主题
+
+新增四套主题、可导入主题包和账号同步，操作见[主题使用与制作](themes.md)。此功能尚未发布；下方 0.1.4 下载与既有操作仍有效。
+
 ## 开始之前
 
 Taskboard 保存共享任务，Codex 保留本机项目和聊天。安装客户端不会创建云服务器或 Taskboard 账号。

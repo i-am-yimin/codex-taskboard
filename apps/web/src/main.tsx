@@ -69,6 +69,9 @@ import { useEmbeddedReadyResponder } from './embeddedReady';
 import type { Board, Member, Semantic, Space, Status, Task } from './types';
 import './styles.css';
 import './glass.css';
+import './themes.css';
+import { AppearanceSettings } from './AppearanceSettings';
+import { useAppearance, type AppearanceController } from './useAppearance';
 
 const query = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -116,9 +119,6 @@ const initials = (name: string) => name.slice(0, 1);
 function App() {
   useEmbeddedReadyResponder();
   const client = useQueryClient();
-  const [theme, setTheme] = useState<'system' | 'dark' | 'light'>(
-    () => (localStorage.getItem('tb:theme') as 'system' | 'dark' | 'light' | null) ?? 'system',
-  );
   const [sync, setSync] = useState<'connecting' | 'synced' | 'offline'>(
     navigator.onLine ? 'connecting' : 'offline',
   );
@@ -160,6 +160,7 @@ function App() {
     },
   });
   const user = userQuery.data;
+  const appearance = useAppearance(user?.id, isDemo);
   const spacesQuery = useQuery({
     queryKey: ['spaces', user?.id],
     networkMode: 'always',
@@ -226,10 +227,11 @@ function App() {
   useEffect(() => {
     if (!user || isDemo) return;
     if (priorAccountId.current && priorAccountId.current !== user.id) {
-      void client.cancelQueries();
-      client.removeQueries({ queryKey: ['spaces', priorAccountId.current] });
-      client.removeQueries({ queryKey: ['board', priorAccountId.current] });
-      client.removeQueries({ queryKey: ['task'] });
+      for (const kind of ['spaces', 'board', 'task']) {
+        const queryKey = [kind, priorAccountId.current];
+        void client.cancelQueries({ queryKey });
+        client.removeQueries({ queryKey });
+      }
     }
     priorAccountId.current = user.id;
   }, [client, user]);
@@ -354,17 +356,6 @@ function App() {
       removeEventListener('offline', change);
     };
   }, [client, spaceId, user?.id]);
-  useEffect(() => {
-    const media = matchMedia('(prefers-color-scheme: dark)');
-    const apply = () => {
-      document.documentElement.dataset.theme =
-        theme === 'system' ? (media.matches ? 'dark' : 'light') : theme;
-      localStorage.setItem('tb:theme', theme);
-    };
-    apply();
-    media.addEventListener('change', apply);
-    return () => media.removeEventListener('change', apply);
-  }, [theme]);
   const visible = useMemo(
     () =>
       board?.tasks.filter(
@@ -502,8 +493,31 @@ function App() {
           <Sparkles size={18} />
           <span>taskboard</span>
         </div>
-        <button className="rail-icon active" title="任务看板">
+        <button
+          className={`rail-icon${view === 'board' ? ' active' : ''}`}
+          title="任务看板"
+          aria-label="任务看板"
+          aria-pressed={view === 'board'}
+          onClick={() => setView('board')}
+        >
           <LayoutGrid size={19} />
+        </button>
+        <button
+          className={`rail-icon${view === 'list' ? ' active' : ''}`}
+          title="任务列表"
+          aria-label="任务列表"
+          aria-pressed={view === 'list'}
+          onClick={() => setView('list')}
+        >
+          <List size={19} />
+        </button>
+        <button
+          className="rail-icon"
+          title="打开设置"
+          aria-label="打开设置"
+          onClick={() => setSettings(true)}
+        >
+          <Settings size={19} />
         </button>
         <div className="rail-fill" />
         <button className="avatar mine" title={user?.name}>
@@ -735,9 +749,11 @@ function App() {
           board={board}
           demo={isDemo}
           offline={readOnlyCached}
-          theme={theme}
-          onTheme={setTheme}
-          onClose={() => setSettings(false)}
+          appearance={appearance}
+          onClose={() => {
+            appearance.cancel();
+            setSettings(false);
+          }}
           onRefresh={refresh}
           onNotice={setNotice}
           onLogout={logout}
@@ -1182,8 +1198,7 @@ function SettingsPanel({
   board,
   demo,
   offline,
-  theme,
-  onTheme,
+  appearance,
   onClose,
   onRefresh,
   onNotice,
@@ -1193,14 +1208,15 @@ function SettingsPanel({
   board: Board;
   demo: boolean;
   offline: boolean;
-  theme: 'system' | 'dark' | 'light';
-  onTheme: (t: 'system' | 'dark' | 'light') => void;
+  appearance: AppearanceController;
   onClose: () => void;
   onRefresh: () => void;
   onNotice: (s: string) => void;
   onLogout: () => void;
 }) {
-  const [section, setSection] = useState<'space' | 'members' | 'statuses' | 'connection'>('space');
+  const [section, setSection] = useState<
+    'space' | 'members' | 'statuses' | 'connection' | 'appearance'
+  >('space');
   const [name, setName] = useState(board.space.name);
   const [icon, setIcon] = useState(board.space.icon);
   const [color, setColor] = useState(board.space.color);
@@ -1232,6 +1248,13 @@ function SettingsPanel({
         </header>
         <div className="settings-body">
           <nav className="settings-nav">
+            <button
+              className={section === 'appearance' ? 'active' : ''}
+              onClick={() => setSection('appearance')}
+            >
+              <Sparkles size={16} />
+              外观与主题
+            </button>
             {onServerAdmin && (
               <button onClick={onServerAdmin}>
                 <Settings size={16} />
@@ -1268,6 +1291,7 @@ function SettingsPanel({
             </button>
           </nav>
           <div className="settings-content">
+            {section === 'appearance' && <AppearanceSettings controller={appearance} />}
             {section === 'space' && (
               <>
                 <h3>空间信息</h3>
@@ -1307,20 +1331,6 @@ function SettingsPanel({
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
                   />
-                </label>
-                <label className="form-label">
-                  主题
-                  <div className="segmented">
-                    {(['system', 'light', 'dark'] as const).map((t) => (
-                      <button
-                        key={t}
-                        className={theme === t ? 'selected' : ''}
-                        onClick={() => onTheme(t)}
-                      >
-                        {t === 'system' ? '跟随系统' : t === 'light' ? '浅色' : '深色'}
-                      </button>
-                    ))}
-                  </div>
                 </label>
                 <button className="button primary" disabled={!canEditSpace} onClick={saveSpace}>
                   保存更改

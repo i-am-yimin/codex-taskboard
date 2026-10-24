@@ -308,7 +308,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
         'access-control-allow-headers',
         'content-type,x-taskboard-companion-key,if-match,idempotency-key',
       )
-      .header('access-control-allow-methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+      .header('access-control-allow-methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
     if (request.method === 'OPTIONS') return reply.code(204).send();
     if (embeddedResource && request.method === 'GET') {
       if (closing)
@@ -664,9 +664,12 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
       : '';
     const path = `/${suffix}${query}`;
     const pathOnly = path.split('?', 1)[0];
-    if (!(/^\/me$/.test(pathOnly) || /^\/(spaces|tasks|statuses|devices)(?:\/|$)/.test(pathOnly)))
+    const appearancePath = /^\/me\/(appearance|themes(?:\/[a-f0-9]{64})?)$/.test(pathOnly);
+    if (!(/^\/me$/.test(pathOnly) || appearancePath || /^\/(spaces|tasks|statuses|devices)(?:\/|$)/.test(pathOnly)))
       throw new CompanionError('PATH_DENIED', '不允许的远程 API 路径', 403);
     const browserRequest = request.routeOptions.url === '/api/v1/*';
+    if (appearancePath && !browserRequest)
+      throw new CompanionError('PATH_DENIED', '主题设置仅供用户界面使用', 403);
     const method = request.method;
     const parsed = isWrite(method) && !browserRequest ? writeSchema.parse(request.body) : undefined;
     const rawVersion = request.headers['if-match'];
@@ -736,7 +739,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
   // `/api/v1` is the UI-facing proxy; `/v1/api` is retained for taskctl.
   // Both still require the local bridge capability and never expose the remote token.
   app.route({ method: ['GET', 'POST', 'PATCH', 'DELETE'], url: '/v1/api/*', handler: proxy });
-  app.route({ method: ['GET', 'POST', 'PATCH', 'DELETE'], url: '/api/v1/*', handler: proxy });
+  app.route({ method: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], url: '/api/v1/*', handler: proxy });
   app.get('/api/v1/spaces/:spaceId/events', async (request, reply) => {
     const { spaceId } = z.object({ spaceId: z.uuid() }).parse(request.params);
     assertStableAuth();

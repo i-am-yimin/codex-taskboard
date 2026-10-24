@@ -53,5 +53,18 @@ export async function migrate(db: Database): Promise<void> {
       )`);
       await client.query("INSERT INTO schema_migrations(id) VALUES ('0003_instance_settings')");
     }
+    if (
+      !(await client.query("SELECT 1 FROM schema_migrations WHERE id='0004_user_themes'")).rowCount
+    ) {
+      await client.query(`CREATE TABLE user_appearance (
+        user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        preferences jsonb NOT NULL, version integer NOT NULL DEFAULT 1
+      );
+      CREATE TABLE user_themes (
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        id text NOT NULL, manifest jsonb NOT NULL, PRIMARY KEY(user_id,id)
+      )`);
+      await client.query("INSERT INTO schema_migrations(id) VALUES ('0004_user_themes')");
+    }
   });
 }

@@ -19,6 +19,8 @@ describe('web API transport', () => {
       'tb:result:A:task': 'private result',
       'tb:draft:A:task': 'private draft',
       'tb:result:B:task': 'other account',
+      'tb:appearance:https%3A%2F%2Fserver:A': 'private theme',
+      'tb:appearance:https%3A%2F%2Fserver:B': 'other theme',
       removeItem: (key: string) => {
         delete storage[key];
       },
@@ -28,6 +30,8 @@ describe('web API transport', () => {
     expect(storage['tb:result:A:task']).toBeUndefined();
     expect(storage['tb:draft:A:task']).toBeUndefined();
     expect(storage['tb:result:B:task']).toBe('other account');
+    expect(storage['tb:appearance:https%3A%2F%2Fserver:A']).toBeUndefined();
+    expect(storage['tb:appearance:https%3A%2F%2Fserver:B']).toBe('other theme');
   });
 
   it('sends version and idempotency headers for a mutation', async () => {
