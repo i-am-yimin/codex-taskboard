@@ -5,7 +5,7 @@ import { basename, dirname, join } from 'node:path';
 import { z } from 'zod';
 import { taskPrompt, type Task } from '@taskboard/core';
 import { CodexDesktopAdapter, SUPPORTED_CODEX_VERSIONS, codexHostMarkers } from '@taskboard/adapter-codex';
-import type { AgentAdapter, DraftRequest } from '@taskboard/core';
+import type { AdapterCapabilities, AgentAdapter, DraftRequest } from '@taskboard/core';
 import { CompanionStore, defaultDataDirectory, normalizeUpstream } from './store.ts';
 import { SecretStore } from './secret.ts';
 import { CompanionError, RemoteTransport, validateNormalizedUpstream } from './remote.ts';
@@ -172,13 +172,15 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     if (retirementError) return undefined;
     if (!session) return undefined;
     if (!(SUPPORTED_CODEX_VERSIONS as readonly string[]).includes(session.version)) {
-      unsupportedHostReason = `Codex ${session.version} 尚未完成页面验收，仅可隔离启动`;
+      unsupportedHostReason = `Codex ${session.version} 尚未完成侧栏兼容验证，暂不能接入侧栏`;
       return undefined;
     }
     adapter = new CodexDesktopAdapter({
       endpoint: session.endpoint,
       appVersion: session.version,
-      codexHome: session.codexHome,
+      // Existing daily windows can have a custom CODEX_HOME. Do not guess a
+      // directory and accidentally verify the project against another account.
+      codexHome: session.mode === 'daily' ? undefined : session.codexHome,
       boardUrl: embeddedBoardUrl(embeddedPort),
       targetBinding: {
         targetId: session.targetId,
@@ -582,21 +584,30 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
               projects: false,
               draft: false,
               thread: false,
-              reason: unsupportedHostReason ?? '桌面适配器未由启动器启用',
+              reason: unsupportedHostReason ?? '尚未连接 Codex；请在连接与设备中选择“接入日常 Codex”。已打开且未启用连接的窗口需先正常退出一次。',
             },
     };
   });
+  let sidebarInstallation: { adapter: CodexDesktopAdapter; task: Promise<{ data: AdapterCapabilities }> } | undefined;
   app.post('/v1/codex/install', async () => {
     const current = await currentAdapter();
     if (retirementError) throw new CompanionError('RESTORATION_UNCONFIRMED', retirementError, 409);
     if (!(current instanceof CodexDesktopAdapter))
       throw new CompanionError('ADAPTER_UNAVAILABLE', unsupportedHostReason ?? '当前设备没有可安装的 Codex 适配器', 409);
-    try { await current.install(); }
-    catch (error) {
-      throw new CompanionError('CODEX_INSTALL_REFUSED',
-        error instanceof Error ? error.message : 'Codex 内嵌安装失败', 409);
-    }
-    return { data: await current.probe() };
+    if (sidebarInstallation?.adapter === current) return sidebarInstallation.task;
+    const task = (async () => {
+      const existing = await current.probe();
+      if (existing.embedded) return { data: existing };
+      try { await current.install(); }
+      catch (error) {
+        throw new CompanionError('CODEX_INSTALL_REFUSED',
+          error instanceof Error ? error.message : 'Codex 内嵌安装失败', 409);
+      }
+      return { data: await current.probe() };
+    })();
+    sidebarInstallation = { adapter: current, task };
+    try { return await task; }
+    finally { if (sidebarInstallation?.task === task) sidebarInstallation = undefined; }
   });
   app.post('/v1/codex/open-draft', async (request) => {
     const requestBody = z

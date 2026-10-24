@@ -1,4 +1,4 @@
-//! Native ownership checks for a Codex process created by this launcher.
+//! Native identity checks for a launched or explicitly connected Codex process.
 //! The renderer never supplies a PID, executable, profile, or CDP target.
 
 use crate::owned_process::OwnedProcess;
@@ -21,8 +21,9 @@ use std::{
 // 26.930.7945.0 native probe evidence: 2026-10-08, source e72c648.
 // 26.1007.9446.0 native ownership and host project contract observed: 2026-10-16.
 // 26.1013.4894.0 native package/handle/listener/exact-page probe: 2026-10-20.
+// 26.1016.8622.0 native package/handle/listener/exact-page probe: 2026-10-24.
 // The companion keeps its separate host-DOM allowlist for injection and drafts.
-const LAUNCHABLE_VERSIONS: &[&str] = &["26.924.2738.0", "26.928.1915.0", "26.930.7945.0", "26.1007.9446.0", "26.1013.4894.0"];
+const LAUNCHABLE_VERSIONS: &[&str] = &["26.924.2738.0", "26.928.1915.0", "26.930.7945.0", "26.1007.9446.0", "26.1013.4894.0", "26.1016.8622.0"];
 const CODEX_PAGE: &str = "app://-/index.html";
 const START_TIMEOUT: Duration = Duration::from_secs(90);
 const CDP_TIMEOUT: Duration = Duration::from_millis(1200);
@@ -51,16 +52,32 @@ pub struct ManagedCodex {
     pub codex_home: PathBuf,
     pub port: u16,
     pub target: Option<TargetBinding>,
+    pub daily: bool,
 }
 
 impl ManagedCodex {
+    pub fn connection_status(&self) -> Value {
+        serde_json::json!({ "state": "connected", "mode": if self.daily { "daily" } else { "managed" },
+            "version": self.version, "reason": if self.daily { "已连接日常 Codex，沿用原登录、项目和会话。" }
+                else { "已连接独立测试环境。" } })
+    }
+
+    pub fn from_daily(child: OwnedProcess, version: String, port: u16, target: TargetBinding) -> Self {
+        Self {
+            created_ticks: child.identity().created_ticks,
+            child, version, port, target: Some(target), daily: true,
+            session_id: rand::thread_rng().sample_iter(&Alphanumeric).take(48).map(char::from).collect(),
+            exited_sessions: VecDeque::new(), profile: PathBuf::new(), codex_home: PathBuf::new(),
+        }
+    }
+
     pub fn pid(&self) -> u32 {
         self.child.identity().pid
     }
 
     fn session_description(&self) -> Value {
         let target = self.target.as_ref().expect("verified Codex target");
-        serde_json::json!({
+        let mut value = serde_json::json!({
             "id": self.session_id,
             "version": self.version,
             "pid": self.pid(),
@@ -70,7 +87,12 @@ impl ManagedCodex {
             "targetId": target.id,
             "exactPageUrl": target.page_url,
             "pageWebSocketUrl": target.websocket_url,
-        })
+        });
+        if self.daily {
+            value.as_object_mut().unwrap().remove("codexHome");
+            value["mode"] = serde_json::json!("daily");
+        }
+        value
     }
 
     #[cfg(feature = "acceptance-probes")]
@@ -124,8 +146,7 @@ impl ManagedCodex {
     pub fn verify(&self) -> bool {
         self.is_running()
             && self.created_ticks != 0
-            && self.profile.is_dir()
-            && self.codex_home.is_dir()
+            && (self.daily || (self.profile.is_dir() && self.codex_home.is_dir()))
             && self.child.identity().created_ticks == self.created_ticks
             && self.child.verify()
             && listener_owner(self.port).ok().flatten() == Some(self.pid())
@@ -137,6 +158,10 @@ impl ManagedCodex {
 
     pub fn restore_window(&self) -> Result<String, String> {
         let focused = crate::managed_window::restore(&self.child, || self.verify())?;
+        if self.daily {
+            return Ok(if focused { "已连接日常 Codex，原登录、项目和会话保持不变" }
+                else { "已连接日常 Codex，请从任务栏选择该窗口" }.into());
+        }
         Ok(if focused {
             "受管理 Codex 窗口已恢复；登录并选中项目后，可接入 Codex 侧栏"
         } else {
@@ -240,6 +265,7 @@ fn launch_versions(data_directory: &Path, versions: &[&str]) -> Result<ManagedCo
         codex_home,
         port,
         target: None,
+        daily: false,
     })
 }
 
@@ -597,7 +623,7 @@ extern "system" {
 
 /// Reads the Windows TCP owner table directly so verification stays within the
 /// adapter's three-second budget; a process listing or open port alone is not proof.
-pub fn listener_owner(port: u16) -> Result<Option<u32>, String> {
+pub fn loopback_listeners() -> Result<Vec<(u16, u32)>, String> {
     const AF_INET: u32 = 2;
     const TCP_TABLE_OWNER_PID_LISTENER: u32 = 3;
     const LISTEN: u32 = 2;
@@ -638,17 +664,22 @@ pub fn listener_owner(port: u16) -> Result<Option<u32>, String> {
         return Err("Windows TCP 监听表行数无效".into());
     }
     let expected_addr = u32::from_ne_bytes([127, 0, 0, 1]);
-    let mut owners = Vec::new();
+    let mut listeners = Vec::new();
     for index in 0..count {
         let pointer = unsafe { (words.as_ptr().cast::<u8>()).add(4 + index * row_size) };
         let row: TcpRowOwnerPid = unsafe { pointer.cast::<TcpRowOwnerPid>().read_unaligned() };
         if row.state == LISTEN
             && row.local_addr == expected_addr
-            && u16::from_be(row.local_port as u16) == port
         {
-            owners.push(row.owning_pid);
+            listeners.push((u16::from_be(row.local_port as u16), row.owning_pid));
         }
     }
+    Ok(listeners)
+}
+
+pub fn listener_owner(port: u16) -> Result<Option<u32>, String> {
+    let owners: Vec<_> = loopback_listeners()?.into_iter()
+        .filter(|(candidate, _)| *candidate == port).map(|(_, pid)| pid).collect();
     Ok((owners.len() == 1).then(|| owners[0]))
 }
 
@@ -729,7 +760,7 @@ mod tests {
         let managed = ManagedCodex {
             child: held, created_ticks, version: "26.1007.9446.0".into(),
             session_id: id.to_string().repeat(48), exited_sessions: VecDeque::new(),
-            profile: PathBuf::new(), codex_home: PathBuf::new(), port: 0, target: None,
+            profile: PathBuf::new(), codex_home: PathBuf::new(), port: 0, target: None, daily: false,
         };
         (ReceiptChild(child), managed)
     }

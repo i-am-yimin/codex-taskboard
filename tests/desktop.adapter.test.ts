@@ -105,6 +105,77 @@ function guardedCspSend(
 
 describe('Codex desktop adapter safety boundary', () => {
   afterEach(() => vi.unstubAllGlobals());
+  it.each(['ready', 'draft', 'dialog', 'duplicate', 'drift', 'login'])('handles a mounting workspace before CSP changes: %s', async (outcome) => {
+    const page = { id: 'target', type: 'page', url: 'app://codex', webSocketDebuggerUrl: 'ws://127.0.0.1:1/devtools/page/target' };
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => new Response(JSON.stringify(
+      String(input).endsWith('/version') ? { webSocketDebuggerUrl: page.webSocketDebuggerUrl } : [page],
+    )));
+    let safetyChecks = 0;
+    const calls: string[] = [];
+    const lifecycle = guardedCspSend();
+    const send = vi.fn(async (method: string, params?: Record<string, unknown>) => {
+      calls.push(method);
+      const expression = String(params?.expression);
+      if (method === 'Runtime.evaluate' && expression.startsWith('(() => location.href')) {
+        safetyChecks += 1;
+        if (safetyChecks <= 2) return { result: { value: false } };
+      }
+      if (method === 'Runtime.evaluate' && expression.startsWith('({ url: location.href'))
+        return { result: { value: {
+          url: outcome === 'drift' ? 'app://other' : page.url,
+          shell: outcome === 'duplicate' ? 2 : 0, editors: 0,
+          modal: outcome === 'dialog', hasText: outcome === 'draft', login: outcome === 'login',
+        } } };
+      return lifecycle(method, params);
+    });
+    const close = vi.fn();
+    const adapter = new CodexDesktopAdapter({
+      owner: { verify: async () => true }, appVersion: '26.1016.8622.0', endpoint: 'http://127.0.0.1:1',
+      targetBinding: { targetId: page.id, exactPageUrl: page.url, pageWebSocketUrl: page.webSocketDebuggerUrl },
+      shellMarker: '[shell]', composerMarker: '[composer]', modalMarker: '[role="dialog"]',
+      boardUrl: 'http://127.0.0.1', allowCspBypass: true, allowCspReload: true,
+    }, vi.fn().mockResolvedValue({ send, close }));
+    if (outcome === 'ready') {
+      await adapter.install();
+      expect(safetyChecks).toBeGreaterThanOrEqual(3);
+      expect(send).toHaveBeenCalledWith('Page.setBypassCSP', { enabled: true });
+      await adapter.dispose();
+    } else {
+      await expect(adapter.install()).rejects.toThrow(/draft|dialog|structure|target changed|sign in/);
+      expect(calls).not.toContain('Page.setBypassCSP');
+      expect(calls).not.toContain('Page.reload');
+      expect(close).toHaveBeenCalledOnce();
+    }
+  });
+
+  it.each([
+    ['board-ready-timeout', '任务看板未在时限内就绪'],
+    ['board-context-changed', 'Codex 页面发生变化'],
+    ['shell-marker-not-observed', 'Codex DOM 标记未观察到'],
+  ])('reports %s without claiming every readiness failure is a missing host marker', async (reason, expected) => {
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => new Response(JSON.stringify(
+      String(input).endsWith('/json/version')
+        ? { webSocketDebuggerUrl: 'ws://127.0.0.1:1/devtools/browser/test' }
+        : [{ id: 'target', type: 'page', url: 'app://codex', webSocketDebuggerUrl: 'ws://127.0.0.1:1/devtools/page/target' }],
+    )));
+    const close = vi.fn();
+    const send = vi.fn(async (method: string, params?: Record<string, unknown>) => {
+      if (method === 'Target.getTargetInfo') return { targetInfo: { targetId: 'target', type: 'page', url: 'app://codex' } };
+      if (method === 'Runtime.evaluate') return { result: { value: String(params?.expression).includes('const selectOne =')
+        ? { installed: false, reason } : true } };
+      return {};
+    });
+    const adapter = new CodexDesktopAdapter({
+      owner: { verify: async () => true }, appVersion: '26.1016.8622.0',
+      endpoint: 'http://127.0.0.1:1', shellMarker: '[data-codex-shell]', boardUrl: 'http://127.0.0.1:4173',
+      targetBinding: { targetId: 'target', exactPageUrl: 'app://codex', pageWebSocketUrl: 'ws://127.0.0.1:1/devtools/page/target' },
+    }, async () => ({
+      send: async <T>(method: string, params?: Record<string, unknown>) => await send(method, params) as T,
+      close,
+    }));
+    await expect(adapter.install()).rejects.toThrow(expected);
+    expect(close).toHaveBeenCalledOnce();
+  });
   it('rejects pending protocol commands when the CDP socket disconnects', async () => {
     const cdp = await mockCdp((_id, _method, socket) => socket.destroy());
     try {

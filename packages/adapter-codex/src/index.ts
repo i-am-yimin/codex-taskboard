@@ -12,14 +12,14 @@ import { resolveCodexProject } from './project-identity.ts';
 /** Exact desktop versions this adapter knows how to inspect. A successful CDP
  * connection is deliberately not enough to mark a user's Codex installation as
  * supported: the host DOM must be observed through an explicit marker. */
-export const SUPPORTED_CODEX_VERSIONS = ['26.901.5280.0', '26.917.9434.0', '26.924.1866.0', '26.924.2738.0', '26.928.1915.0', '26.930.7945.0', '26.1007.9446.0', '26.1013.4894.0'] as const;
+export const SUPPORTED_CODEX_VERSIONS = ['26.901.5280.0', '26.917.9434.0', '26.924.1866.0', '26.924.2738.0', '26.928.1915.0', '26.930.7945.0', '26.1007.9446.0', '26.1013.4894.0', '26.1016.8622.0'] as const;
 
 /** Version-specific markers confirmed on an isolated host. Native launch support
  * has a separate gate: recognizing a host does not prove process ownership. */
 export function codexHostMarkers(version: string) {
   if (!SUPPORTED_CODEX_VERSIONS.includes(version as (typeof SUPPORTED_CODEX_VERSIONS)[number]))
     throw new Error('Unsupported Codex host version');
-  const redesignedShell = version === '26.924.1866.0' || version === '26.924.2738.0' || version === '26.928.1915.0' || version === '26.930.7945.0' || version === '26.1007.9446.0' || version === '26.1013.4894.0';
+  const redesignedShell = version === '26.924.1866.0' || version === '26.924.2738.0' || version === '26.928.1915.0' || version === '26.930.7945.0' || version === '26.1007.9446.0' || version === '26.1013.4894.0' || version === '26.1016.8622.0';
   return {
     shellMarker: 'div:has(>aside.app-shell-left-panel)',
     sidebarMarker: redesignedShell
@@ -391,6 +391,14 @@ export function boardEmbedScript(
   })()`;
 }
 
+function embedInstallationError(reason?: string): Error {
+  if (reason === 'board-ready-timeout')
+    return new Error('已定位 Codex 侧栏，但任务看板未在时限内就绪；请保持窗口可见后重试');
+  if (reason === 'board-context-changed' || reason === 'unloaded')
+    return new Error('接入期间 Codex 页面发生变化，侧栏已撤回；请等待页面加载完成后重试');
+  return new Error('Codex DOM 标记未观察到，已拒绝注入');
+}
+
 export class CodexDesktopAdapter implements AgentAdapter {
   readonly id = 'codex-desktop';
   private connection?: CdpConnection;
@@ -606,7 +614,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
         if (!this.config.allowCspReload)
           throw new Error('CSP bypass requires explicit guarded reload opt-in');
         if (this.config.allowCspReload)
-          await this.assertReloadSafe(connection, binding.exactPageUrl);
+          await this.assertReloadSafe(connection, binding.exactPageUrl, true);
         if (generation !== this.generation || this.session !== session)
           throw new Error('Codex adapter installation was cancelled');
         // No bypass is enabled by default. This only takes effect after an explicit launcher setting.
@@ -624,7 +632,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
       if (!shellMarker || !board) throw new Error('缺少已验证的 Codex DOM 标记或看板地址');
       await this.assertOwner();
       session.injectionAttempted = true;
-      const result = await this.evaluate<{ installed?: boolean }>(
+      const result = await this.evaluate<{ installed?: boolean; reason?: string }>(
         connection,
         boardEmbedScript(
           board.href,
@@ -641,7 +649,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
       );
       if (generation !== this.generation)
         throw new Error('Codex adapter installation was cancelled');
-      if (!result.installed) throw new Error('Codex DOM 标记未观察到，已拒绝注入');
+      if (!result.installed) throw embedInstallationError(result.reason);
       this.observed = true;
       this.removeLoadListener = connection.onEvent?.('Page.loadEventFired', () => {
         if (generation === this.generation && connection === this.connection) this.observed = false;
@@ -661,29 +669,43 @@ export class CodexDesktopAdapter implements AgentAdapter {
     }
   }
 
-  private async assertReloadSafe(connection: CdpConnection, exactPageUrl: string): Promise<void> {
+  private async assertReloadSafe(connection: CdpConnection, exactPageUrl: string, waitForWorkspace = false): Promise<void> {
     const shell = this.config.shellMarker;
     const editor = this.config.composerMarker;
     const modal = this.config.modalMarker;
     if (!shell || !editor || !modal)
       throw new Error('CSP reload requires explicit shell, empty-editor, and modal markers');
-    const safe = await this.evaluate<boolean>(
-      connection,
-      `(() => location.href === ${JSON.stringify(exactPageUrl)} && document.querySelectorAll(${JSON.stringify(shell)}).length === 1 && document.querySelectorAll(${JSON.stringify(editor)}).length === 1 && !document.querySelector(${JSON.stringify(modal)}) && !(document.querySelector(${JSON.stringify(editor)})?.textContent ?? '').trim())()`,
-    );
-    if (!safe) {
+    const deadline = Date.now() + (waitForWorkspace ? this.hostReadyTimeoutMs() : 0);
+    while (true) {
+      await this.assertOwner();
+      const safe = await this.evaluate<boolean>(
+        connection,
+        `(() => location.href === ${JSON.stringify(exactPageUrl)} && document.querySelectorAll(${JSON.stringify(shell)}).length === 1 && document.querySelectorAll(${JSON.stringify(editor)}).length === 1 && !document.querySelector(${JSON.stringify(modal)}) && !(document.querySelector(${JSON.stringify(editor)})?.textContent ?? '').trim())()`,
+      );
+      if (safe) return;
       // Diagnose the refused state without enabling bypass or reloading.
       const state = await this.evaluate<{
-        url?: string; shell?: number; editors?: number; modal?: boolean; hasText?: boolean;
+        url?: string; shell?: number; editors?: number; modal?: boolean; hasText?: boolean; login?: boolean;
       }>(connection,
-        `({ url: location.href, shell: document.querySelectorAll(${JSON.stringify(shell)}).length, editors: document.querySelectorAll(${JSON.stringify(editor)}).length, modal: Boolean(document.querySelector(${JSON.stringify(modal)})), hasText: Array.from(document.querySelectorAll(${JSON.stringify(editor)})).some(element => Boolean((element.textContent ?? '').trim())) })`,
+        `({ url: location.href, shell: document.querySelectorAll(${JSON.stringify(shell)}).length, editors: document.querySelectorAll(${JSON.stringify(editor)}).length, modal: Boolean(document.querySelector(${JSON.stringify(modal)})), hasText: Array.from(document.querySelectorAll(${JSON.stringify(editor)})).some(element => Boolean((element.textContent ?? '').trim())), login: Array.from(document.querySelectorAll('button,a')).some(element => /^(log in|sign in|continue with chatgpt|登录|继续登录|使用 ChatGPT 登录)$/i.test((element.textContent ?? '').trim())) })`,
       );
       if (state?.url !== exactPageUrl)
         throw new Error('CSP reload refused: Codex target changed');
       if (state.modal) throw new Error('CSP reload refused: a Codex dialog is open');
       if (state.hasText) throw new Error('CSP reload refused: the Codex editor contains an unsent draft');
-      if (state.shell === 0 || state.editors === 0)
+      if (state.login) throw new Error('CSP reload refused: Codex workspace is not ready; sign in and open a project first');
+      if ((state.shell === 0 || state.shell === 1) &&
+          (state.editors === 0 || state.editors === 1) &&
+          (state.shell === 0 || state.editors === 0)) {
+        // A newly opened daily window exposes CDP before its workspace mounts.
+        // Only wait while it is unambiguously loading; drafts, dialogs, target
+        // drift and duplicate markers still refuse before CSP is changed.
+        if (waitForWorkspace && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          continue;
+        }
         throw new Error('CSP reload refused: Codex workspace is not ready; sign in and open a project first');
+      }
       throw new Error('CSP reload refused: Codex workspace structure does not match the verified host');
     }
   }
@@ -820,7 +842,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
         if (!shellReady) throw new Error('Codex shell did not become ready after reload');
         if (generation !== this.generation || connection !== this.connection) return;
         await this.assertOwner();
-        const result = await this.evaluate<{ installed?: boolean }>(
+        const result = await this.evaluate<{ installed?: boolean; reason?: string }>(
           connection,
           boardEmbedScript(
             board.href,
@@ -836,7 +858,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
           HANDSHAKE_COMMAND_TIMEOUT_MS,
         );
         if (generation !== this.generation || connection !== this.connection) return;
-        if (!result.installed) throw new Error('Codex DOM 标记未观察到，已拒绝注入');
+        if (!result.installed) throw embedInstallationError(result.reason);
         this.observed = true;
       } catch (error) {
         if (generation === this.generation && connection === this.connection) {

@@ -3,6 +3,8 @@
 #[cfg(windows)]
 mod managed_codex;
 #[cfg(windows)]
+mod daily_codex;
+#[cfg(windows)]
 mod managed_profile;
 #[cfg(windows)]
 mod managed_window;
@@ -13,6 +15,7 @@ mod package_launch;
 #[cfg(windows)]
 mod private_pipe;
 mod ready;
+mod launch_intent;
 
 use rand::{distributions::Alphanumeric, Rng};
 use std::{
@@ -36,6 +39,7 @@ struct Companion {
 struct ManagedCodexState {
     #[cfg(windows)]
     child: Arc<Mutex<Option<managed_codex::ManagedCodex>>>,
+    notice: Mutex<Option<String>>,
 }
 
 impl Drop for Companion {
@@ -182,6 +186,84 @@ fn bridge_capability(state: tauri::State<'_, Companion>) -> String {
 }
 
 #[tauri::command]
+async fn codex_connection_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(windows)]
+        {
+            let state = app.state::<ManagedCodexState>();
+            let Ok(guard) = state.child.try_lock() else {
+                return Ok(serde_json::json!({"state":"connecting", "reason":"正在连接 Codex…"}));
+            };
+            if let Some(session) = guard.as_ref().filter(|session| session.verify()) {
+                let mut report = session.connection_status();
+                if let Some(notice) = state.notice.lock().map_err(|_| "Codex notice lock poisoned")?.as_ref() {
+                    report["reason"] = serde_json::json!(notice);
+                }
+                return Ok(report);
+            }
+            drop(guard);
+            daily_codex::status()
+        }
+        #[cfg(not(windows))]
+        { let _ = app; Err("日常 Codex 接入仅支持 Windows".into()) }
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[cfg(windows)]
+fn connect_daily_session(app: &tauri::AppHandle) -> Result<String, String> {
+    let state = app.state::<ManagedCodexState>();
+    let mut guard = state.child.lock().map_err(|_| "Codex connection lock poisoned")?;
+    let mut history = None;
+    if let Some(existing) = guard.as_ref() {
+        if existing.is_running() {
+            if existing.daily && existing.verify() { return existing.restore_window(); }
+            return Err("已有 Codex 连接仍在使用或页面归属已变化；请先正常退出该窗口再接入日常环境。".into());
+        }
+        history = Some(existing.confirmed_exit_history()?);
+    }
+    let mut session = daily_codex::connect()?;
+    if let Some(history) = history { session.inherit_exits(history); }
+    *guard = Some(session);
+    *state.notice.lock().map_err(|_| "Codex notice lock poisoned")? = None;
+    Ok("已连接日常 Codex，原登录、项目和会话保持不变".into())
+}
+
+#[tauri::command]
+async fn connect_daily_codex(app: tauri::AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(windows)]
+        { connect_daily_session(&app) }
+        #[cfg(not(windows))]
+        { let _ = app; Err("日常 Codex 接入仅支持 Windows".into()) }
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn create_codex_connection_shortcut() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(windows)]
+        { daily_codex::create_shortcut(&std::env::current_exe().map_err(|e| e.to_string())?) }
+        #[cfg(not(windows))]
+        { Err("连接快捷方式仅支持 Windows".into()) }
+    }).await.map_err(|e| e.to_string())?
+}
+
+fn connect_from_shortcut(app: tauri::AppHandle) {
+    #[cfg(windows)]
+    thread::spawn(move || {
+        let result = connect_daily_session(&app).and_then(|_| {
+            ready::install_codex_board(&app.state::<Companion>().bridge_key)
+        });
+        let state = app.state::<ManagedCodexState>();
+        if let Ok(mut notice) = state.notice.lock() {
+            *notice = Some(result.unwrap_or_else(|message| message));
+        };
+    });
+    #[cfg(not(windows))]
+    let _ = app;
+}
+
+#[tauri::command]
 fn start_managed_codex(
     app: tauri::AppHandle,
     state: tauri::State<'_, ManagedCodexState>,
@@ -194,6 +276,9 @@ fn start_managed_codex(
             .map_err(|_| "Codex ownership lock poisoned")?;
         let mut exited_sessions = None;
         if let Some(existing) = child.as_mut() {
+            if existing.daily && existing.is_running() {
+                return Err("日常 Codex 仍在连接中；请先正常退出该窗口后再启动独立测试环境".into());
+            }
             if existing.verify() {
                 return existing.restore_window();
             }
@@ -256,8 +341,11 @@ fn main() {
         std::process::exit(code);
     }
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            show_main(app)
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            let intent = launch_intent::LaunchIntent::from_args(&args);
+            if intent == launch_intent::LaunchIntent::Quit { app.exit(0); return; }
+            show_main(app);
+            if intent == launch_intent::LaunchIntent::ConnectDaily { connect_from_shortcut(app.clone()); }
         }))
         .manage(Companion {
             child: Mutex::new(None),
@@ -274,6 +362,10 @@ fn main() {
         })
         .manage(ManagedCodexState::default())
         .setup(|app| {
+            if launch_intent::LaunchIntent::from_args(std::env::args()) == launch_intent::LaunchIntent::Quit {
+                app.handle().exit(0);
+                return Ok(());
+            }
             let key = app.state::<Companion>().bridge_key.clone();
             #[cfg(windows)]
             let control_port = managed_codex::start_control(
@@ -333,6 +425,9 @@ fn main() {
                 recover_stale_desktop_shell(window);
             }
             show_main(&app.handle());
+            if std::env::args().any(|arg| arg == "--connect-daily-codex") {
+                connect_from_shortcut(app.handle().clone());
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -343,6 +438,9 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             bridge_capability,
+            codex_connection_status,
+            connect_daily_codex,
+            create_codex_connection_shortcut,
             start_managed_codex
         ])
         .build(tauri::generate_context!())

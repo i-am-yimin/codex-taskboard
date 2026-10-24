@@ -6,6 +6,40 @@ use std::{
 
 pub const COMPANION_ADDR: &str = "127.0.0.1:47831";
 
+/// The optional daily shortcut uses the same authenticated install route as
+/// the settings button. No page mutation is performed by native discovery.
+#[cfg(windows)]
+pub fn install_codex_board(bridge_key: &str) -> Result<String, String> {
+    let address: SocketAddr = COMPANION_ADDR.parse().map_err(|e| format!("{e}"))?;
+    install_codex_board_at(address, bridge_key, Duration::from_secs(180))
+}
+
+#[cfg(any(windows, test))]
+fn install_codex_board_at(address: SocketAddr, bridge_key: &str, timeout: Duration) -> Result<String, String> {
+    let deadline = Instant::now() + timeout;
+    let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(2)).map_err(|e| e.to_string())?;
+    stream.set_write_timeout(Some(Duration::from_secs(2))).map_err(|e| e.to_string())?;
+    write!(stream, "POST /v1/codex/install HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\nx-taskboard-companion-key: {bridge_key}\r\n\r\n{{}}")
+        .map_err(|e| e.to_string())?;
+    let mut response = Vec::new();
+    loop {
+        stream.set_read_timeout(Some(remaining(deadline).ok_or("侧栏接入超时，请检测连接")?)).map_err(|e| e.to_string())?;
+        let mut chunk = [0u8; 1024];
+        let count = stream.read(&mut chunk).map_err(|e| e.to_string())?;
+        if count == 0 { break; }
+        response.extend_from_slice(&chunk[..count]);
+        if response.len() > 32 * 1024 { return Err("侧栏接入响应过大".into()); }
+    }
+    let response = std::str::from_utf8(&response).map_err(|e| e.to_string())?;
+    let (head, body) = response.split_once("\r\n\r\n").ok_or("侧栏接入响应无效")?;
+    let value: serde_json::Value = serde_json::from_str(body).map_err(|_| "侧栏接入结果无效")?;
+    if head.lines().next() == Some("HTTP/1.1 200 OK") && value["data"]["embedded"] == true {
+        return Ok("日常 Codex 侧栏看板已接入；任务草稿可在原项目中手动粘贴。".into());
+    }
+    Err(value["error"]["message"].as_str().or_else(|| value["data"]["reason"].as_str())
+        .unwrap_or("侧栏接入未确认，请在连接与设备中检测连接").into())
+}
+
 pub fn health_request(bridge_key: &str) -> String {
     format!(
         "GET /health HTTP/1.1\r\nHost: {COMPANION_ADDR}\r\nAccept: application/json\r\nConnection: close\r\nx-taskboard-companion-key: {bridge_key}\r\n\r\n"
@@ -173,6 +207,37 @@ pub fn probe_health(bridge_key: &str, timeout: Duration) -> Result<bool, String>
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn daily_shortcut_installs_with_its_bridge_key_and_preserves_version_refusal() {
+        use std::{net::TcpListener, thread};
+        for (status, body, succeeds) in [
+            ("200 OK", r#"{"data":{"embedded":true}}"#, true),
+            ("409 Conflict", r#"{"error":{"message":"Codex version is unverified"}}"#, false),
+            ("200 OK", r#"{"data":{"embedded":false,"reason":"host is not ready"}}"#, false),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+                let mut request = Vec::new();
+                while !request.ends_with(b"\r\n\r\n{}") {
+                    let mut chunk = [0u8; 256];
+                    let count = stream.read(&mut chunk).unwrap();
+                    assert!(count > 0);
+                    request.extend_from_slice(&chunk[..count]);
+                }
+                let request = String::from_utf8(request).unwrap();
+                assert!(request.starts_with("POST /v1/codex/install HTTP/1.1\r\n"));
+                assert!(request.contains("x-taskboard-companion-key: private-bridge-key\r\n"));
+                write!(stream, "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+            });
+            let result = install_codex_board_at(address, "private-bridge-key", Duration::from_secs(2));
+            assert_eq!(result.is_ok(), succeeds);
+            if !succeeds { assert!(!result.unwrap_err().is_empty()); }
+            server.join().unwrap();
+        }
+    }
     use super::*;
     use std::{net::TcpListener, sync::mpsc, thread, time::Instant};
 

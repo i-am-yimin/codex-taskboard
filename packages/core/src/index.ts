@@ -1,5 +1,5 @@
 import { z } from 'zod';
-export const VERSION = '0.1.1';
+export const VERSION = '0.1.2';
 export const API_VERSION = 1;
 export const semantics = ['todo', 'in_progress', 'in_review', 'done', 'cancelled'] as const;
 export const roles = ['owner', 'admin', 'editor', 'viewer'] as const;

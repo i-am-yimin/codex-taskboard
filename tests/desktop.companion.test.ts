@@ -40,7 +40,7 @@ describe('companion loopback boundary', () => {
       const probe = await runtime.app.inject({ method: 'GET', url: '/v1/codex/probe', headers });
       expect(probe.json().data).toMatchObject({
         embedded: false,
-        reason: '桌面适配器未由启动器启用',
+        reason: '尚未连接 Codex；请在连接与设备中选择“接入日常 Codex”。已打开且未启用连接的窗口需先正常退出一次。',
       });
       const install = await runtime.app.inject({ method: 'POST', url: '/v1/codex/install', headers });
       expect(install.statusCode).toBe(409);

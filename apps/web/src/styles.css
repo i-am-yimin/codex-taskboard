@@ -1084,6 +1084,34 @@ h3 {
 .connection-card .row-actions .button {
   margin-left: 0;
 }
+.connection-card > div:first-child {
+  min-width: 0;
+  flex: 1;
+}
+.connection-card .row-actions {
+  flex: 0 1 220px;
+}
+.codex-connection-options {
+  margin: 12px 0 20px;
+}
+.codex-connection-options details {
+  margin-top: 16px;
+}
+.codex-connection-options summary {
+  cursor: pointer;
+  color: var(--text-muted, #7f7c88);
+  font-size: 12px;
+  padding: 8px 0;
+}
+@media (max-width: 640px) {
+  .connection-card {
+    flex-wrap: wrap;
+  }
+  .connection-card .row-actions {
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+}
 .logout {
   margin-top: 28px;
   color: #b65454;
@@ -1495,9 +1523,6 @@ h3 {
   }
   .settings-content {
     padding: 22px;
-  }
-  .connection-card .button {
-    display: none;
   }
 }
 

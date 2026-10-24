@@ -564,6 +564,34 @@ describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () =>
     expect(await page.locator('#codex-composer').count()).toBe(1);
   });
 
+  it('waits for the initial workspace to mount before enabling CSP bypass', async () => {
+    const target = await boundPage();
+    const before = await documentOrigin();
+    await page.evaluate(() => {
+      const shell = document.querySelector('#codex-shell')!;
+      const markup = shell.outerHTML;
+      shell.remove();
+      setTimeout(() => document.body.insertAdjacentHTML('beforeend', markup), 350);
+    });
+    const mountChecks: number[] = [];
+    const connector: CdpConnector = async (webSocketDebuggerUrl) => {
+      const connection = await connectCdp(webSocketDebuggerUrl, 5_000);
+      return {
+        send: async <T = unknown>(method: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<T> => {
+          if (method === 'Page.setBypassCSP' && params?.enabled === true)
+            mountChecks.push(await page.locator('#codex-shell #codex-composer').count());
+          return connection.send<T>(method, params, timeoutMs);
+        },
+        onEvent: connection.onEvent?.bind(connection),
+        close: () => connection.close(),
+      } satisfies CdpConnection;
+    };
+    await adapter(target, connector).install();
+    expect(mountChecks).toEqual([1]);
+    expect(await documentOrigin()).not.toBe(before);
+    expect(await page.locator('[data-taskboard-owned]').count()).toBe(1);
+  });
+
   it('explains the login-page refusal without reloading or enabling CSP bypass', async () => {
     await page.setContent('<main><h1>登录 ChatGPT</h1><button>继续登录</button></main>');
     const before = await documentOrigin();

@@ -6,13 +6,16 @@ const sessionSchema = z
     version: z.string().regex(/^\d+\.\d+\.\d+\.\d+$/),
     pid: z.number().int().positive(),
     createdTicks: z.string().regex(/^\d+$/),
-    codexHome: z.string().min(1),
+    codexHome: z.string().min(1).optional(),
+    mode: z.enum(['daily', 'managed']).optional(),
     endpoint: z.string().regex(/^http:\/\/127\.0\.0\.1:\d{1,5}$/),
     targetId: z.string().regex(/^[a-fA-F0-9]{32}$/),
     exactPageUrl: z.literal('app://-/index.html'),
     pageWebSocketUrl: z.string(),
   })
-  .strict();
+  .strict()
+  .refine((session) => session.mode === 'daily' ? session.codexHome === undefined : Boolean(session.codexHome),
+    'Daily sessions must omit unverified Codex home; managed sessions require their private directory');
 
 export type LauncherSession = z.infer<typeof sessionSchema>;
 
