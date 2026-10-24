@@ -78,7 +78,7 @@ export function CodexPreferenceWarning({ id = 'codex-connection-notice' }: { id?
     <div className="codex-connection-notice" id={id} role="alert">
       <div>
         <b>{codex.phase === 'connected' ? 'Codex 已接入，设置未保存' : '自动连接设置未保存'}</b>
-        <p>{codex.preferenceError}</p>
+        <p className="codex-preference-message">{codex.preferenceError}</p>
       </div>
       <button className="button ghost" onClick={codex.retryPreference}>
         重试保存

@@ -1117,6 +1117,9 @@ h3 {
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
+.codex-connection-notice .codex-preference-message {
+  color: var(--ink);
+}
 .codex-auto-connect {
   display: flex;
   align-items: center;
