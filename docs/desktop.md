@@ -1,6 +1,6 @@
 # Windows 桌面版
 
-> 当前状态（2026-10-24）：[客户端 0.1.3 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.3) 已公开为未签名预发布版。固定 `v0.1.3` / `69c865b` 的实际安装器已完成旧版数据升级、日常安装升级、真实侧栏、并发接入及正常退出重连验收，见 [0.1.3 验收](acceptance-0.1.3.md)。旧版标签与资产保持。逐步操作见 [README 使用手册](../README.md#使用手册)。
+> 当前状态（2026-10-24）：[客户端 0.1.4 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.4) 已公开为未签名预发布。固定标签 `v0.1.4` / `a8ed9f4` 的实际安装包通过应用内连接、自动恢复、连续打开及原数据保留验收，见 [0.1.4 验收](acceptance-0.1.4.md)。操作见 [README 使用手册](../README.md#使用手册)。
 
 桌面版是 Windows x64 的 Tauri 启动器。它在当前用户范围安装，使用安装资源目录中自带的 Node 运行时启动本机伴随服务，因此不要求安装系统 Node 或 Codex CLI。共享任务数据存放在服务器；本机凭据和仓库映射保存在 `%APPDATA%\CodexTaskboard`。卸载保留数据并重装恢复已在隔离测试目录实机通过，正式用户目录未参与该试验。
 
@@ -26,7 +26,7 @@ apps\desktop\runtime\taskctl.cmd --help
 
 该命令使用 `%APPDATA%\CodexTaskboard` 中的 CLI 配对密钥。常用操作包括 `list`、`get`、`claim --version`、`comment`、`link`、`release --version` 和 `submit --version`。对网络超时后的同一写操作，复用 `--idempotency-key <uuid>`。
 
-PowerShell 调用 `.cmd` 并传入 JSON 时，CMD 会剥离参数内的双引号。`create`、`update` 等 JSON 写操作请直接调用同目录的随包 `node.exe` 和 `taskctl.js`，例如 `& "$runtime\node.exe" "$runtime\taskctl.js" create $spaceId $payloadJson`；这样 PowerShell 会保留 JSON 参数。`$runtime` 为安装目录中的 `runtime` 路径。
+PowerShell 调用 `.cmd` 并传入 JSON 时，CMD 会剥离参数内的双引号。`create`、`update` 等 JSON 写操作请直接调用同目录的随包 `node.exe` 和 `taskctl.cjs`，例如 `& "$runtime\node.exe" "$runtime\taskctl.cjs" create $spaceId $payloadJson`；这样 PowerShell 会保留 JSON 参数。`$runtime` 为安装目录中的 `runtime` 路径。
 
 浏览器与 Agent 使用独立会话。首次使用 CLI，先启动伴随服务，再通过标准输入登录（密码不会成为进程参数）：
 
@@ -50,7 +50,7 @@ Remove-Variable taskboardPassword
 
 ## Codex 桌面集成状态
 
-**0.1.3 已发布：** 设置页优先提供“接入日常 Codex”。普通已运行窗口未开启连接时，先保存工作并正常退出，再从该入口打开，沿用日常 profile。创建并持续使用开始菜单入口“Codex（任务看板连接）”；原 ChatGPT/Codex 图标不会自动获得连接参数。启动时等待工作区挂载，同一窗口的并发接入共用一次安装；登录页、草稿、弹窗和身份漂移仍会拒绝。日常模式使用手动复制草稿，独立环境保留为兼容测试选项。精确版本 `26.1016.8622.0` 的日常侧栏、原项目与聊天、原 Taskboard 账号、正常退出、同一 Codex 进程重连和 CSP 恢复已通过实际安装器验收。边界见 [ADR 0004](adr/0004-daily-codex-connection.md)与 [0.1.3 验收记录](acceptance-0.1.3.md)。
+**0.1.4 已发布：** 在 Taskboard 主界面点击“连接 Codex”，直接打开或接入日常环境。已经运行但未启用连接时，应用内等待用户保存工作并正常退出一次后继续。接入成功后，普通启动 Taskboard 即可恢复侧栏，不依赖专用快捷方式；设置页可关闭自动连接，手动连接保留关闭选择。“打开 Codex”复用当前侧栏并恢复最小化或隐藏的原窗口。日常模式仍由用户手动粘贴草稿，独立环境保留兼容测试用途。精确支持 26.1016.8622.0，身份和版本校验保持，见[应用内接入说明](in-app-codex-connection.md)与 [0.1.4 验收记录](acceptance-0.1.4.md)。
 
 设置页的“启动独立 Codex”使用独立 profile 和 Codex 数据目录，不接管用户已有实例。启动器只接受列入隔离启动清单的 MSIX 版本，并逐次核对进程句柄、回环监听者和精确页面。当前完整 G1 实机基线为 `26.1007.9446.0`：已验证侧栏开关、自适应看板和详情、未发送草稿的成功与拒绝路径、原生窗口退出和重启，以及受管理登录信息保留。其他精确版本的阶段性证据保留在[验收记录](acceptance.md)，不自动扩大为版本范围。
 
