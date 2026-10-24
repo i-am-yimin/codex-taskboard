@@ -1,6 +1,6 @@
 # Codex Taskboard
 
-[使用手册](#使用手册) · [服务端部署](#部署服务端) · [常见问题](#常见问题) · [English](README.en.md) · [架构](docs/architecture.md) · [开发](docs/development.md) · [验收记录](docs/acceptance.md)
+[使用手册](#使用手册) · [更新日志](CHANGELOG.md) · [服务端部署](#部署服务端) · [常见问题](#常见问题) · [English](README.en.md) · [架构](docs/architecture.md) · [开发](docs/development.md) · [验收记录](docs/acceptance.md)
 
 嵌入 Codex 桌面版的任务协作层。把待办、进度与验收放在同一个看板中，让个人多设备和可信团队共享任务；Codex 继续管理原有项目和执行会话。
 
