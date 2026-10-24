@@ -88,6 +88,42 @@ describe('private launcher control', () => {
     } finally { await runtime.stop(); }
   });
 
+  it.each([false, true])('shares overlapping sidebar installation and releases a failed attempt (%s)', async (fail) => {
+    const control = new LauncherControl(9, key);
+    vi.spyOn(control, 'session').mockResolvedValue(original);
+    let installed = false;
+    vi.spyOn(CodexDesktopAdapter.prototype, 'probe').mockImplementation(async () => ({
+      embedded: installed, projects: false, draft: true, thread: false,
+    }));
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const install = vi.spyOn(CodexDesktopAdapter.prototype, 'install').mockImplementation(async () => {
+      await pending;
+      if (fail && install.mock.calls.length === 1) throw new Error('Workspace refused');
+      installed = true;
+    });
+    const runtime = await createCompanion({
+      dataDirectory: await mkdtemp(join(tmpdir(), 'taskboard-shared-install-')),
+      port: 0, launcherControl: control,
+    });
+    const request = () => runtime.app.inject({ method: 'POST', url: '/v1/codex/install', headers: { 'x-taskboard-companion-key': runtime.clientKey } });
+    try {
+      const first = request();
+      await vi.waitFor(() => expect(install).toHaveBeenCalledOnce());
+      const second = request();
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(install).toHaveBeenCalledOnce();
+      finish();
+      const responses = await Promise.all([first, second]);
+      expect(responses.map(r => r.statusCode)).toEqual(fail ? [409, 409] : [200, 200]);
+      expect(responses[0].json()).toEqual(responses[1].json());
+      const retry = await request();
+      expect(retry.statusCode).toBe(200);
+      expect(retry.json().data.embedded).toBe(true);
+      expect(install).toHaveBeenCalledTimes(fail ? 2 : 1);
+    } finally { finish(); await runtime.stop(); }
+  });
+
   it('revokes ownership on exit, port switch, page drift and launcher loss', async () => {
     let session: LauncherSession | null = { ...original };
     let valid = true;

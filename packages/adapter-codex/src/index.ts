@@ -614,7 +614,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
         if (!this.config.allowCspReload)
           throw new Error('CSP bypass requires explicit guarded reload opt-in');
         if (this.config.allowCspReload)
-          await this.assertReloadSafe(connection, binding.exactPageUrl);
+          await this.assertReloadSafe(connection, binding.exactPageUrl, true);
         if (generation !== this.generation || this.session !== session)
           throw new Error('Codex adapter installation was cancelled');
         // No bypass is enabled by default. This only takes effect after an explicit launcher setting.
@@ -669,17 +669,20 @@ export class CodexDesktopAdapter implements AgentAdapter {
     }
   }
 
-  private async assertReloadSafe(connection: CdpConnection, exactPageUrl: string): Promise<void> {
+  private async assertReloadSafe(connection: CdpConnection, exactPageUrl: string, waitForWorkspace = false): Promise<void> {
     const shell = this.config.shellMarker;
     const editor = this.config.composerMarker;
     const modal = this.config.modalMarker;
     if (!shell || !editor || !modal)
       throw new Error('CSP reload requires explicit shell, empty-editor, and modal markers');
-    const safe = await this.evaluate<boolean>(
-      connection,
-      `(() => location.href === ${JSON.stringify(exactPageUrl)} && document.querySelectorAll(${JSON.stringify(shell)}).length === 1 && document.querySelectorAll(${JSON.stringify(editor)}).length === 1 && !document.querySelector(${JSON.stringify(modal)}) && !(document.querySelector(${JSON.stringify(editor)})?.textContent ?? '').trim())()`,
-    );
-    if (!safe) {
+    const deadline = Date.now() + (waitForWorkspace ? this.hostReadyTimeoutMs() : 0);
+    while (true) {
+      await this.assertOwner();
+      const safe = await this.evaluate<boolean>(
+        connection,
+        `(() => location.href === ${JSON.stringify(exactPageUrl)} && document.querySelectorAll(${JSON.stringify(shell)}).length === 1 && document.querySelectorAll(${JSON.stringify(editor)}).length === 1 && !document.querySelector(${JSON.stringify(modal)}) && !(document.querySelector(${JSON.stringify(editor)})?.textContent ?? '').trim())()`,
+      );
+      if (safe) return;
       // Diagnose the refused state without enabling bypass or reloading.
       const state = await this.evaluate<{
         url?: string; shell?: number; editors?: number; modal?: boolean; hasText?: boolean;
@@ -690,8 +693,18 @@ export class CodexDesktopAdapter implements AgentAdapter {
         throw new Error('CSP reload refused: Codex target changed');
       if (state.modal) throw new Error('CSP reload refused: a Codex dialog is open');
       if (state.hasText) throw new Error('CSP reload refused: the Codex editor contains an unsent draft');
-      if (state.shell === 0 || state.editors === 0)
+      if ((state.shell === 0 || state.shell === 1) &&
+          (state.editors === 0 || state.editors === 1) &&
+          (state.shell === 0 || state.editors === 0)) {
+        // A newly opened daily window exposes CDP before its workspace mounts.
+        // Only wait while it is unambiguously loading; drafts, dialogs, target
+        // drift and duplicate markers still refuse before CSP is changed.
+        if (waitForWorkspace && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          continue;
+        }
         throw new Error('CSP reload refused: Codex workspace is not ready; sign in and open a project first');
+      }
       throw new Error('CSP reload refused: Codex workspace structure does not match the verified host');
     }
   }

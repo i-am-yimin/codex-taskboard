@@ -5,7 +5,7 @@ import { basename, dirname, join } from 'node:path';
 import { z } from 'zod';
 import { taskPrompt, type Task } from '@taskboard/core';
 import { CodexDesktopAdapter, SUPPORTED_CODEX_VERSIONS, codexHostMarkers } from '@taskboard/adapter-codex';
-import type { AgentAdapter, DraftRequest } from '@taskboard/core';
+import type { AdapterCapabilities, AgentAdapter, DraftRequest } from '@taskboard/core';
 import { CompanionStore, defaultDataDirectory, normalizeUpstream } from './store.ts';
 import { SecretStore } from './secret.ts';
 import { CompanionError, RemoteTransport, validateNormalizedUpstream } from './remote.ts';
@@ -588,19 +588,26 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
             },
     };
   });
+  let sidebarInstallation: { adapter: CodexDesktopAdapter; task: Promise<{ data: AdapterCapabilities }> } | undefined;
   app.post('/v1/codex/install', async () => {
     const current = await currentAdapter();
     if (retirementError) throw new CompanionError('RESTORATION_UNCONFIRMED', retirementError, 409);
     if (!(current instanceof CodexDesktopAdapter))
       throw new CompanionError('ADAPTER_UNAVAILABLE', unsupportedHostReason ?? '当前设备没有可安装的 Codex 适配器', 409);
-    const existing = await current.probe();
-    if (existing.embedded) return { data: existing };
-    try { await current.install(); }
-    catch (error) {
-      throw new CompanionError('CODEX_INSTALL_REFUSED',
-        error instanceof Error ? error.message : 'Codex 内嵌安装失败', 409);
-    }
-    return { data: await current.probe() };
+    if (sidebarInstallation?.adapter === current) return sidebarInstallation.task;
+    const task = (async () => {
+      const existing = await current.probe();
+      if (existing.embedded) return { data: existing };
+      try { await current.install(); }
+      catch (error) {
+        throw new CompanionError('CODEX_INSTALL_REFUSED',
+          error instanceof Error ? error.message : 'Codex 内嵌安装失败', 409);
+      }
+      return { data: await current.probe() };
+    })();
+    sidebarInstallation = { adapter: current, task };
+    try { return await task; }
+    finally { if (sidebarInstallation?.task === task) sidebarInstallation = undefined; }
   });
   app.post('/v1/codex/open-draft', async (request) => {
     const requestBody = z
