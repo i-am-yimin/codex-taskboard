@@ -596,14 +596,11 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
       throw new CompanionError('ADAPTER_UNAVAILABLE', unsupportedHostReason ?? '当前设备没有可安装的 Codex 适配器', 409);
     if (sidebarInstallation?.adapter === current) return sidebarInstallation.task;
     const task = (async () => {
-      const existing = await current.probe();
-      if (existing.embedded) return { data: existing };
-      try { await current.install(); }
+      try { return { data: await current.ensureInstalled() }; }
       catch (error) {
         throw new CompanionError('CODEX_INSTALL_REFUSED',
           error instanceof Error ? error.message : 'Codex 内嵌安装失败', 409);
       }
-      return { data: await current.probe() };
     })();
     sidebarInstallation = { adapter: current, task };
     try { return await task; }
