@@ -155,6 +155,9 @@ mod tests {
             menu: isize, instance: isize, param: *mut c_void) -> Window;
         fn DefWindowProcW(window: Window, message: u32, wparam: usize, lparam: isize) -> isize;
         fn ShowWindow(window: Window, command: i32) -> i32;
+        fn SetWindowLongPtrW(window: Window, index: i32, value: isize) -> isize;
+        fn SetWindowPos(window: Window, after: Window, x: i32, y: i32,
+            width: i32, height: i32, flags: u32) -> i32;
         fn IsZoomed(window: Window) -> i32;
         fn PostMessageW(window: Window, message: u32, wparam: usize, lparam: isize) -> i32;
         fn PostQuitMessage(code: i32);
@@ -186,8 +189,14 @@ mod tests {
                 unsafe { RegisterClassW(&registration); }
                 let window = unsafe { CreateWindowExW(ex, class.as_ptr(), class.as_ptr(), style,
                     40, 40, 320, 240, owner, 0, 0, std::ptr::null_mut()) };
-                send.send(window).unwrap();
                 assert_ne!(window, 0, "fixture window creation failed");
+                // Windows adds a caption to overlapped windows at creation.
+                // Electron removes it afterward; reproduce that final style
+                // instead of accidentally testing a captioned window again.
+                unsafe { SetWindowLongPtrW(window, GWL_STYLE, style as isize); }
+                assert_ne!(unsafe { SetWindowPos(window, 0, 0, 0, 0, 0, 0x0037) }, 0);
+                assert_eq!(unsafe { GetWindowLongPtrW(window, GWL_STYLE) } as u32, style);
+                send.send(window).unwrap();
                 let mut message: Message = unsafe { std::mem::zeroed() };
                 while unsafe { GetMessageW(&mut message, 0, 0, 0) } > 0 {
                     unsafe { TranslateMessage(&message); DispatchMessageW(&message); }
