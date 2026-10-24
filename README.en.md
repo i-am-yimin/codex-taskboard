@@ -4,19 +4,19 @@
 
 A collaborative task layer for Codex Desktop. Share task intent, progress, and review across devices and trusted teams while Codex continues to own local projects and conversations.
 
-**0.1.3 daily Codex preview.** Connect the normal Codex environment and retain its sign-in, projects and chats. Exact host `26.1016.8622.0`, the fixed-tag installer, real upgrades, sidebar, concurrent connection, normal exit and same-process reconnection passed acceptance; see [0.1.3 acceptance](docs/acceptance-0.1.3.md). **The Windows installer is unsigned; 0.1.3 is a public pre-release.** Earlier tags and assets remain unchanged.
+**0.1.4 in-app Codex connection preview.** Connect the normal Codex environment and retain its sign-in, projects and chats. Exact host `26.1016.8622.0`, the fixed-tag installer, real upgrade, in-app connection, automatic restoration, repeated opening and same-process reconnection passed acceptance; see [0.1.4 acceptance](docs/acceptance-0.1.4.md). **The Windows installer is unsigned; 0.1.4 is a public pre-release.** Earlier tags and assets remain unchanged.
 
 ## Getting started
 
-[Download the Windows x64 client 0.1.3](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.3/Codex.Taskboard_0.1.3_x64-setup.exe) and [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.3/SHA256SUMS), or visit the [release page](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.3). GitHub sign-in is not required. Installer SHA-256: `07948800bb32757e2acd904b9b6c28d41e8931334bf666b56696565200ba3f9d`.
+[Download the Windows x64 client 0.1.4](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/Codex.Taskboard_0.1.4_x64-setup.exe) and [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/SHA256SUMS), or visit the [release page](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.4). GitHub sign-in is not required. Installer SHA-256: `317fbaef9e25b36d29b0dbcf16d7abb191f5e2d17f609998aabb1523f9314db0`.
 
-The server is versioned independently as **0.1.2-preview.1**, published as `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1` from source tag `vserver-0.1.2-preview.1`. Its version comes from `apps/server/package.json`; the Windows Taskboard client is **0.1.3** with its existing release process. Updating the server does not change the client version.
+The server is versioned independently as **0.1.2-preview.1**, published as `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1` from source tag `vserver-0.1.2-preview.1`. Its version comes from `apps/server/package.json`; the Windows Taskboard client is **0.1.4** with its existing release process. Updating the server does not change the client version.
 
 The [step-by-step user manual in README](README.md#使用手册) covers server deployment, installation, sign-in, repository mapping, Codex integration, Agent CLI access, review, upgrades and troubleshooting. New server deployments can use [prebuilt images, browser setup and host OpenResty](docs/deployment-openresty.md): the application binds to host loopback, secrets persist in a volume, and browser administrators can manage their account, settings and logs. This requires an image built from the new code; the fixed 0.1.1 image does not support managed setup.
 
 1. Obtain a running Taskboard HTTPS server and an administrator-created account or invitation. Installing the desktop app does not create a hosted server or account.
 2. Install the Windows x64 package, verify `SHA256SUMS`, save the server root URL on the sign-in screen, then sign in. The installer bundles Node; system Node and pnpm are not required for desktop use.
-3. Map the repository to an existing local folder. Under Settings → Connections and devices, choose “接入日常 Codex”. Save and normally exit Codex once if connection was not enabled, then reopen the same environment. Create and keep using the “Codex（任务看板连接）” Start menu shortcut; the original ChatGPT/Codex icon does not add connection parameters.
+3. Map the repository to an existing local folder. Click “连接 Codex” in the main Taskboard window to connect or open your normal Codex environment. If the running Codex has not enabled connection, save your work and normally exit it once; Taskboard waits and continues automatically. No special shortcut is required. After success, ordinary Taskboard startup restores the sidebar; Settings → Connections and devices can disable this preference. Manual connection preserves an explicitly disabled choice.
 4. Agent writes require a separate bundled CLI login. The default Skill installer does not automatically pair the isolated Codex environment; its inherited `TASKBOARD_*` variables are removed. Follow the manual's absolute CLI/Skill path instructions rather than assuming the default Skill wrapper works.
 5. In daily mode, copy the task draft and paste it into the intended Codex project, review it, and send it yourself. The independent test environment retains automatic draft filling. Reading and atomically claiming precede Agent work; submitted results require human acceptance. Draft creation does not send a message or claim a task.
 
@@ -33,7 +33,7 @@ Features include isolated customizable spaces, role-based membership, board and 
 | Browser    | Chrome; board and list views, cached read-only offline views                                                                                         |
 | Server     | Linux amd64 / PostgreSQL 16+; deployment, backup/restore and upgrade rollback; HTTPS with an internal CA                                             |
 | Desktop    | Windows x64; two installed applications; unsigned development preview                                                                                |
-| Codex host | 26.1016.8622.0 daily environment checked with 0.1.3; 26.1013.4894.0 checked with 0.1.1; 26.1007.9446.0 full 0.1.0 baseline; unknown versions refused |
+| Codex host | 26.1016.8622.0 daily environment checked with 0.1.4; 26.1013.4894.0 checked with 0.1.1; 26.1007.9446.0 full 0.1.0 baseline; unknown versions refused |
 
 Acceptance applies to the fixed candidate and the environments recorded in the summary. Later source merges run their own CI. Full Codex conversations are not synchronized across devices. Automatic task scheduling, GitHub data synchronization, and full offline editing are outside the first release.
 

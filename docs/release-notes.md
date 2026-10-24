@@ -1,18 +1,21 @@
-# Codex Taskboard 客户端 0.1.4（发版准备）
+# Codex Taskboard 客户端 0.1.4（预发布）
 
-Taskboard 主界面新增“连接 Codex”，可直接打开或连接日常 Codex，并接入侧栏。成功后按钮变为“打开 Codex”。主界面与设置页共享连接状态及正在进行的请求，不需要额外创建或使用连接快捷方式。
+在 Taskboard 主界面点击“连接 Codex”，即可打开或接入日常 Codex，沿用原登录、项目和聊天。接入成功后按钮变为“打开 Codex”；之后普通启动 Taskboard 自动恢复侧栏，无需专用快捷方式。可在“连接与设备”关闭自动连接，手动接入保留关闭选择。
 
-首次接入成功后记住自动连接选择，之后普通启动 Taskboard 即可恢复侧栏。可在“连接与设备”关闭，显式关闭后手动连接不会重新启用。未开启连接的已运行 Codex 仍需正常退出一次：Taskboard 内会显示等待说明，退出后自动继续；可取消等待，不结束用户进程。
+- [Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/Codex.Taskboard_0.1.4_x64-setup.exe)
+- [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/SHA256SUMS)
+- [使用手册](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/README.md#使用手册)
+- [验收记录](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/docs/acceptance-0.1.4.md)
 
-保留日常登录、项目和聊天，复用已有原生身份检查、宿主版本清单、侧栏 nonce/CSP 验证和完整错误说明。日常模式的任务草稿仍需手动粘贴；独立测试环境保留在折叠项中。
+已经运行但尚未启用连接的 Codex 仍需保存工作并正常退出一次；Taskboard 会等待并自动继续，可取消等待，不会结束你的 Codex。日常模式的草稿仍由用户复制、粘贴并确认发送。
 
-修复接入后再次点击“打开 Codex”无法识别无边框主窗口的问题，支持恢复最小化并保留最大化状态。修复自动连接选择保存失败时提示被连接成功状态覆盖的问题，增加独立的保存失败提示和“重试保存”。
+修复无边框主窗口识别，支持恢复最小化与隐藏窗口并保留最大化状态和尺寸。连续打开复用当前侧栏，短暂探测失败只做有界重新校验，避免重复安装导致的生命周期错误。设置保存失败单独提示，并支持仅重试保存；明暗主题提示对比度已核对。
 
-连续打开时复用现有侧栏，等待已经进行的安装或页面恢复；短暂探测失败不再触发重复安装，避免“适配器生命周期已激活”的间歇拒绝。持续的归属失效仍保持拒绝，不会重载或注入未验证页面。
+精确验收 Codex 26.1016.8622.0；未知版本或身份验证失败继续拒绝。完整 CI 与固定标签发布流程通过，校验和、严格 GitHub 构建来源证明、Linux 镜像层和 SPDX 已核验。实际发布包完成本机 0.1.4 CI 预览升级、免重新登录、自动恢复、关闭偏好保留、20 次连续打开及正常退出重连验收。原账号、设备、映射、凭据和草稿保持，日常 Codex 进程未重启，真实草稿未写入或发送。首次未启用连接的等待、取消及超时由浏览器回归覆盖，本轮没有退出日常 Codex 重测首次冷启动。
 
-0.1.4 尚未公开发版。浏览器回归、打包检查、完整 CI、真实安装和同进程重连分别验证；校验和、来源证明及公开下载属于固定标签发版门槛。独立服务端保持 `0.1.2-preview.1`，旧版标签和资产保持。
+Windows 安装器未签名（NotSigned），本版仍为开发预览，以 pre-release 发布，不设为 latest。客户端自带运行时，首次使用需自己的 Taskboard HTTPS 服务和账号。独立服务端保持 `0.1.2-preview.1`，已有镜像和部署不自动更改。本 Release 的 Linux 归档属于客户端源码标签的构建；旧版标签和资产保持。
 
-以下保留 0.1.3 的公开发布说明。
+来源提交：`a8ed9f4631856b22c37a2e77d883b3135cd256f9`。Windows 安装器 SHA-256：`317fbaef9e25b36d29b0dbcf16d7abb191f5e2d17f609998aabb1523f9314db0`。
 
 ## Codex Taskboard 客户端 0.1.3（预发布）
 
