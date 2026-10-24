@@ -105,7 +105,7 @@ function guardedCspSend(
 
 describe('Codex desktop adapter safety boundary', () => {
   afterEach(() => vi.unstubAllGlobals());
-  it.each(['ready', 'draft', 'dialog', 'duplicate', 'drift'])('handles a mounting workspace before CSP changes: %s', async (outcome) => {
+  it.each(['ready', 'draft', 'dialog', 'duplicate', 'drift', 'login'])('handles a mounting workspace before CSP changes: %s', async (outcome) => {
     const page = { id: 'target', type: 'page', url: 'app://codex', webSocketDebuggerUrl: 'ws://127.0.0.1:1/devtools/page/target' };
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => new Response(JSON.stringify(
       String(input).endsWith('/version') ? { webSocketDebuggerUrl: page.webSocketDebuggerUrl } : [page],
@@ -124,7 +124,7 @@ describe('Codex desktop adapter safety boundary', () => {
         return { result: { value: {
           url: outcome === 'drift' ? 'app://other' : page.url,
           shell: outcome === 'duplicate' ? 2 : 0, editors: 0,
-          modal: outcome === 'dialog', hasText: outcome === 'draft',
+          modal: outcome === 'dialog', hasText: outcome === 'draft', login: outcome === 'login',
         } } };
       return lifecycle(method, params);
     });
@@ -141,7 +141,7 @@ describe('Codex desktop adapter safety boundary', () => {
       expect(send).toHaveBeenCalledWith('Page.setBypassCSP', { enabled: true });
       await adapter.dispose();
     } else {
-      await expect(adapter.install()).rejects.toThrow(/draft|dialog|structure|target changed/);
+      await expect(adapter.install()).rejects.toThrow(/draft|dialog|structure|target changed|sign in/);
       expect(calls).not.toContain('Page.setBypassCSP');
       expect(calls).not.toContain('Page.reload');
       expect(close).toHaveBeenCalledOnce();
