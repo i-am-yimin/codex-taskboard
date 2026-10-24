@@ -13,10 +13,10 @@ const nonce = 'test-nonce-32-characters-abcdefgh';
 beforeAll(async () => {
   const bundle = await build({
     stdin: {
-      contents: `import React, {useEffect} from 'react';
+      contents: `import React from 'react';
         import {createRoot} from 'react-dom/client';
-        import {installEmbeddedReadyResponder} from './apps/web/src/embeddedReady';
-        function Board() { useEffect(() => installEmbeddedReadyResponder(), []);
+        import {useEmbeddedReadyResponder} from './apps/web/src/embeddedReady';
+        function Board() { useEmbeddedReadyResponder();
           return React.createElement('main', {'data-react-board':true}, 'Board ready'); }
         setTimeout(() => createRoot(document.getElementById('root')).render(React.createElement(Board)), 100);`,
       resolveDir: process.cwd(),
@@ -36,7 +36,9 @@ beforeAll(async () => {
       } else {
         if (request.url === '/csp')
           response.setHeader('Content-Security-Policy', "frame-src 'none'");
-        response.end('<main id="shell"></main>');
+        response.end(request.url === '/native'
+          ? '<div id="shell"><nav id="sidebar"></nav><main id="content"></main></div>'
+          : '<main id="shell"></main>');
       }
     });
     servers.push(server);
@@ -115,6 +117,21 @@ const sendResponse = (value: string, target: string) =>
   `parent.postMessage({type:'taskboard:ready-response',nonce:${JSON.stringify(value)}},${JSON.stringify(target)})`;
 
 describe('iframe readiness in real Chromium', () => {
+  it('commits readiness in a hidden native sidebar before first paint and again after reload', async () => {
+    await isolated(async (page) => {
+      for (let round = 0; round < 2; round += 1) {
+        if (round) await page.reload();
+        const expression = boardEmbedScript(`${boardOrigin}/react`, '#shell', 1,
+          `${hostOrigin}/native`, boardOrigin, nonce, 5000, '#sidebar', '#content');
+        expect(await page.evaluate(expression)).toEqual({ installed: true });
+        expect(await page.locator('[data-taskboard-owned]').isVisible()).toBe(false);
+        expect(await page.locator('[data-taskboard-entry]').getAttribute('aria-pressed')).toBe('false');
+        const board = page.frames().find(frame => frame.url() === `${boardOrigin}/react`);
+        expect(await board?.locator('[data-react-board]').count()).toBe(1);
+      }
+    }, '/native');
+  });
+
   it('loads a cross-origin React board and waits for its committed effect', async () => {
     await isolated(async (page) => {
       await begin(page, 5000, '/react');

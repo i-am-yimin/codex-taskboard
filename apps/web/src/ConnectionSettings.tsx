@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { request } from './api';
 import { companionKey, companionOrigin } from './companionBridge';
@@ -10,6 +10,28 @@ type Device = {
   revokedAt: string | null;
   current: boolean;
 };
+type CodexConnection = {
+  state: 'connected' | 'connectable' | 'restart-required' | 'not-running' | 'connecting';
+  mode?: 'daily' | 'managed';
+  version?: string;
+  reason: string;
+};
+
+async function local<T>(path: string, body?: unknown): Promise<T> {
+  const key = await companionKey();
+  if (!key) throw new Error('需要 Windows 启动器提供本机连接；当前可使用浏览器看板。');
+  const response = await fetch(`${companionOrigin()}${path}`, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: {
+      'x-taskboard-companion-key': key,
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error?.message ?? '本机连接失败');
+  return result.data;
+}
 export function ConnectionSettings({
   demo,
   onNotice,
@@ -22,37 +44,42 @@ export function ConnectionSettings({
   const [diagnosis, setDiagnosis] = useState('尚未检测桌面连接');
   const [launching, setLaunching] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [creatingShortcut, setCreatingShortcut] = useState(false);
+  const [connection, setConnection] = useState<CodexConnection>();
+  const invoke = window.__TAURI__?.core?.invoke;
+  const busy = launching || installing || checking || creatingShortcut;
   const [repository, setRepository] = useState('');
   const [directory, setDirectory] = useState('');
   const devices = useQuery({
     queryKey: ['devices'],
     queryFn: () => (demo ? Promise.resolve<Device[]>([]) : request<Device[]>('/devices')),
   });
-  async function local<T>(path: string, body?: unknown): Promise<T> {
-    const key = await companionKey();
-    if (!key) throw new Error('需要 Windows 启动器提供本机连接；当前可使用浏览器看板。');
-    const response = await fetch(`${companionOrigin()}${path}`, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: {
-        'x-taskboard-companion-key': key,
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error?.message ?? '本机连接失败');
-    return result.data;
-  }
-  async function diagnose() {
+  const diagnose = useCallback(async () => {
+    setChecking(true);
     try {
-      const result = await local<{ draft: boolean; reason?: string }>('/v1/codex/probe');
+      const status = invoke ? await invoke<CodexConnection>('codex_connection_status') : undefined;
+      setConnection(status);
+      if (status && status.state !== 'connected') {
+        setDiagnosis(status.reason);
+        return;
+      }
+      const result = await local<{ embedded: boolean; draft: boolean; reason?: string }>('/v1/codex/probe');
       setDiagnosis(
-        result.draft ? '已连接受管理 Codex；填写前会核对项目与空白编辑器' : (result.reason ?? '尚未验证当前 Codex 的项目草稿能力'),
+        result.embedded
+          ? status?.mode === 'daily' ? '已接入日常 Codex 侧栏，原登录、项目和会话保持不变。' : '独立测试环境的侧栏看板已接入。'
+          : (result.reason ?? status?.reason ?? '尚未连接 Codex'),
       );
     } catch (error) {
       setDiagnosis(error instanceof Error ? error.message : '检测失败');
+    } finally {
+      setChecking(false);
     }
-  }
+  }, [invoke]);
+  useEffect(() => {
+    if (invoke) void diagnose();
+  }, [invoke, diagnose]);
+
   async function launchManagedCodex() {
     const invoke = window.__TAURI__?.core?.invoke;
     if (!invoke) return;
@@ -65,11 +92,18 @@ export function ConnectionSettings({
       setLaunching(false);
     }
   }
-  async function installCodexBoard() {
+  async function installCodexBoard(daily: boolean) {
     setInstalling(true);
     try {
+      if (daily && invoke) {
+        setDiagnosis('正在连接日常 Codex…');
+        await invoke<string>('connect_daily_codex');
+        setConnection({ state: 'connected', mode: 'daily', reason: '日常 Codex 已连接' });
+      }
       const result = await local<{ embedded: boolean; reason?: string }>('/v1/codex/install', {});
-      setDiagnosis(result.embedded ? '独立 Codex 侧栏看板已接入' : (result.reason ?? '看板接入未确认'));
+      setDiagnosis(result.embedded
+        ? daily ? '已接入日常 Codex 侧栏，原登录、项目和会话保持不变。' : '独立测试环境的侧栏看板已接入。'
+        : (result.reason ?? '看板接入未确认'));
     } catch (error) {
       setDiagnosis(error instanceof Error ? error.message : '看板接入失败');
     } finally { setInstalling(false); }
@@ -80,25 +114,46 @@ export function ConnectionSettings({
       <div className="connection-card">
         <div>
           <b>Codex 桌面接入</b>
-          <p>{diagnosis}</p>
-          <small>草稿只填入已验证项目的空白编辑器，发送由你确认。</small>
+          <p role="status" aria-live="polite">{checking ? '正在检测 Codex 连接…' : diagnosis}</p>
+          {connection?.version && <p>Codex {connection.version}</p>}
+          <small>日常接入沿用原有数据；任务草稿可复制到当前项目，由你确认发送。</small>
         </div>
         <div className="row-actions">
-          {window.__TAURI__?.core?.invoke && (
-            <>
-              <button className="button ghost" disabled={launching} onClick={launchManagedCodex}>
-                {launching ? '启动中…' : '启动独立 Codex'}
-              </button>
-              <button className="button ghost" disabled={installing} onClick={installCodexBoard}>
-                {installing ? '接入中…' : '接入 Codex 侧栏'}
-              </button>
-            </>
+          {invoke && (
+            <button className="button primary" disabled={busy} onClick={() => installCodexBoard(true)}>
+              {installing ? '接入中…' : connection?.state === 'restart-required' ? '退出 Codex 后接入' : '接入日常 Codex'}
+            </button>
           )}
-          <button className="button ghost" onClick={diagnose}>
-            检测连接
+          <button className="button ghost" disabled={busy} onClick={diagnose}>
+            {checking ? '检测中…' : '检测连接'}
           </button>
         </div>
       </div>
+      {invoke && (
+        <div className="codex-connection-options">
+          <p className="muted">首次接入需正常退出并重新打开一次 Codex。以后从连接快捷方式打开，即可继续使用原来的工作环境。</p>
+          <button className="button ghost" disabled={busy} onClick={async () => {
+            setCreatingShortcut(true);
+            try { setDiagnosis(await invoke<string>('create_codex_connection_shortcut')); }
+            catch (error) { setDiagnosis(error instanceof Error ? error.message : String(error)); }
+            finally { setCreatingShortcut(false); }
+          }}>
+            {creatingShortcut ? '创建中…' : '创建日常连接快捷方式'}
+          </button>
+          <details>
+            <summary>独立测试环境</summary>
+            <p className="muted">使用单独的数据目录，需要单独登录。用于兼容测试；日常使用请选上方接入。</p>
+            <div className="row-actions">
+              <button className="button ghost" disabled={busy} onClick={launchManagedCodex}>
+                {launching ? '启动中…' : '启动独立测试 Codex'}
+              </button>
+              <button className="button ghost" disabled={busy} onClick={() => installCodexBoard(false)}>
+                接入独立测试侧栏
+              </button>
+            </div>
+          </details>
+        </div>
+      )}
       <p className="muted">
         {demo
           ? '演示数据未连接服务器。'

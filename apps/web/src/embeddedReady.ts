@@ -1,5 +1,13 @@
+import { useLayoutEffect } from 'react';
+
 export const BOARD_READY_CHALLENGE = 'taskboard:ready-challenge';
 export const BOARD_READY_RESPONSE = 'taskboard:ready-response';
+
+/** A sidebar iframe may stay display:none until the host receives readiness.
+ * Register after React commits, without waiting for that iframe to paint. */
+export function useEmbeddedReadyResponder(): void {
+  useLayoutEffect(() => installEmbeddedReadyResponder(), []);
+}
 
 /** Installs the narrow, readiness-only bridge after React has committed. */
 export function installEmbeddedReadyResponder(): () => void {

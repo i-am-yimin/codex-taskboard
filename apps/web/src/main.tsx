@@ -64,7 +64,7 @@ import { TaskDrawer } from './TaskDrawer';
 import { subscribeDesktopBoardEvents } from './realtime';
 import { SpaceActions } from './SpaceActions';
 import { demoUser, makeDemoBoard } from './demo';
-import { installEmbeddedReadyResponder } from './embeddedReady';
+import { useEmbeddedReadyResponder } from './embeddedReady';
 import type { Board, Member, Semantic, Space, Status, Task } from './types';
 import './styles.css';
 import './glass.css';
@@ -113,7 +113,7 @@ const priorityName = ['无优先级', '紧急', '高', '普通'];
 const initials = (name: string) => name.slice(0, 1);
 
 function App() {
-  useEffect(() => installEmbeddedReadyResponder(), []);
+  useEmbeddedReadyResponder();
   const client = useQueryClient();
   const [theme, setTheme] = useState<'system' | 'dark' | 'light'>(
     () => (localStorage.getItem('tb:theme') as 'system' | 'dark' | 'light' | null) ?? 'system',

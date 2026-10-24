@@ -30,6 +30,33 @@ pub struct OwnedProcess {
 }
 
 impl OwnedProcess {
+    /// Explicit daily-window attachment. The PID is discovered by native code,
+    /// and the held object must match the installed package and current session.
+    pub fn attach_existing(pid: u32, executable: &Path, package: &str) -> Result<Self, String> {
+        let raw = unsafe { OpenProcess(QUERY | SYNCHRONIZE, 0, pid) };
+        if raw.is_null() {
+            return Err("无法查询日常 Codex 进程；请确认窗口仍在运行".into());
+        }
+        let handle = unsafe { OwnedHandle::from_raw_handle(raw) };
+        let identity = inspect(handle.as_raw_handle())?;
+        let mut current_session = 0;
+        let mut target_session = 0;
+        if unsafe { ProcessIdToSessionId(std::process::id(), &mut current_session) } == 0
+            || unsafe { ProcessIdToSessionId(pid, &mut target_session) } == 0
+            || current_session != target_session
+            || !same_user(handle.as_raw_handle())
+            || identity.executable != fs::canonicalize(executable).map_err(|e| e.to_string())?
+            || identity.package.as_deref() != Some(package)
+        {
+            return Err("日常 Codex 的会话、可执行文件或安装包身份不符".into());
+        }
+        let process = Self { handle, identity };
+        if !process.verify() {
+            return Err("日常 Codex 在连接前已退出".into());
+        }
+        Ok(process)
+    }
+
     pub fn from_child(child: &Child, executable: &Path) -> Result<Self, String> {
         let handle = duplicate(
             unsafe { GetCurrentProcess() },
@@ -85,6 +112,38 @@ impl OwnedProcess {
     pub fn verify(&self) -> bool {
         self.is_running() && inspect(self.handle.as_raw_handle()).as_ref() == Ok(&self.identity)
     }
+}
+
+fn token_user(process: Handle) -> Result<(OwnedHandle, Vec<usize>), String> {
+    let mut raw = std::ptr::null_mut();
+    if unsafe { OpenProcessToken(process, 0x0008, &mut raw) } == 0 {
+        return Err("无法核对 Codex 进程所属用户".into());
+    }
+    let token = unsafe { OwnedHandle::from_raw_handle(raw) };
+    let mut size = 0;
+    unsafe { GetTokenInformation(token.as_raw_handle(), 1, std::ptr::null_mut(), 0, &mut size); }
+    if size < std::mem::size_of::<usize>() as u32 || size > 64 * 1024 {
+        return Err("进程用户令牌大小无效".into());
+    }
+    let mut buffer = vec![0usize; (size as usize).div_ceil(std::mem::size_of::<usize>())];
+    if unsafe { GetTokenInformation(token.as_raw_handle(), 1, buffer.as_mut_ptr().cast(), size, &mut size) } == 0 {
+        return Err("无法读取进程用户令牌".into());
+    }
+    Ok((token, buffer))
+}
+
+fn same_user(process: Handle) -> bool {
+    let Ok((_current, current)) = token_user(unsafe { GetCurrentProcess() }) else { return false; };
+    let Ok((_target, target)) = token_user(process) else { return false; };
+    // TOKEN_USER starts with SID_AND_ATTRIBUTES; both SID buffers remain alive.
+    unsafe { EqualSid(current[0] as Handle, target[0] as Handle) != 0 }
+}
+
+#[link(name = "advapi32")]
+extern "system" {
+    fn OpenProcessToken(process: Handle, access: u32, token: *mut Handle) -> i32;
+    fn GetTokenInformation(token: Handle, class: u32, buffer: Handle, size: u32, needed: *mut u32) -> i32;
+    fn EqualSid(first: Handle, second: Handle) -> i32;
 }
 
 fn duplicate(source: Handle, remote_handle: usize) -> Result<OwnedHandle, String> {
@@ -180,6 +239,8 @@ struct FileTime {
 
 #[link(name = "kernel32")]
 extern "system" {
+    fn OpenProcess(access: u32, inherit: i32, pid: u32) -> Handle;
+    fn ProcessIdToSessionId(pid: u32, session: *mut u32) -> i32;
     fn GetCurrentProcess() -> Handle;
     fn DuplicateHandle(
         source: Handle,
@@ -218,6 +279,12 @@ mod tests {
     };
 
     struct TestChild(Child);
+
+    #[test]
+    fn daily_attachment_checks_the_actual_token_user() {
+        assert!(same_user(unsafe { GetCurrentProcess() }));
+        assert!(!same_user(std::ptr::null_mut()));
+    }
     impl Drop for TestChild {
         fn drop(&mut self) {
             let _ = self.0.kill();

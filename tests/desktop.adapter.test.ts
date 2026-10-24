@@ -105,6 +105,34 @@ function guardedCspSend(
 
 describe('Codex desktop adapter safety boundary', () => {
   afterEach(() => vi.unstubAllGlobals());
+  it.each([
+    ['board-ready-timeout', '任务看板未在时限内就绪'],
+    ['board-context-changed', 'Codex 页面发生变化'],
+    ['shell-marker-not-observed', 'Codex DOM 标记未观察到'],
+  ])('reports %s without claiming every readiness failure is a missing host marker', async (reason, expected) => {
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => new Response(JSON.stringify(
+      String(input).endsWith('/json/version')
+        ? { webSocketDebuggerUrl: 'ws://127.0.0.1:1/devtools/browser/test' }
+        : [{ id: 'target', type: 'page', url: 'app://codex', webSocketDebuggerUrl: 'ws://127.0.0.1:1/devtools/page/target' }],
+    )));
+    const close = vi.fn();
+    const send = vi.fn(async (method: string, params?: Record<string, unknown>) => {
+      if (method === 'Target.getTargetInfo') return { targetInfo: { targetId: 'target', type: 'page', url: 'app://codex' } };
+      if (method === 'Runtime.evaluate') return { result: { value: String(params?.expression).includes('const selectOne =')
+        ? { installed: false, reason } : true } };
+      return {};
+    });
+    const adapter = new CodexDesktopAdapter({
+      owner: { verify: async () => true }, appVersion: '26.1016.8622.0',
+      endpoint: 'http://127.0.0.1:1', shellMarker: '[data-codex-shell]', boardUrl: 'http://127.0.0.1:4173',
+      targetBinding: { targetId: 'target', exactPageUrl: 'app://codex', pageWebSocketUrl: 'ws://127.0.0.1:1/devtools/page/target' },
+    }, async () => ({
+      send: async <T>(method: string, params?: Record<string, unknown>) => await send(method, params) as T,
+      close,
+    }));
+    await expect(adapter.install()).rejects.toThrow(expected);
+    expect(close).toHaveBeenCalledOnce();
+  });
   it('rejects pending protocol commands when the CDP socket disconnects', async () => {
     const cdp = await mockCdp((_id, _method, socket) => socket.destroy());
     try {

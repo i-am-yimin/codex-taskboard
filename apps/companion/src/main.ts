@@ -172,13 +172,15 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     if (retirementError) return undefined;
     if (!session) return undefined;
     if (!(SUPPORTED_CODEX_VERSIONS as readonly string[]).includes(session.version)) {
-      unsupportedHostReason = `Codex ${session.version} 尚未完成页面验收，仅可隔离启动`;
+      unsupportedHostReason = `Codex ${session.version} 尚未完成侧栏兼容验证，暂不能接入侧栏`;
       return undefined;
     }
     adapter = new CodexDesktopAdapter({
       endpoint: session.endpoint,
       appVersion: session.version,
-      codexHome: session.codexHome,
+      // Existing daily windows can have a custom CODEX_HOME. Do not guess a
+      // directory and accidentally verify the project against another account.
+      codexHome: session.mode === 'daily' ? undefined : session.codexHome,
       boardUrl: embeddedBoardUrl(embeddedPort),
       targetBinding: {
         targetId: session.targetId,
@@ -582,7 +584,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
               projects: false,
               draft: false,
               thread: false,
-              reason: unsupportedHostReason ?? '桌面适配器未由启动器启用',
+              reason: unsupportedHostReason ?? '尚未连接 Codex；请在连接与设备中选择“接入日常 Codex”。已打开且未启用连接的窗口需先正常退出一次。',
             },
     };
   });
@@ -591,6 +593,8 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     if (retirementError) throw new CompanionError('RESTORATION_UNCONFIRMED', retirementError, 409);
     if (!(current instanceof CodexDesktopAdapter))
       throw new CompanionError('ADAPTER_UNAVAILABLE', unsupportedHostReason ?? '当前设备没有可安装的 Codex 适配器', 409);
+    const existing = await current.probe();
+    if (existing.embedded) return { data: existing };
     try { await current.install(); }
     catch (error) {
       throw new CompanionError('CODEX_INSTALL_REFUSED',

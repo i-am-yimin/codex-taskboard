@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createCompanion } from '../apps/companion/src/main.ts';
 import { LauncherControl, type LauncherSession } from '../apps/companion/src/launcher-control.ts';
+import { CodexDesktopAdapter } from '../packages/adapter-codex/src/index.ts';
 
 const key = 'K'.repeat(48);
 const targetId = 'A'.repeat(32);
@@ -23,8 +24,68 @@ const original: LauncherSession = {
 describe('private launcher control', () => {
   let server: Server | undefined;
   afterEach(async () => {
+    vi.restoreAllMocks();
     if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
     server = undefined;
+  });
+
+  it('accepts a native daily session without guessing a home directory or enabling automatic drafts', async () => {
+    const { codexHome: _home, ...withoutHome } = original;
+    void _home;
+    const daily = { ...withoutHome, mode: 'daily' as const };
+    server = createServer((request, response) => {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify(request.url === '/session' ? { session: daily } : { valid: true }));
+    });
+    await new Promise<void>(resolve => server!.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('missing test port');
+    const control = new LauncherControl(address.port, key);
+    expect(await control.session()).toEqual(daily);
+    const probe = vi.spyOn(CodexDesktopAdapter.prototype, 'probe').mockImplementation(async function (this: CodexDesktopAdapter) {
+      const config = (this as unknown as { config: { codexHome?: string } }).config;
+      expect(config.codexHome).toBeUndefined();
+      return { embedded: false, projects: false, draft: false, thread: false };
+    });
+    const runtime = await createCompanion({ dataDirectory: await mkdtemp(join(tmpdir(), 'taskboard-daily-')), port: 0, launcherControl: control });
+    try {
+      const response = await runtime.app.inject({ method: 'GET', url: '/v1/codex/probe', headers: { 'x-taskboard-companion-key': runtime.clientKey } });
+      expect(response.json().data.draft).toBe(false);
+      expect(probe).toHaveBeenCalledOnce();
+    } finally { await runtime.stop(); }
+  });
+
+  it('rejects a daily session claiming a home directory and a managed session missing its home', async () => {
+    let session: unknown = { ...original, mode: 'daily' };
+    server = createServer((_request, response) => response.end(JSON.stringify({ session })));
+    await new Promise<void>(resolve => server!.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('missing test port');
+    const control = new LauncherControl(address.port, key);
+    await expect(control.session()).rejects.toThrow();
+    const { codexHome: _home, ...withoutHome } = original;
+    void _home;
+    session = withoutHome;
+    await expect(control.session()).rejects.toThrow();
+  });
+
+  it('reuses an already installed sidebar when the connection shortcut is opened again', async () => {
+    const control = new LauncherControl(9, key);
+    vi.spyOn(control, 'session').mockResolvedValue(original);
+    vi.spyOn(CodexDesktopAdapter.prototype, 'probe').mockResolvedValue({
+      embedded: true, projects: false, draft: true, thread: false,
+    });
+    const install = vi.spyOn(CodexDesktopAdapter.prototype, 'install');
+    const runtime = await createCompanion({
+      dataDirectory: await mkdtemp(join(tmpdir(), 'taskboard-sidebar-reuse-')),
+      port: 0, launcherControl: control,
+    });
+    try {
+      const response = await runtime.app.inject({ method: 'POST', url: '/v1/codex/install', headers: { 'x-taskboard-companion-key': runtime.clientKey } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().data.embedded).toBe(true);
+      expect(install).not.toHaveBeenCalled();
+    } finally { await runtime.stop(); }
   });
 
   it('revokes ownership on exit, port switch, page drift and launcher loss', async () => {
@@ -161,7 +222,7 @@ describe('private launcher control', () => {
       expect(probe.json().data).toMatchObject({
         embedded: false,
         draft: false,
-        reason: 'Codex 26.924.9999.0 尚未完成页面验收，仅可隔离启动',
+        reason: 'Codex 26.924.9999.0 尚未完成侧栏兼容验证，暂不能接入侧栏',
       });
       const install = await runtime.app.inject({ method: 'POST', url: '/v1/codex/install', headers });
       expect(install.statusCode).toBe(409);

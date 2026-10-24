@@ -12,14 +12,14 @@ import { resolveCodexProject } from './project-identity.ts';
 /** Exact desktop versions this adapter knows how to inspect. A successful CDP
  * connection is deliberately not enough to mark a user's Codex installation as
  * supported: the host DOM must be observed through an explicit marker. */
-export const SUPPORTED_CODEX_VERSIONS = ['26.901.5280.0', '26.917.9434.0', '26.924.1866.0', '26.924.2738.0', '26.928.1915.0', '26.930.7945.0', '26.1007.9446.0', '26.1013.4894.0'] as const;
+export const SUPPORTED_CODEX_VERSIONS = ['26.901.5280.0', '26.917.9434.0', '26.924.1866.0', '26.924.2738.0', '26.928.1915.0', '26.930.7945.0', '26.1007.9446.0', '26.1013.4894.0', '26.1016.8622.0'] as const;
 
 /** Version-specific markers confirmed on an isolated host. Native launch support
  * has a separate gate: recognizing a host does not prove process ownership. */
 export function codexHostMarkers(version: string) {
   if (!SUPPORTED_CODEX_VERSIONS.includes(version as (typeof SUPPORTED_CODEX_VERSIONS)[number]))
     throw new Error('Unsupported Codex host version');
-  const redesignedShell = version === '26.924.1866.0' || version === '26.924.2738.0' || version === '26.928.1915.0' || version === '26.930.7945.0' || version === '26.1007.9446.0' || version === '26.1013.4894.0';
+  const redesignedShell = version === '26.924.1866.0' || version === '26.924.2738.0' || version === '26.928.1915.0' || version === '26.930.7945.0' || version === '26.1007.9446.0' || version === '26.1013.4894.0' || version === '26.1016.8622.0';
   return {
     shellMarker: 'div:has(>aside.app-shell-left-panel)',
     sidebarMarker: redesignedShell
@@ -391,6 +391,14 @@ export function boardEmbedScript(
   })()`;
 }
 
+function embedInstallationError(reason?: string): Error {
+  if (reason === 'board-ready-timeout')
+    return new Error('已定位 Codex 侧栏，但任务看板未在时限内就绪；请保持窗口可见后重试');
+  if (reason === 'board-context-changed' || reason === 'unloaded')
+    return new Error('接入期间 Codex 页面发生变化，侧栏已撤回；请等待页面加载完成后重试');
+  return new Error('Codex DOM 标记未观察到，已拒绝注入');
+}
+
 export class CodexDesktopAdapter implements AgentAdapter {
   readonly id = 'codex-desktop';
   private connection?: CdpConnection;
@@ -624,7 +632,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
       if (!shellMarker || !board) throw new Error('缺少已验证的 Codex DOM 标记或看板地址');
       await this.assertOwner();
       session.injectionAttempted = true;
-      const result = await this.evaluate<{ installed?: boolean }>(
+      const result = await this.evaluate<{ installed?: boolean; reason?: string }>(
         connection,
         boardEmbedScript(
           board.href,
@@ -641,7 +649,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
       );
       if (generation !== this.generation)
         throw new Error('Codex adapter installation was cancelled');
-      if (!result.installed) throw new Error('Codex DOM 标记未观察到，已拒绝注入');
+      if (!result.installed) throw embedInstallationError(result.reason);
       this.observed = true;
       this.removeLoadListener = connection.onEvent?.('Page.loadEventFired', () => {
         if (generation === this.generation && connection === this.connection) this.observed = false;
@@ -820,7 +828,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
         if (!shellReady) throw new Error('Codex shell did not become ready after reload');
         if (generation !== this.generation || connection !== this.connection) return;
         await this.assertOwner();
-        const result = await this.evaluate<{ installed?: boolean }>(
+        const result = await this.evaluate<{ installed?: boolean; reason?: string }>(
           connection,
           boardEmbedScript(
             board.href,
@@ -836,7 +844,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
           HANDSHAKE_COMMAND_TIMEOUT_MS,
         );
         if (generation !== this.generation || connection !== this.connection) return;
-        if (!result.installed) throw new Error('Codex DOM 标记未观察到，已拒绝注入');
+        if (!result.installed) throw embedInstallationError(result.reason);
         this.observed = true;
       } catch (error) {
         if (generation === this.generation && connection === this.connection) {
