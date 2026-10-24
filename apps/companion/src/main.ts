@@ -398,6 +398,12 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     if (!origin || !origins.has(origin))
       throw new CompanionError('ORIGIN_DENIED', '不允许此页面访问本机伴随服务', 403);
   };
+  // Same-origin embedded GETs do not carry Origin. This read-only identity
+  // endpoint still passes the global origin and renderer-capability checks;
+  // configuration reads/writes keep their stricter Origin requirement below.
+  app.get('/v1/browser/identity', async () => ({
+    data: { upstream, accountId: store.activeIdentity()?.userId ?? null },
+  }));
   app.get('/v1/browser/upstream', async (request) => {
     assertBrowserUpstreamOrigin(request.headers.origin);
     return { data: upstreamState() };

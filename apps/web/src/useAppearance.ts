@@ -64,6 +64,8 @@ export function useAppearance(accountId?: string, demo = false) {
   useEffect(() => {
     const token = ++generation.current;
     let stopped = false;
+    let loading: Promise<void> | undefined;
+    current.current.storageKey = undefined;
     setStorageKey(undefined);
     setSaved(initial());
     setPreview(null);
@@ -73,12 +75,17 @@ export function useAppearance(accountId?: string, demo = false) {
     const load = async () => {
       if (!accountId) return;
       let server = location.origin;
-      if (hasLocalCompanion()) {
-        const response = await fetch(`${companionOrigin()}/v1/browser/upstream`, {
+      if (hasLocalCompanion() && !demo) {
+        const response = await fetch(`${companionOrigin()}/v1/browser/identity`, {
           headers: { 'x-taskboard-companion-key': (await companionKey()) ?? '' },
+          signal: AbortSignal.timeout(8000),
         });
         if (!response.ok) throw new Error('无法确认当前服务器');
-        server = (await response.json()).data.upstream;
+        const identity: { data?: { upstream?: unknown; accountId?: unknown } } =
+          await response.json();
+        if (typeof identity.data?.upstream !== 'string' || identity.data.accountId !== accountId)
+          throw new Error('服务器或账号身份已变化');
+        server = identity.data.upstream;
       }
       if (stopped) return;
       const key = `tb:appearance:${encodeURIComponent(server)}:${accountId}`;
@@ -128,11 +135,20 @@ export function useAppearance(accountId?: string, demo = false) {
       persist(next);
       await syncCloud(token);
     };
-    void load().catch(() => {
-      if (!stopped) setStatus('暂时无法读取主题配置，恢复连接后重试');
-    });
+    const startLoad = () => {
+      if (loading) return;
+      loading = load()
+        .catch(() => {
+          if (!stopped) setStatus('暂时无法读取主题配置，恢复连接后重试');
+        })
+        .finally(() => {
+          loading = undefined;
+        });
+    };
+    startLoad();
     const refresh = () => {
       if (current.current.storageKey) void syncCloud(token);
+      else startLoad();
     };
     const timer = setInterval(refresh, 30000);
     addEventListener('focus', refresh);

@@ -127,6 +127,12 @@ describe('companion loopback boundary', () => {
         });
         expect(login.statusCode).toBe(200);
         expect(login.json()).not.toHaveProperty('data.deviceToken');
+        const identity = await runtime.app.inject({ method: 'GET', url: '/v1/browser/identity', headers });
+        expect(identity.statusCode).toBe(200);
+        expect(identity.json().data).toMatchObject({ accountId: '00000000-0000-4000-8000-000000000001' });
+        expect(JSON.stringify(identity.json())).not.toMatch(/browser-session|deviceToken|password/);
+        expect((await runtime.app.inject({ method: 'GET', url: '/v1/browser/identity' })).statusCode).toBe(401);
+        expect((await runtime.app.inject({ method: 'GET', url: '/v1/browser/identity', headers: { ...headers, origin: 'https://untrusted.test' } })).statusCode).toBe(403);
         const proxy = await runtime.app.inject({
           method: 'GET',
           url: '/api/v1/spaces/00000000-0000-4000-8000-000000000001/tasks?query=ship&priority=2',
@@ -149,6 +155,8 @@ describe('companion loopback boundary', () => {
         expect((await runtime.app.inject({ method: 'GET', url: '/v1/api/me/themes', headers })).statusCode).toBe(403);
 
         const cliKey = await new SecretStore(join(directory, 'cli-key.dpapi')).read();
+        expect((await runtime.app.inject({ method: 'GET', url: '/v1/browser/identity', headers: { 'x-taskboard-companion-key': cliKey! } })).statusCode).toBe(403);
+        expect((await runtime.app.inject({ method: 'GET', url: '/v1/browser/upstream', headers })).statusCode).toBe(403);
         const denied = await runtime.app.inject({
           method: 'POST',
           url: '/api/v1/tasks/00000000-0000-4000-8000-000000000001/accept',

@@ -219,6 +219,13 @@ describe.skipIf(!databaseUrl)('browser server initialization and administration'
     expect(output.json().data.entries.length).toBeGreaterThan(0);
     expect(output.body).not.toContain(token);
     expect(output.body).not.toContain(secret);
-    expect((await db.query('SELECT id FROM schema_migrations')).rowCount).toBe(3);
+    expect(
+      (await db.query('SELECT id FROM schema_migrations ORDER BY id')).rows.map((row) => row.id),
+    ).toEqual([
+      '0001_initial',
+      '0002_owner_integrity',
+      '0003_instance_settings',
+      '0004_user_themes',
+    ]);
   });
 });
