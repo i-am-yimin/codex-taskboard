@@ -285,7 +285,7 @@ export function createProgram(client = new CompanionClient()): Command {
 
 if (
   process.env.TASKBOARD_RUNTIME_TASKCTL === '1' ||
-  ['main.ts', 'taskctl.js'].includes(basename(process.argv[1] ?? ''))
+  ['main.ts', 'taskctl.js', 'taskctl.cjs'].includes(basename(process.argv[1] ?? ''))
 )
   createProgram()
     .parseAsync(process.argv)
