@@ -44,6 +44,7 @@ import {
   X,
 } from 'lucide-react';
 import { ConnectionSettings } from './ConnectionSettings';
+import { CodexConnectionAction, CodexConnectionNotice } from './CodexConnectionAction';
 import { DesktopServerSetup } from './DesktopServerSetup';
 import { ServerAdministration, ServerSetupGate } from './ServerAdministration';
 import {
@@ -583,6 +584,7 @@ function App() {
             <h1>任务看板</h1>
           </div>
           <div className="head-actions">
+            <CodexConnectionAction />
             <button
               className="button ghost"
               onClick={() => setView(view === 'board' ? 'list' : 'board')}
@@ -600,6 +602,7 @@ function App() {
             </button>
           </div>
         </div>
+        <CodexConnectionNotice />
         <div className="toolbar">
           <label className="search">
             <Search size={16} />

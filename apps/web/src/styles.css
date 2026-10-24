@@ -1094,6 +1094,44 @@ h3 {
 .codex-connection-options {
   margin: 12px 0 20px;
 }
+.codex-connection-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: -8px var(--page-gutter) 24px;
+  padding: 16px 18px;
+  color: var(--ink);
+  background: var(--tint);
+  border-radius: 14px;
+  font-size: 14px;
+}
+.codex-connection-notice > div {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.codex-connection-notice p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.codex-auto-connect {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.codex-auto-connect input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  flex: none;
+  accent-color: var(--accent);
+}
 .codex-connection-options details {
   margin-top: 16px;
 }

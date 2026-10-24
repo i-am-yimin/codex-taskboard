@@ -9,7 +9,7 @@ use std::{
 };
 
 const FAMILY: &str = "OpenAI.Codex_2p2nqsd0c76g0";
-const RESTART: &str = "日常 Codex 已打开，但尚未启用连接。请先保存工作并正常退出 Codex，再点击“接入日常 Codex”；将沿用原登录、项目和会话。以后可使用“Codex（任务看板连接）”快捷方式启动。";
+const RESTART: &str = "日常 Codex 已打开，但尚未启用连接。请在 Taskboard 中点击“连接 Codex”，保存工作并正常退出 Codex；Taskboard 将自动打开原环境并接入，沿用原登录、项目和会话。";
 
 #[derive(Debug)]
 struct Installation { version: String, executable: PathBuf, package: String, pids: Vec<u32> }
