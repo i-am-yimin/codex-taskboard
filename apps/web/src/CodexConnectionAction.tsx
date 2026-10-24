@@ -9,7 +9,7 @@ export function CodexConnectionAction() {
       className="button ghost codex-connect-action"
       disabled={codex.busy}
       aria-describedby={
-        ['waiting', 'connecting', 'error'].includes(codex.phase)
+        ['waiting', 'connecting', 'error'].includes(codex.phase) || codex.preferenceError
           ? 'codex-connection-notice'
           : undefined
       }
@@ -29,11 +29,9 @@ export function CodexConnectionAction() {
 export function CodexConnectionNotice() {
   const codex = useCodexConnection();
   const needsRestart = codex.phase === 'idle' && codex.connection?.state === 'restart-required';
-  if (
-    !codex.available ||
-    (!needsRestart && !['waiting', 'connecting', 'error'].includes(codex.phase))
-  )
-    return null;
+  if (!codex.available) return null;
+  if (!needsRestart && !['waiting', 'connecting', 'error'].includes(codex.phase))
+    return codex.phase === 'checking' ? null : <CodexPreferenceWarning />;
   return (
     <div
       className="codex-connection-notice"
@@ -69,6 +67,22 @@ export function CodexConnectionNotice() {
           退出后自动接入
         </button>
       )}
+    </div>
+  );
+}
+
+export function CodexPreferenceWarning({ id = 'codex-connection-notice' }: { id?: string }) {
+  const codex = useCodexConnection();
+  if (!codex.preferenceError) return null;
+  return (
+    <div className="codex-connection-notice" id={id} role="alert">
+      <div>
+        <b>{codex.phase === 'connected' ? 'Codex 已接入，设置未保存' : '自动连接设置未保存'}</b>
+        <p>{codex.preferenceError}</p>
+      </div>
+      <button className="button ghost" onClick={codex.retryPreference}>
+        重试保存
+      </button>
     </div>
   );
 }

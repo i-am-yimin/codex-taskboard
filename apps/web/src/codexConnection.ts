@@ -21,6 +21,7 @@ let snapshot: {
   connection?: CodexConnection;
   diagnosis: string;
   autoConnect: boolean;
+  preferenceError?: string;
 } = {
   phase: 'idle',
   diagnosis: '从 Taskboard 打开或连接日常 Codex，沿用原登录、项目和会话。',
@@ -107,13 +108,19 @@ function pause(signal: AbortSignal): Promise<void> {
     if (signal.aborted) abort();
   });
 }
+let pendingPreference: boolean | undefined;
 export function setAutoConnect(enabled: boolean) {
   try {
     localStorage.setItem(preferenceKey, enabled ? '1' : '0');
-    update({ autoConnect: enabled });
+    pendingPreference = undefined;
+    update({ autoConnect: enabled, preferenceError: undefined });
   } catch {
-    update({ phase: 'error', diagnosis: '无法保存自动连接设置，请检查本机存储后重试。' });
+    pendingPreference = enabled;
+    update({ preferenceError: '无法保存自动连接设置。请检查本机存储，然后重试保存。' });
   }
+}
+export function retryAutoConnectPreference() {
+  if (pendingPreference !== undefined) setAutoConnect(pendingPreference);
 }
 export function connectDailyCodex(waitForExit = true): Promise<void> {
   if (connecting) return connecting;
@@ -210,5 +217,6 @@ export function useCodexConnection() {
     detect: detectCodex,
     cancelWait: cancelCodexWait,
     setAutoConnect,
+    retryPreference: retryAutoConnectPreference,
   };
 }

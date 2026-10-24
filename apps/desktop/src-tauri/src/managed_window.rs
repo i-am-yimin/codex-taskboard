@@ -10,6 +10,8 @@ const GWL_STYLE: i32 = -16;
 const GWL_EXSTYLE: i32 = -20;
 const WS_CHILD: u32 = 0x4000_0000;
 const WS_CAPTION: u32 = 0x00c0_0000;
+const WS_THICKFRAME: u32 = 0x0004_0000;
+const WS_POPUP: u32 = 0x8000_0000;
 const WS_EX_TOOLWINDOW: u32 = 0x80;
 const WS_EX_NOACTIVATE: u32 = 0x0800_0000;
 const SW_SHOW: i32 = 5;
@@ -65,8 +67,12 @@ fn inspect(window: Window) -> Option<MainWindow> {
 }
 
 fn is_main(window: &MainWindow, pid: u32) -> bool {
+    // Daily Codex uses a resizable frameless Electron window. Its caption is
+    // absent even while visible or maximized; auxiliary popups are not mains.
+    let main_frame = window.style & WS_CAPTION == WS_CAPTION
+        || (window.style & WS_THICKFRAME != 0 && window.style & WS_POPUP == 0);
     window.pid == pid && window.class == "Chrome_WidgetWin_1" && window.owner == 0
-        && window.style & WS_CHILD == 0 && window.style & WS_CAPTION == WS_CAPTION
+        && window.style & WS_CHILD == 0 && main_frame
         && window.extended_style & (WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) == 0
         && window.cloaked == 0
 }
@@ -87,10 +93,10 @@ unsafe extern "system" fn collect(window: Window, data: isize) -> i32 {
 fn unique_main(pid: u32) -> Result<MainWindow, String> {
     let mut enumeration = Enumeration { pid, candidates: Vec::new() };
     if unsafe { EnumWindows(collect, (&mut enumeration as *mut Enumeration) as isize) } == 0 {
-        return Err("无法读取独立 Codex 窗口；请稍后重试".into());
+        return Err("无法读取 Codex 窗口；请稍后重试".into());
     }
     if enumeration.candidates.len() != 1 {
-        return Err("独立 Codex 正在运行，但无法唯一确认可恢复的主窗口；请检查任务栏后重试".into());
+        return Err("Codex 正在运行，但无法唯一确认可恢复的主窗口；请检查任务栏后重试".into());
     }
     Ok(enumeration.candidates.remove(0))
 }
@@ -100,28 +106,28 @@ pub(super) fn restore(process: &OwnedProcess, verify_binding: impl Fn() -> bool)
 }
 
 fn restore_verified(pid: u32, verify: impl Fn() -> bool) -> Result<bool, String> {
-    if !verify() { return Err("独立 Codex 的进程或页面归属已变化，已拒绝恢复窗口".into()); }
+    if !verify() { return Err("Codex 的进程或页面归属已变化，已拒绝恢复窗口".into()); }
     let window = unique_main(pid)?;
     // Re-enumerate immediately before input, rejecting handle reuse or ambiguity.
     if !verify() || unique_main(pid)? != window {
-        return Err("独立 Codex 窗口归属已变化，已拒绝恢复窗口".into());
+        return Err("Codex 窗口归属已变化，已拒绝恢复窗口".into());
     }
     // Preserve a maximized or already visible window; only restore minimization.
     let command = if unsafe { IsIconic(window.handle) } != 0 { SW_RESTORE } else { SW_SHOW };
     if unsafe { ShowWindowAsync(window.handle, command) } == 0 {
-        return Err("无法显示独立 Codex 窗口；请从任务栏恢复后重试".into());
+        return Err("无法显示 Codex 窗口；请从任务栏恢复后重试".into());
     }
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
         if !verify() || !inspect(window.handle).is_some_and(|current| is_main(&current, pid)) {
-            return Err("恢复期间独立 Codex 的归属已变化".into());
+            return Err("恢复期间 Codex 的归属已变化".into());
         }
         if unsafe { IsWindowVisible(window.handle) } != 0 && unsafe { IsIconic(window.handle) } == 0 { break; }
-        if Instant::now() >= deadline { return Err("独立 Codex 窗口未能显示；请稍后重试".into()); }
+        if Instant::now() >= deadline { return Err("Codex 窗口未能显示；请稍后重试".into()); }
         thread::sleep(Duration::from_millis(25));
     }
     if unique_main(pid)?.handle != window.handle || !verify() {
-        return Err("独立 Codex 主窗口已变化，已拒绝切换焦点".into());
+        return Err("Codex 主窗口已变化，已拒绝切换焦点".into());
     }
     // Windows may deny foreground focus. Visibility is checked independently.
     let focused = unsafe { SetForegroundWindow(window.handle) } != 0
@@ -168,6 +174,9 @@ mod tests {
     struct Fixture { handle: Window, thread: Option<thread::JoinHandle<()>> }
     impl Fixture {
         fn create(class: &str, ex: u32, owner: Window) -> Self {
+            Self::with_style(class, ex, owner, 0x00cf_0000)
+        }
+        fn with_style(class: &str, ex: u32, owner: Window, style: u32) -> Self {
             let class = class.to_owned();
             let (send, receive) = std::sync::mpsc::channel();
             let thread = thread::spawn(move || {
@@ -175,7 +184,7 @@ mod tests {
                 let registration = WindowClass { style: 0, procedure, class_extra: 0, window_extra: 0,
                     instance: 0, icon: 0, cursor: 0, background: 0, menu: std::ptr::null(), name: class.as_ptr() };
                 unsafe { RegisterClassW(&registration); }
-                let window = unsafe { CreateWindowExW(ex, class.as_ptr(), class.as_ptr(), 0x00cf_0000,
+                let window = unsafe { CreateWindowExW(ex, class.as_ptr(), class.as_ptr(), style,
                     40, 40, 320, 240, owner, 0, 0, std::ptr::null_mut()) };
                 send.send(window).unwrap();
                 assert_ne!(window, 0, "fixture window creation failed");
@@ -199,17 +208,21 @@ mod tests {
     #[test]
     fn restores_hidden_and_minimized_windows_and_keeps_maximized_size() {
         let _guard = WINDOWS.lock().unwrap();
-        let window = Fixture::create("Chrome_WidgetWin_1", 0, 0);
-        assert_eq!(unsafe { IsWindowVisible(window.handle) }, 0);
-        restore_verified(std::process::id(), || true).unwrap();
-        assert_ne!(unsafe { IsWindowVisible(window.handle) }, 0);
-        unsafe { ShowWindow(window.handle, 6); }
-        assert_ne!(unsafe { IsIconic(window.handle) }, 0);
-        restore_verified(std::process::id(), || true).unwrap();
-        assert_eq!(unsafe { IsIconic(window.handle) }, 0);
-        unsafe { ShowWindow(window.handle, 3); }
-        restore_verified(std::process::id(), || true).unwrap();
-        assert_ne!(unsafe { IsZoomed(window.handle) }, 0);
+        // The second style matches daily Codex's frameless window, without
+        // the visibility/maximization bits that ShowWindow controls below.
+        for style in [0x00cf_0000, 0x0007_0000] {
+            let window = Fixture::with_style("Chrome_WidgetWin_1", 0, 0, style);
+            assert_eq!(unsafe { IsWindowVisible(window.handle) }, 0);
+            restore_verified(std::process::id(), || true).unwrap();
+            assert_ne!(unsafe { IsWindowVisible(window.handle) }, 0);
+            unsafe { ShowWindow(window.handle, 6); }
+            assert_ne!(unsafe { IsIconic(window.handle) }, 0);
+            restore_verified(std::process::id(), || true).unwrap();
+            assert_eq!(unsafe { IsIconic(window.handle) }, 0);
+            unsafe { ShowWindow(window.handle, 3); }
+            restore_verified(std::process::id(), || true).unwrap();
+            assert_ne!(unsafe { IsZoomed(window.handle) }, 0);
+        }
     }
 
     #[test]
@@ -236,9 +249,20 @@ mod tests {
         let owned = Fixture::create("Chrome_WidgetWin_1", 0, main.handle);
         let helper = Fixture::create("Chrome_WidgetWin_0", 0, 0);
         let inactive = Fixture::create("Chrome_WidgetWin_1", WS_EX_NOACTIVATE, 0);
+        let frameless_helper = Fixture::with_style("Chrome_WidgetWin_1", 0, 0, 0);
+        let popup = Fixture::with_style("Chrome_WidgetWin_1", 0, 0, WS_POPUP | WS_THICKFRAME);
         assert_eq!(unique_main(std::process::id()).unwrap().handle, main.handle);
         restore_verified(std::process::id(), || true).unwrap();
         assert_ne!(unsafe { IsWindowVisible(main.handle) }, 0);
-        for other in [&tool, &owned, &helper, &inactive] { assert_eq!(unsafe { IsWindowVisible(other.handle) }, 0); }
+        for other in [&tool, &owned, &helper, &inactive, &frameless_helper, &popup] { assert_eq!(unsafe { IsWindowVisible(other.handle) }, 0); }
+    }
+
+    #[test]
+    fn rejects_ambiguous_frameless_main_windows() {
+        let _guard = WINDOWS.lock().unwrap();
+        let first = Fixture::with_style("Chrome_WidgetWin_1", 0, 0, 0x0007_0000);
+        let second = Fixture::with_style("Chrome_WidgetWin_1", 0, 0, 0x0007_0000);
+        assert!(restore_verified(std::process::id(), || true).is_err());
+        for window in [&first, &second] { assert_eq!(unsafe { IsWindowVisible(window.handle) }, 0); }
     }
 }

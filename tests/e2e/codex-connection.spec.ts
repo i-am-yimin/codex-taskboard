@@ -197,3 +197,99 @@ test('plain browser board does not offer a native connection action', async ({ p
   await expect(page.getByRole('heading', { name: '任务看板', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '连接 Codex', exact: true })).toHaveCount(0);
 });
+
+async function blockPreferenceWrites(page: Page) {
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === 'tb:daily-codex:auto-connect')
+        throw new DOMException('Storage blocked', 'QuotaExceededError');
+      return original.call(this, key, value);
+    };
+    Object.assign(window, {
+      restorePreferenceWrites: () => (Storage.prototype.setItem = original),
+    });
+  });
+}
+async function restorePreferenceWrites(page: Page) {
+  await page.evaluate(() => {
+    (window as unknown as { restorePreferenceWrites: () => void }).restorePreferenceWrites();
+  });
+}
+
+test('first connection keeps storage failure visible and retries only the setting', async ({
+  page,
+}, info) => {
+  const installs = await desktop(page);
+  await blockPreferenceWrites(page);
+  await page.getByRole('button', { name: '连接 Codex', exact: true }).click();
+  await expect(page.getByRole('button', { name: '打开 Codex', exact: true })).toBeEnabled();
+  const mainWarning = page.locator('#codex-connection-notice');
+  await expect(mainWarning).toContainText('Codex 已接入，设置未保存');
+  await expect(mainWarning).toContainText('无法保存自动连接设置');
+  expect(await page.evaluate(() => localStorage.getItem('tb:daily-codex:auto-connect'))).toBeNull();
+  await page.setViewportSize(
+    info.project.name === 'compact' ? { width: 980, height: 680 } : { width: 1320, height: 860 },
+  );
+  await page.screenshot({
+    path: `.artifacts/acceptance/2026-10-24-v0.1.4-fix/warning-${info.project.name}.png`,
+  });
+  await settings(page);
+  const automatic = page.getByRole('checkbox', { name: '启动 Taskboard 时自动连接日常 Codex' });
+  await expect(automatic).not.toBeChecked();
+  const settingsWarning = page.locator('#codex-auto-connect-error');
+  await expect(settingsWarning).toContainText('无法保存自动连接设置');
+  await page.getByRole('button', { name: '检测连接', exact: true }).click();
+  await expect(settingsWarning).toBeVisible();
+  await restorePreferenceWrites(page);
+  await settingsWarning.getByRole('button', { name: '重试保存', exact: true }).click();
+  await expect(automatic).toBeChecked();
+  await expect(settingsWarning).toHaveCount(0);
+  await expect(mainWarning).toHaveCount(0);
+  expect(installs()).toBe(1);
+  expect((await calls(page)).filter((c) => c === 'connect_daily_codex')).toHaveLength(1);
+  await page.reload();
+  await expect(page.getByRole('button', { name: '打开 Codex', exact: true })).toBeEnabled();
+  expect(installs()).toBe(2);
+});
+
+test('failed disable preserves the saved choice and retries disabling without reconnecting', async ({
+  page,
+}) => {
+  const installs = await desktop(page);
+  await page.getByRole('button', { name: '连接 Codex', exact: true }).click();
+  await expect(page.getByRole('button', { name: '打开 Codex', exact: true })).toBeEnabled();
+  await settings(page);
+  await blockPreferenceWrites(page);
+  const automatic = page.getByRole('checkbox', { name: '启动 Taskboard 时自动连接日常 Codex' });
+  await automatic.uncheck({ trial: true });
+  await automatic.click();
+  await expect(automatic).toBeChecked();
+  expect(await page.evaluate(() => localStorage.getItem('tb:daily-codex:auto-connect'))).toBe('1');
+  await expect(page.locator('.connection-card [role="status"]')).toContainText('已接入日常 Codex');
+  const warning = page.locator('#codex-auto-connect-error');
+  await expect(warning).toBeVisible();
+  await restorePreferenceWrites(page);
+  await warning.getByRole('button', { name: '重试保存', exact: true }).click();
+  await expect(automatic).not.toBeChecked();
+  expect(await page.evaluate(() => localStorage.getItem('tb:daily-codex:auto-connect'))).toBe('0');
+  expect(installs()).toBe(1);
+  await page.reload();
+  await expect(page.getByRole('button', { name: '连接 Codex', exact: true })).toBeEnabled();
+  expect(await calls(page)).not.toContain('connect_daily_codex');
+});
+
+test('five minute exit wait times out without launching and permits retry', async ({ page }) => {
+  const installs = await desktop(page, 'restart-required');
+  await page.clock.install();
+  await page.getByRole('button', { name: '连接 Codex', exact: true }).click();
+  await expect(page.getByRole('button', { name: '取消等待', exact: true })).toBeVisible();
+  await page.clock.fastForward(5 * 60_000 + 2100);
+  await expect(page.locator('#codex-connection-notice')).toContainText('等待已结束');
+  expect(installs()).toBe(0);
+  expect(await calls(page)).not.toContain('connect_daily_codex');
+  await page.getByRole('button', { name: '重新连接', exact: true }).click();
+  await expect(page.getByRole('button', { name: '取消等待', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '取消等待', exact: true }).click();
+  await expect(page.getByRole('button', { name: '连接 Codex', exact: true })).toBeEnabled();
+});

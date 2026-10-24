@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { request } from './api';
 import { connectionError, localConnection as local, useCodexConnection } from './codexConnection';
+import { CodexPreferenceWarning } from './CodexConnectionAction';
 
 type Device = {
   id: string;
@@ -129,10 +130,12 @@ export function ConnectionSettings({
             <input
               type="checkbox"
               checked={codex.autoConnect}
+              aria-describedby={codex.preferenceError ? 'codex-auto-connect-error' : undefined}
               onChange={(event) => codex.setAutoConnect(event.target.checked)}
             />
             启动 Taskboard 时自动连接日常 Codex
           </label>
+          <CodexPreferenceWarning id="codex-auto-connect-error" />
           <p className="muted">
             首次接入成功后自动记住。以后直接打开 Taskboard，无需单独的连接快捷方式。
           </p>
