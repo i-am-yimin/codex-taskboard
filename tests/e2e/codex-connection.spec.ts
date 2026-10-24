@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
-async function desktop(page: Page, restart: boolean) {
-  await page.addInitScript(({ restart }) => {
+async function desktop(page: Page, restart: boolean, nativeError: 'string' | 'error' = 'string') {
+  await page.addInitScript(({ restart, nativeError }) => {
     const calls: string[] = [];
     Object.assign(window, { codexCalls: calls, __TAURI__: { core: { invoke: async (command: string) => {
       calls.push(command);
@@ -11,13 +11,14 @@ async function desktop(page: Page, restart: boolean) {
         reason: restart ? '日常 Codex 已打开，但尚未启用连接。请先保存工作并正常退出 Codex，再点击接入。' : '检测到可连接的日常 Codex',
       };
       if (command === 'connect_daily_codex') {
+        if (restart && nativeError === 'string') return Promise.reject('请先保存工作并正常退出 Codex，再接入日常环境。');
         if (restart) throw new Error('请先保存工作并正常退出 Codex，再接入日常环境。');
         return '已连接日常 Codex';
       }
       if (command === 'create_codex_connection_shortcut') return '已创建开始菜单入口“Codex（任务看板连接）”';
       throw new Error(`Unexpected native command: ${command}`);
     } } } });
-  }, { restart });
+  }, { restart, nativeError });
   await page.route('http://127.0.0.1:47831/**', route => route.fulfill({
     contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
     body: JSON.stringify({ data: { embedded: false, draft: false, reason: '尚未接入' } }),
@@ -27,9 +28,9 @@ async function desktop(page: Page, restart: boolean) {
   await page.getByRole('button', { name: '连接与设备', exact: true }).click();
 }
 
-test('an ordinary running Codex explains the one-time restart and never launches an independent environment', async ({ page }) => {
+for (const nativeError of ['string', 'error'] as const) test(`an ordinary running Codex preserves a native ${nativeError} restart reason and never launches an independent environment`, async ({ page }) => {
   let installs = 0;
-  await desktop(page, true);
+  await desktop(page, true, nativeError);
   await page.route('http://127.0.0.1:47831/v1/codex/install', route => {
     installs += 1;
     return route.fulfill({ contentType: 'application/json', body: '{"data":{"embedded":true}}' });
@@ -42,6 +43,18 @@ test('an ordinary running Codex explains the one-time restart and never launches
   const calls = await page.evaluate(() => (window as unknown as { codexCalls: string[] }).codexCalls);
   expect(calls).toContain('connect_daily_codex');
   expect(calls).not.toContain('start_managed_codex');
+});
+
+test('preserves a native string when checking the daily connection fails', async ({ page }) => {
+  await desktop(page, false);
+  await page.evaluate(() => {
+    const original = window.__TAURI__!.core!.invoke;
+    window.__TAURI__!.core!.invoke = <T>(command: string): Promise<T> => command === 'codex_connection_status'
+      ? Promise.reject('发现多个日常 Codex 主进程，请先正常退出多余窗口后重试')
+      : original<T>(command);
+  });
+  await page.getByRole('button', { name: '检测连接', exact: true }).click();
+  await expect(page.locator('.connection-card [role="status"]')).toContainText('发现多个日常 Codex 主进程');
 });
 
 test('connects the daily window, preserves version refusal, and offers a reusable normal-profile shortcut', async ({ page }) => {

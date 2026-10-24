@@ -17,6 +17,11 @@ type CodexConnection = {
   reason: string;
 };
 
+function connectionError(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+  return message.trim() ? message : fallback;
+}
+
 async function local<T>(path: string, body?: unknown): Promise<T> {
   const key = await companionKey();
   if (!key) throw new Error('需要 Windows 启动器提供本机连接；当前可使用浏览器看板。');
@@ -71,7 +76,7 @@ export function ConnectionSettings({
           : (result.reason ?? status?.reason ?? '尚未连接 Codex'),
       );
     } catch (error) {
-      setDiagnosis(error instanceof Error ? error.message : '检测失败');
+      setDiagnosis(connectionError(error, '检测失败'));
     } finally {
       setChecking(false);
     }
@@ -87,7 +92,7 @@ export function ConnectionSettings({
     try {
       setDiagnosis(await invoke<string>('start_managed_codex'));
     } catch (error) {
-      setDiagnosis(error instanceof Error ? error.message : String(error));
+      setDiagnosis(connectionError(error, '独立测试环境启动失败'));
     } finally {
       setLaunching(false);
     }
@@ -105,7 +110,7 @@ export function ConnectionSettings({
         ? daily ? '已接入日常 Codex 侧栏，原登录、项目和会话保持不变。' : '独立测试环境的侧栏看板已接入。'
         : (result.reason ?? '看板接入未确认'));
     } catch (error) {
-      setDiagnosis(error instanceof Error ? error.message : '看板接入失败');
+      setDiagnosis(connectionError(error, '看板接入失败'));
     } finally { setInstalling(false); }
   }
   return (
@@ -135,7 +140,7 @@ export function ConnectionSettings({
           <button className="button ghost" disabled={busy} onClick={async () => {
             setCreatingShortcut(true);
             try { setDiagnosis(await invoke<string>('create_codex_connection_shortcut')); }
-            catch (error) { setDiagnosis(error instanceof Error ? error.message : String(error)); }
+            catch (error) { setDiagnosis(connectionError(error, '连接快捷方式创建失败')); }
             finally { setCreatingShortcut(false); }
           }}>
             {creatingShortcut ? '创建中…' : '创建日常连接快捷方式'}

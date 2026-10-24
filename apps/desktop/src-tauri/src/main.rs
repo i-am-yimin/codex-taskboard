@@ -15,6 +15,7 @@ mod package_launch;
 #[cfg(windows)]
 mod private_pipe;
 mod ready;
+mod launch_intent;
 
 use rand::{distributions::Alphanumeric, Rng};
 use std::{
@@ -341,8 +342,10 @@ fn main() {
     }
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            let intent = launch_intent::LaunchIntent::from_args(&args);
+            if intent == launch_intent::LaunchIntent::Quit { app.exit(0); return; }
             show_main(app);
-            if args.iter().any(|arg| arg == "--connect-daily-codex") { connect_from_shortcut(app.clone()); }
+            if intent == launch_intent::LaunchIntent::ConnectDaily { connect_from_shortcut(app.clone()); }
         }))
         .manage(Companion {
             child: Mutex::new(None),
@@ -359,6 +362,10 @@ fn main() {
         })
         .manage(ManagedCodexState::default())
         .setup(|app| {
+            if launch_intent::LaunchIntent::from_args(std::env::args()) == launch_intent::LaunchIntent::Quit {
+                app.handle().exit(0);
+                return Ok(());
+            }
             let key = app.state::<Companion>().bridge_key.clone();
             #[cfg(windows)]
             let control_port = managed_codex::start_control(
