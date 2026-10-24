@@ -884,7 +884,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
 
 if (
   process.env.TASKBOARD_RUNTIME_COMPANION === '1' ||
-  ['main.ts', 'companion.js'].includes(basename(process.argv[1] ?? ''))
+  ['main.ts', 'companion.js', 'companion.cjs'].includes(basename(process.argv[1] ?? ''))
 ) {
   createCompanion()
     .then((runtime) => {

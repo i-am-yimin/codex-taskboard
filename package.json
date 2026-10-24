@@ -1,6 +1,6 @@
 {
   "name": "codex-taskboard",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -27,6 +27,7 @@
     "admin": "node --env-file-if-exists=.env --import tsx apps/server/src/admin-entry.ts",
     "desktop:diagnose": "tsx scripts/diagnose.ts",
     "desktop:prepare": "tsx scripts/package-desktop.ts",
+    "desktop:check-runtime": "tsx scripts/check-desktop-runtime.ts",
     "desktop:bundle": "node scripts/bundle-desktop.mjs",
     "desktop:build": "pnpm build && pnpm desktop:prepare && pnpm desktop:bundle",
     "release:checksums": "tsx scripts/checksums.ts"

@@ -117,7 +117,7 @@ fn start_companion(
 ) -> Result<Child, String> {
     let resources = app.path().resource_dir().map_err(|e| e.to_string())?;
     let node = resources.join("runtime").join("node.exe");
-    let entry = resources.join("runtime").join("companion.js");
+    let entry = resources.join("runtime").join("companion.cjs");
     if !node.is_file() || !entry.is_file() {
         return Err(
             "Taskboard companion runtime is missing; reinstall this per-user application.".into(),
