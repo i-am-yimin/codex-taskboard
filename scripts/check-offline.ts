@@ -20,8 +20,8 @@ await control.query(`CREATE DATABASE "${databaseName}"`);
 const databaseUrl = new URL(controlUrl);
 databaseUrl.pathname = `/${databaseName}`;
 const db = createDatabase(databaseUrl.toString());
-const origin = 'http://127.0.0.1:47834';
-const app = buildApp({ db, sessionSecret: randomBytes(32).toString('hex'), origin, logger: false });
+let origin: string;
+const app = buildApp({ db, sessionSecret: randomBytes(32).toString('hex'), logger: false });
 const artifacts = resolve('.artifacts');
 await mkdir(artifacts, { recursive: true });
 const profile = await mkdtemp(resolve(artifacts, 'offline-chrome-'));
@@ -57,7 +57,13 @@ try {
     '离线验收',
     await hash(password),
   ]);
-  await app.listen({ host: '127.0.0.1', port: 47834 });
+  // A fixed port can already be an outgoing socket's ephemeral port on CI.
+  // Keep this profile's origin stable across restarts without sharing a port.
+  origin = await app.listen({ host: '127.0.0.1', port: 0 });
+  await db.query(
+    "INSERT INTO instance_settings(id,public_origin,log_level) VALUES (1,$1,'info') ON CONFLICT(id) DO UPDATE SET public_origin=excluded.public_origin",
+    [origin],
+  );
   const launch = (offline: boolean) =>
     chromium.launchPersistentContext(profile, {
       channel: process.env.CI ? undefined : 'chrome',

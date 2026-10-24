@@ -416,6 +416,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
   private recovery?: Promise<void>;
   private lastLifecycleError?: string;
   private installing?: Promise<void>;
+  private ensuring?: Promise<AdapterCapabilities>;
   private draftInProgress = false;
   private readonly cleanupTasks = new WeakMap<object, Promise<void>>();
 
@@ -532,6 +533,37 @@ export class CodexDesktopAdapter implements AgentAdapter {
         reason: '未检测到可用的本地 CDP',
       };
     }
+  }
+
+  async ensureInstalled(): Promise<AdapterCapabilities> {
+    if (this.ensuring) return this.ensuring;
+    const task = this.ensureInstalledInternal();
+    this.ensuring = task;
+    try {
+      return await task;
+    } finally {
+      if (this.ensuring === task) this.ensuring = undefined;
+    }
+  }
+
+  private async ensureInstalledInternal(): Promise<AdapterCapabilities> {
+    if (this.installing) await this.installing;
+    if (this.recovery) await this.recovery;
+    let capabilities = await this.probe();
+    if (capabilities.embedded || this.lastLifecycleError) return capabilities;
+    // A failed read-only probe does not revoke an existing installation. It
+    // may coincide with a page recovery or a briefly busy launcher/CDP port.
+    // Never start another injection or CSP reload while that session exists.
+    if (!this.session) await this.install();
+    const deadline = Date.now() + 10_000;
+    do {
+      if (this.recovery) await this.recovery;
+      capabilities = await this.probe();
+      if (capabilities.embedded || this.lastLifecycleError || !this.session) return capabilities;
+      if (Date.now() >= deadline) return capabilities;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    } while (Date.now() < deadline);
+    return capabilities;
   }
 
   async install(): Promise<void> {
