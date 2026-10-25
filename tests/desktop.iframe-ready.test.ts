@@ -121,6 +121,7 @@ async function installNativeBoard(page: Page) {
       <a id="chat" href="#chat" aria-current="page"><span>已有会话</span></a>
       <button id="other-chat">其他会话</button>`;
     document.querySelector('#content')!.innerHTML = '<input id="chat-draft" value="未发送草稿">';
+    document.querySelector<HTMLInputElement>('#chat-draft')!.focus();
     document.querySelector('#chat')!.addEventListener('click', (event) => event.preventDefault());
   });
   expect(await page.evaluate(boardEmbedScript(
@@ -132,10 +133,166 @@ async function installNativeBoard(page: Page) {
     overlay: page.locator('[data-taskboard-owned="9"]'),
   };
 }
+async function installPeerBoard(page: Page, workspaceMarker = '#workspace') {
+  await page.evaluate(() => {
+    document.querySelector('#shell')!.innerHTML = `
+      <div id="window-controls">窗口操作</div>
+      <div id="peer-root" style="display:flex;width:900px;height:600px;position:relative">
+        <nav id="sidebar" style="width:220px;flex:none">
+          <button id="new-chat">新聊天</button>
+          <button id="chat" aria-current="page" aria-selected="true"
+            data-app-action-sidebar-thread-active="true" style="background:rgb(100,100,100)">已有会话</button>
+        </nav>
+        <section id="workspace" style="display:contents" aria-hidden="false">
+          <header id="thread-toolbar" style="position:fixed;left:228px;top:26px;width:680px;height:52px;z-index:30">
+            <h1>原会话标题</h1><button>会话操作</button>
+          </header>
+          <main id="content" style="display:flex;flex:1;min-width:0;position:relative;isolation:isolate">
+            <input id="chat-draft" value="保留的会话草稿">
+          </main>
+        </section>
+      </div>`;
+    document.querySelector<HTMLInputElement>('#chat-draft')!.focus();
+  });
+  const expression = boardEmbedScript(
+    `${boardOrigin}/react`, '#peer-root', 17, `${hostOrigin}/native`,
+    boardOrigin, nonce, 5000, '#sidebar', '#content', workspaceMarker,
+  );
+  const installed = await page.evaluate(expression);
+  return { installed, entry: page.locator('[data-taskboard-entry="17"]'),
+    board: page.locator('[data-taskboard-owned="17"]') };
+}
 const sendResponse = (value: string, target: string) =>
   `parent.postMessage({type:'taskboard:ready-response',nonce:${JSON.stringify(value)}},${JSON.stringify(target)})`;
 
 describe('iframe readiness in real Chromium', () => {
+  it('switches the complete conversation workspace and board as peers with one current navigation item', async () => {
+    await isolated(async (page) => {
+      const { installed, entry, board } = await installPeerBoard(page);
+      expect(installed).toEqual({ installed: true });
+      const originalWorkspace = await page.locator('#workspace').elementHandle();
+      const originalEditor = await page.locator('#chat-draft').elementHandle();
+      const originalFrame = await board.locator('iframe').elementHandle();
+      if (!originalWorkspace || !originalEditor || !originalFrame) throw new Error('Missing peer fixtures');
+      await entry.click();
+      expect(await page.locator('#thread-toolbar').isVisible()).toBe(false);
+      expect(await page.locator('#content').isVisible()).toBe(false);
+      expect(await page.locator('#workspace').getAttribute('aria-hidden')).toBe('true');
+      expect(await page.locator('#workspace').evaluate((node) => (node as HTMLElement).inert)).toBe(true);
+      expect(await board.evaluate((node) => node.parentElement?.id)).toBe('peer-root');
+      expect(await board.isVisible()).toBe(true);
+      expect(await page.locator('#window-controls').isVisible()).toBe(true);
+      expect(await entry.getAttribute('aria-current')).toBe('page');
+      expect(await page.locator('#sidebar [aria-current="page"]').count()).toBe(1);
+      expect(await page.locator('#chat').getAttribute('aria-selected')).toBe('false');
+      expect(await page.locator('#chat').getAttribute('data-app-action-sidebar-thread-active')).toBe('true');
+      expect(await page.locator('#chat').evaluate((node) => getComputedStyle(node).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+      const boardBox = await board.boundingBox();
+      const navBox = await page.locator('#sidebar').boundingBox();
+      expect(boardBox!.x).toBeGreaterThanOrEqual(navBox!.x + navBox!.width);
+      expect(boardBox!.width).toBe(680);
+      expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName,
+        { x: boardBox!.x + 100, y: boardBox!.y + 15 })).toBe('IFRAME');
+      // Re-selecting a current page does not turn navigation into a toggle.
+      await entry.click();
+      expect(await board.isVisible()).toBe(true);
+      await page.locator('#chat').click();
+      expect(await board.isVisible()).toBe(false);
+      expect(await page.locator('#thread-toolbar').isVisible()).toBe(true);
+      expect(await entry.getAttribute('aria-current')).toBeNull();
+      expect(await page.locator('#chat').getAttribute('aria-current')).toBe('page');
+      expect(await page.locator('#chat').getAttribute('aria-selected')).toBe('true');
+      expect(await page.locator('#workspace').getAttribute('aria-hidden')).toBe('false');
+      expect(await page.locator('#workspace').evaluate((node) => (node as HTMLElement).inert)).toBe(false);
+      expect(await originalWorkspace.evaluate((node) => node === document.querySelector('#workspace'))).toBe(true);
+      expect(await originalEditor.evaluate((node) => node === document.querySelector('#chat-draft'))).toBe(true);
+      expect(await originalFrame.evaluate((node) => node.isConnected)).toBe(true);
+      expect(await page.locator('#chat-draft').inputValue()).toBe('保留的会话草稿');
+      await entry.click();
+      await page.evaluate('window.__taskboardEmbedCleanup_17()');
+      expect(await page.locator('#workspace').getAttribute('style')).toBe('display: contents;');
+      expect(await page.locator('#workspace').getAttribute('aria-hidden')).toBe('false');
+      expect(await page.locator('#workspace').evaluate((node) => (node as HTMLElement).inert)).toBe(false);
+      expect(await page.locator('[data-taskboard-suspended-current]').count()).toBe(0);
+      expect(await page.locator('[data-taskboard-style]').count()).toBe(0);
+      expect(await page.locator('#chat').getAttribute('aria-current')).toBe('page');
+      expect(await page.locator('#chat').evaluate((node) => getComputedStyle(node).backgroundColor)).toBe('rgb(100, 100, 100)');
+    }, '/native');
+  });
+
+  it('does not expose a background workspace when it streams new fixed toolbars or refreshes the same current item', async () => {
+    await isolated(async (page) => {
+      const { entry, board } = await installPeerBoard(page);
+      await entry.click();
+      await page.evaluate(() => {
+        const toolbar = document.createElement('header');toolbar.id = 'streamed-toolbar';
+        toolbar.style.cssText = 'position:fixed;inset:0;background:red';
+        document.querySelector('#workspace')!.append(toolbar);
+        document.querySelector('#chat')!.setAttribute('aria-current', 'page');
+        document.querySelector('#chat')!.setAttribute('aria-selected', 'true');
+      });
+      await page.waitForFunction(() => document.querySelector('#chat')!.getAttribute('aria-current') === 'false');
+      expect(await board.isVisible()).toBe(true);
+      expect(await page.locator('#streamed-toolbar').isVisible()).toBe(false);
+      expect(await page.locator('#sidebar [aria-current="page"]').count()).toBe(1);
+      await page.evaluate(() => {
+        document.querySelector('#chat')!.removeAttribute('aria-current');
+        document.querySelector('#chat')!.setAttribute('aria-selected', 'false');
+        document.querySelector('#chat')!.setAttribute('data-app-action-sidebar-thread-active', 'false');
+        const next = document.createElement('button');next.id='next-chat';
+        next.setAttribute('aria-current','page');document.querySelector('#sidebar')!.append(next);
+      });
+      await page.waitForFunction(() => document.querySelector<HTMLElement>('[data-taskboard-owned]')!.style.display === 'none');
+      expect(await page.locator('#chat').getAttribute('aria-current')).toBeNull();
+      expect(await page.locator('#chat').getAttribute('aria-selected')).toBe('false');
+      expect(await page.locator('#next-chat').getAttribute('aria-current')).toBe('page');
+      expect(await page.locator('#workspace').evaluate((node) => (node as HTMLElement).inert)).toBe(false);
+    }, '/native');
+  });
+
+  it('restores suspended native state if the workspace is removed while the board is active', async () => {
+    await isolated(async (page) => {
+      const { entry, board } = await installPeerBoard(page);
+      const workspace = await page.locator('#workspace').elementHandle();
+      if (!workspace) throw new Error('Missing workspace');
+      await entry.click();
+      await workspace.evaluate((node) => node.remove());
+      await page.waitForFunction(() => !document.querySelector('[data-taskboard-owned]'));
+      expect(await board.count()).toBe(0);
+      expect(await entry.count()).toBe(0);
+      expect(await workspace.evaluate((node) => ({display:node.style.display,inert:(node as HTMLElement).inert,hidden:node.getAttribute('aria-hidden')}))).toEqual({display:'contents',inert:false,hidden:'false'});
+      expect(await page.locator('#chat').getAttribute('aria-current')).toBe('page');
+      expect(await page.locator('[data-taskboard-style]').count()).toBe(0);
+    }, '/native');
+  });
+
+  it('preserves newer native visibility changes when returning from the board', async () => {
+    await isolated(async (page) => {
+      const { entry, board } = await installPeerBoard(page);
+      await entry.click();
+      await page.locator('#workspace').evaluate((node) => node.style.setProperty('display', 'grid', 'important'));
+      await page.waitForFunction(() => document.querySelector<HTMLElement>('[data-taskboard-owned]')!.style.display === 'none');
+      expect(await board.isVisible()).toBe(false);
+      await page.evaluate('window.__taskboardEmbedCleanup_17()');
+      expect(await page.locator('#workspace').evaluate((node) => [node.style.display, node.style.getPropertyPriority('display')])).toEqual(['grid', 'important']);
+      expect(await page.locator('#workspace').getAttribute('aria-hidden')).toBe('false');
+      expect(await page.locator('#workspace').evaluate((node) => (node as HTMLElement).inert)).toBe(false);
+      expect(await page.locator('#chat').getAttribute('aria-current')).toBe('page');
+    }, '/native');
+  });
+
+  it.each(['#missing-workspace', '#workspace, #content', '#peer-root', '#sidebar'])(
+    'refuses an unverified complete workspace %s before altering native state', async (workspaceMarker) => {
+      await isolated(async (page) => {
+        const { installed } = await installPeerBoard(page, workspaceMarker);
+        expect(installed).toMatchObject({ installed: false });
+        expect(await page.locator('[data-taskboard-owned]').count()).toBe(0);
+        expect(await page.locator('#workspace').getAttribute('aria-hidden')).toBe('false');
+        expect(await page.locator('#chat').getAttribute('aria-current')).toBe('page');
+      }, '/native');
+    },
+  );
+
   it('dismisses the board for native chat/project clicks and keyboard activation without stealing focus', async () => {
     await isolated(async (page) => {
       const { entry, overlay } = await installNativeBoard(page);
@@ -430,9 +587,9 @@ describe('iframe readiness in real Chromium', () => {
       expect(await page.evaluate('window.__nativeReady')).toEqual({ installed: true });
       expect(await page.locator('#native-header [data-taskboard-entry="7"]').count()).toBe(1);
       expect(await page.locator('[data-taskboard-entry="7"]').getAttribute('aria-label')).toBe('任务看板');
+      const contentBox = await page.locator('#native-content').boundingBox();
       await page.locator('[data-taskboard-entry="7"]').click();
       const navBox = await page.locator('#native-nav').boundingBox();
-      const contentBox = await page.locator('#native-content').boundingBox();
       const overlayBox = await page.locator('[data-taskboard-owned="7"]').boundingBox();
       expect(overlayBox!.x).toBeGreaterThanOrEqual(navBox!.x + navBox!.width);
       expect(overlayBox!.x + overlayBox!.width).toBeLessThanOrEqual(
@@ -459,7 +616,7 @@ describe('iframe readiness in real Chromium', () => {
       expect(await page.evaluate('document.activeElement?.id')).toBe('native-editor');
 
       // Replacing an existing successful injection must keep one entry and
-      // retain the original positioning value for the final cleanup.
+      // leave the native view's original layout intact after cleanup.
       expect(await page.evaluate(expression)).toEqual({ installed: true });
       expect(await page.evaluate(expression)).toEqual({ installed: true });
       expect(await page.locator('[data-taskboard-entry="7"]').count()).toBe(1);
@@ -473,13 +630,14 @@ describe('iframe readiness in real Chromium', () => {
       });
       expect(await page.evaluate('document.activeElement?.tagName')).toBe('IFRAME');
       await page.locator('[data-taskboard-entry="7"]').click();
+      expect(await page.locator('[data-taskboard-owned="7"]').isVisible()).toBe(true);
+      await page.locator('#native-header button').first().click();
       expect(await page.locator('[data-taskboard-owned="7"]').isVisible()).toBe(false);
       expect(await page.locator('[data-taskboard-entry="7"]').getAttribute('aria-pressed')).toBe(
         'false',
       );
-      expect(
-        await page.evaluate('document.activeElement?.getAttribute("data-taskboard-entry")'),
-      ).toBe('7');
+      expect(await page.locator('#native-header button').first().evaluate((node) => node === document.activeElement)).toBe(true);
+      await page.locator('[data-taskboard-entry="7"]').focus();
       await page.evaluate('window.__taskboardEmbedCleanup_7()');
       expect(await page.evaluate('document.activeElement?.id')).toBe('native-editor');
       expect(await page.locator('#native-content').evaluate((node) => node.style.position)).toBe(

@@ -253,18 +253,21 @@ afterAll(async () => {
 
 describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () => {
   it('selects the project navigation and visible content in the redesigned host', async () => {
-    await page.setContent(`<div><aside class="app-shell-left-panel">
+    await page.setContent(`<div data-app-shell-workspace-row><aside class="app-shell-left-panel">
       <nav data-app-navigation-rail="true" aria-label="应用导航"></nav>
       <nav role="navigation" aria-label="首页" id="projects"></nav>
     </aside><div role="status" style="position:absolute;left:-1px;width:1px;height:1px"></div>
-    <main data-app-shell-main-surface="default" id="content"></main></div>`);
-    for (const version of ['26.924.1866.0', '26.924.2738.0', '26.928.1915.0', '26.930.7945.0', '26.1007.9446.0', '26.1013.4894.0']) {
+    <section data-app-shell-header-placement="titlebar"><header data-app-shell-titlebar></header>
+    <main data-app-shell-main-surface="default" id="content"></main></section></div>`);
+    for (const version of ['26.924.1866.0', '26.924.2738.0', '26.928.1915.0', '26.930.7945.0', '26.1007.9446.0', '26.1013.4894.0', '26.1016.8622.0']) {
       const markers = codexHostMarkers(version);
       await expect(page.locator(markers.shellMarker).count()).resolves.toBe(1);
       await expect(page.locator(markers.sidebarMarker).evaluateAll(elements => elements.map(el => el.id)))
         .resolves.toEqual(['projects']);
       await expect(page.locator(markers.contentMarker).evaluateAll(elements => elements.map(el => el.id)))
         .resolves.toEqual(['content']);
+      if (markers.workspaceMarker)
+        expect(await page.locator(markers.workspaceMarker).locator('#content').count()).toBe(1);
     }
     expect(() => codexHostMarkers('99.0.0.0')).toThrow('Unsupported');
   });
@@ -421,7 +424,7 @@ describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () =>
     } finally { await rm(home, { recursive: true, force: true }); }
   });
 
-  it.each(['26.1007.9446.0', '26.1013.4894.0'])('preserves the installed board on refusal and restores CSP before filling a verified draft on %s', { timeout: 45000 }, async (appVersion) => {
+  it.each(['26.1007.9446.0', '26.1013.4894.0', '26.1016.8622.0'])('preserves the installed board on refusal and restores CSP before filling a verified draft on %s', { timeout: 45000 }, async (appVersion) => {
     const home = await mkdtemp(join(tmpdir(), 'taskboard-installed-draft-'));
     const root = join(home, 'repo');
     await mkdir(root);

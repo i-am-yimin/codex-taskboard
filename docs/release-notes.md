@@ -1,5 +1,7 @@
 # Codex Taskboard 客户端 0.1.6（预发布）
 
+用户复验补充（2026-10-25）：本版没有实现完整的同级视图切换，从会话进入看板仍可能出现固定标题栏穿透及双重选中。原发布资产保持固定，修正进展见 [0.1.7 本机候选](acceptance-0.1.7.md)。
+
 修复打开任务看板后切换会话仍覆盖聊天的问题。点击 Codex 侧栏中的会话、项目或“新聊天”，以及键盘选择或宿主页面导航时，看板自动收起；重新打开后保留未提交内容，不抢回宿主焦点。
 
 - [Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.6/Codex.Taskboard_0.1.6_x64-setup.exe)
