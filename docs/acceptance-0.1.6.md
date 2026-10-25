@@ -14,4 +14,10 @@
 
 ## 结果
 
-待本轮实际检查完成后填写。私有备份、进程身份、控制能力与原始截图保存在本机忽略目录，不提交。
+实机只读观察确认 `26.1016.8622.0` 使用 `data-app-action-sidebar-thread-active` / `data-app-action-sidebar-thread-selected` 标记会话，入口为原生 `div[role=button]`。修复补充观察这两项属性，覆盖无点击、URL 不变的会话选择；两个新增回归在补充前均失败。没有扩大宿主版本或身份校验。
+
+其余结果待本轮实际检查完成后填写。私有备份、进程身份、控制能力与原始截图保存在本机忽略目录，不提交。
+
+- 本轮 `pnpm check` 通过：TypeScript、ESLint、170 项测试及生产构建完成，21 项需要独立数据库配置的测试按原条件跳过。
+- `pnpm desktop:prepare` 与 `pnpm desktop:check-runtime` 通过，随包伴随服务和 CLI 可在长中文、空格及 ES module 上级目录中执行。
+- 本机原 0.1.5 Taskboard 已正常退出并完成程序、账号数据和加密凭据备份；日常 Codex 的进程与编辑器保持。独立 PostgreSQL 和合成账号已创建，不连接生产数据库。

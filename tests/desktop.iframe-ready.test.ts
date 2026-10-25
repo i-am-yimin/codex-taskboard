@@ -257,6 +257,42 @@ describe('iframe readiness in real Chromium', () => {
     }, '/native');
   });
 
+  it.each(['active', 'selected'])(
+    'dismisses when the observed native thread %s marker changes without a click or URL change',
+    async (state) => {
+      await isolated(async (page) => {
+        const { entry, overlay } = await installNativeBoard(page);
+        const marker = `data-app-action-sidebar-thread-${state}`;
+        await page.locator('#other-chat').evaluate((node, marker) => {
+          node.setAttribute(marker, 'false');
+        }, marker);
+        await entry.click();
+        await page.locator('#other-chat').evaluate((node, marker) => {
+          node.setAttribute(marker, 'false');
+        }, marker);
+        expect(await overlay.isVisible()).toBe(true);
+        await page.locator('#other-chat').evaluate((node, marker) => {
+          node.setAttribute(marker, 'true');
+        }, marker);
+        await page.waitForFunction(() =>
+          document.querySelector<HTMLElement>('[data-taskboard-owned]')!.style.display === 'none',
+        undefined, { timeout: 2000 });
+        expect(await entry.getAttribute('aria-pressed')).toBe('false');
+        expect(page.url()).toBe(`${hostOrigin}/native`);
+        await entry.click();
+        await page.evaluate((marker) => {
+          const selected = document.createElement('div');
+          selected.setAttribute('role', 'button');
+          selected.setAttribute(marker, 'true');
+          document.querySelector('#sidebar')!.append(selected);
+        }, marker);
+        await page.waitForFunction(() =>
+          document.querySelector<HTMLElement>('[data-taskboard-owned]')!.style.display === 'none',
+        undefined, { timeout: 2000 });
+      }, '/native');
+    },
+  );
+
   it('commits readiness in a hidden native sidebar before first paint and again after reload', async () => {
     await isolated(async (page) => {
       for (let round = 0; round < 2; round += 1) {

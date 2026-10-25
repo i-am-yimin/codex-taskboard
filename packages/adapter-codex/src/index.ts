@@ -352,7 +352,7 @@ export function boardEmbedScript(
       const onHostClick = (event) => {
         if (sidebar.contains(event.target) && !entry.contains(event.target)) onHostNavigation();
       };
-      const selectedMarker = '[aria-current]:not([aria-current="false"]),[aria-selected="true"]';
+      const selectedMarker = '[aria-current]:not([aria-current="false"]),[aria-selected="true"],[data-app-action-sidebar-thread-active="true"],[data-app-action-sidebar-thread-selected="true"]';
       const hasSelection = (node) => node.nodeType === 1 && (node.matches(selectedMarker) || node.querySelector(selectedMarker));
       // Codex can switch chats in memory without changing the document URL.
       // Observe selection only; streamed titles and expanding folders are not navigation.
@@ -410,7 +410,8 @@ export function boardEmbedScript(
         window.addEventListener('hashchange', onHostNavigation);
         navigation && navigation.addEventListener('navigate', onHostNavigation);
         selectionObserver.observe(sidebar, { subtree: true, childList: true, attributes: true,
-          attributeOldValue: true, attributeFilter: ['aria-current', 'aria-selected'] });
+          attributeOldValue: true, attributeFilter: ['aria-current', 'aria-selected',
+            'data-app-action-sidebar-thread-active', 'data-app-action-sidebar-thread-selected'] });
       }
       entry && entry.addEventListener('click', toggle);
       frame.addEventListener('load', challenge);
