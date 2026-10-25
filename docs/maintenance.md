@@ -59,11 +59,14 @@ git push --force-with-lease=refs/heads/<分支>:<已核验完整SHA> origin :ref
 git fetch origin --prune
 ```
 
-这里的 lease 只允许在远端 tip 仍与已核验 SHA 一致时删除。发生变化立即停止并重新核对，不改成无条件 force；不删除发布标签、Release 或资产。恢复时可从 bundle 将原分支精确取回：
+这里的 lease 只允许在远端 tip 仍与已核验 SHA 一致时删除。发生变化立即停止并重新核对，不改成无条件 force；不删除发布标签、Release 或资产。恢复时先列出 bundle 内的完整引用，再按实际路径取回：
 
 ```sh
-git fetch <本机备份路径> refs/heads/<原分支>:refs/heads/<原分支>
+git bundle list-heads <本机备份路径>
+git fetch <本机备份路径> <备份内完整ref>:refs/heads/<恢复分支>
 ```
+
+原本只有远端跟踪引用的分支通常保存在 `refs/remotes/origin/<原分支>`，本地分支保存在 `refs/heads/<原分支>`；以备份清单为准，不假设两者路径相同。恢复到新的本地分支后核对 tip，再决定是否推回远端。
 
 ## 本次整理（2026-10-25）
 
@@ -71,8 +74,8 @@ git fetch <本机备份路径> refs/heads/<原分支>:refs/heads/<原分支>
 
 清理前已保存完整 refs、worktree 清单和通过校验的 Git bundle，位于本机忽略目录 `.artifacts/repository-maintenance-20261025/`。保留两个现有 worktree、全部发布标签、资产与本机数据。文档整理在独立的 `codex/repository-maintenance` 分支提交，验证结果以该 PR 为准。
 
-清理完成后，本地与远端各删除 24 个已合并旧分支，保留 `main` 和本次整理工作分支；已开启 PR 合并后自动删除工作分支。重新读取确认两条保护规则、10 个本地及远端标签、8 个 Release 和 35 项资产的固定标识、大小与摘要等记录保持一致。
+清理完成后，本地与远端各删除 24 个已合并旧分支，保留 `main` 和本次整理工作分支；已开启 PR 合并后自动删除工作分支。本次整理合并后也按同一规则删除工作分支，仅保留 `main`。重新读取确认两条保护规则、10 个本地及远端标签、8 个 Release 和 35 项资产的固定标识、大小与摘要等记录保持一致。
 
-本次文档检查包含相对链接、归档正文保留、版本与命令核对及 `git diff --check`。没有修改业务源码、依赖、数据库或安装包；未重跑产品单元测试、数据库集成、实机或最终包验收，现有 CI 的执行结果单独记录在 PR。
+本次文档检查包含相对链接、归档正文保留、版本与命令核对及 `git diff --check`。没有修改业务源码、依赖、数据库或安装包；本机未重跑产品单元测试、数据库集成、实机或最终包验收，现有 CI 的执行结果单独记录在 PR。
 
 整理方式参考 [AppFlowy README](https://github.com/AppFlowy-IO/AppFlowy/blob/main/README.md) 将安装、开发与贡献分别引导，以及 [Vite 贡献指南](https://github.com/vitejs/vite/blob/main/CONTRIBUTING.md) 集中说明工作区环境和验证；只借鉴组织方式，未复制代码、素材或引入其依赖与发布策略。
