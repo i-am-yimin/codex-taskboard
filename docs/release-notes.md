@@ -1,8 +1,22 @@
-# Codex Taskboard 客户端 0.1.6（验收候选）
+# Codex Taskboard 客户端 0.1.6（预发布）
 
-准备日期：2026-10-25。修复打开任务看板后切换会话仍覆盖聊天的问题；点击 Codex 侧栏中的会话、项目或“新聊天”时自动收起，保留看板未保存内容和宿主焦点。包含此前 0.1.5 的主题与账号外观功能。
+修复打开任务看板后切换会话仍覆盖聊天的问题。点击 Codex 侧栏中的会话、项目或“新聊天”，以及键盘选择或宿主页面导航时，看板自动收起；重新打开后保留未提交内容，不抢回宿主焦点。
 
-Windows x64 NSIS 本机验收已完成：0.1.5 覆盖升级、冷启动、原登录与数据保留，以及 Codex `26.1016.8622.0` 中的五条导航路径通过；未提交任务内容可在重新打开看板后继续。安装器未签名，仍为开发预览；尚未创建公开 Release 或发布标签。摘要、源提交与证据范围见[0.1.6 验收记录](acceptance-0.1.6.md)。服务端版本与已发布客户端资产保持原样。
+- [Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.6/Codex.Taskboard_0.1.6_x64-setup.exe)
+- [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.6/SHA256SUMS)
+- [使用手册](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/docs/user-guide.md)
+- [主题指南](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/docs/themes.md)
+- [验收记录](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/docs/acceptance-0.1.6.md)
+
+本版同时公开此前 0.1.5 的四套主题、明暗与布局选择、声明式 JSON 主题包导入导出及账号外观同步。支持即时预览、应用、取消和恢复默认；跨设备冲突由用户选择。旧服务端保留本机外观，账号同步需要服务端 0.1.3-preview.1 的 0004_user_themes 迁移。
+
+固定标签的应用、数据库、浏览器、离线、Windows 原生及容器部署门禁通过；全部资产的校验和、严格 GitHub 来源证明、Linux 层摘要和 SPDX 已核验。最终发布安装器已覆盖本机 0.1.6 验收包，普通启动无需重新登录并自动恢复侧栏，原账号、设备、映射、凭据与草稿保持。真实 Codex 26.1016.8622.0 的已有会话、同一会话、Enter 切换、新聊天及项目导航五条路径通过；原日常 Codex 进程及编辑器保持。未提交合成任务保留已在本机候选的五条导航中验证，最终包复验使用原账号且未修改真实任务。
+
+Windows 安装器未签名（NotSigned），以开发预发布交付，不设为 latest。客户端自带运行时，首次使用需自己的 Taskboard HTTPS 服务和账号。未知宿主版本及身份验证失败继续拒绝；日常草稿由用户复制、粘贴并确认发送。
+
+独立服务端保持 `0.1.3-preview.1`，本次不升级生产服务器。本 Release 的 Linux 归档属于客户端标签构建，独立服务端镜像与既有发布标签、资产保持固定。
+
+来源提交：`c1d43068935aa18b13198b3441008104bb4acf68`。Windows 安装器 SHA-256：`9cd07f165d8838e02d260c18a258fcbbbbf1740274d3d256aac52ea833f874b2`。
 
 ## Codex Taskboard 服务端 0.1.3-preview.1
 

@@ -2,11 +2,11 @@
 
 嵌入 Codex 侧栏的任务看板。共享待办、进度和验收，保留原有项目与聊天，适合个人多设备和可信团队协作。
 
-[下载 0.1.4](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.4) · [使用手册](docs/user-guide.md) · [服务端部署](docs/deployment-openresty.md) · [更新日志](CHANGELOG.md) · [English](README.en.md)
+[下载 0.1.6](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.6) · [使用手册](docs/user-guide.md) · [服务端部署](docs/deployment-openresty.md) · [更新日志](CHANGELOG.md) · [English](README.en.md)
 
 ![看板预览](docs/screenshots/board-light.png)
 
-> 0.1.5 开发中：四套主题、主题包导入导出与账号外观同步，见[主题指南](docs/themes.md)。当前公开下载仍为 0.1.4。
+> 0.1.6 已发布：切换会话自动收起看板，并提供四套主题、主题包导入导出与账号外观同步，见[主题指南](docs/themes.md)。
 
 ## 产品功能
 
@@ -16,7 +16,7 @@
 - **任务执行**：日常模式手动复制需求到 Codex；随包 CLI 可另行登录后读取、领取和回写。独立测试环境保留自动草稿能力。
 - **离线浏览**：查看已缓存任务、保留本机草稿，联网后再保存；支持浅色、深色和系统主题。
 
-Windows 客户端为 **0.1.4 未签名预发布版**，日常 Codex 本轮精确验收版本为 `26.1016.8622.0`。服务端独立发布为 `0.1.3-preview.1`，提供账号主题同步，兼容原任务接口。当前不提供完整离线编辑、自动发送消息、完整聊天同步、历史会话跳转或 GitHub 自动同步。
+Windows 客户端为 **0.1.6 未签名预发布版**，日常 Codex 本轮精确验收版本为 `26.1016.8622.0`。服务端独立发布为 `0.1.3-preview.1`，提供账号主题同步，兼容原任务接口。当前不提供完整离线编辑、自动发送消息、完整聊天同步、历史会话跳转或 GitHub 自动同步。
 
 ## 使用手册
 
@@ -28,7 +28,7 @@ Windows 客户端为 **0.1.4 未签名预发布版**，日常 Codex 本轮精确
 
 ### 2. 安装并登录 Windows 客户端
 
-下载 [Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/Codex.Taskboard_0.1.4_x64-setup.exe)并核对[校验和](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/SHA256SUMS)。安装后打开 **Codex Taskboard**，填写 HTTPS 根地址并点“保存服务器”，再点“登录并继续”。看到“已同步”后再修改任务，无需另装 Node.js、pnpm 或 Codex CLI。
+下载 [Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.6/Codex.Taskboard_0.1.6_x64-setup.exe)并核对[校验和](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.6/SHA256SUMS)。安装后打开 **Codex Taskboard**，填写 HTTPS 根地址并点“保存服务器”，再点“登录并继续”。看到“已同步”后再修改任务，无需另装 Node.js、pnpm 或 Codex CLI。
 
 ### 3. 连接本机项目与 Codex
 
