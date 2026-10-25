@@ -113,10 +113,150 @@ async function loadSilent(page: Page) {
   await childFrame.waitForURL(`${boardOrigin}/silent`);
   return childFrame;
 }
+async function installNativeBoard(page: Page) {
+  await page.evaluate(() => {
+    document.querySelector('#sidebar')!.innerHTML = `
+      <button id="new-chat">新聊天</button>
+      <button id="project" data-app-action-sidebar-project-id="test-project">项目</button>
+      <a id="chat" href="#chat" aria-current="page"><span>已有会话</span></a>
+      <button id="other-chat">其他会话</button>`;
+    document.querySelector('#content')!.innerHTML = '<input id="chat-draft" value="未发送草稿">';
+    document.querySelector('#chat')!.addEventListener('click', (event) => event.preventDefault());
+  });
+  expect(await page.evaluate(boardEmbedScript(
+    `${boardOrigin}/react`, '#shell', 9, `${hostOrigin}/native`,
+    boardOrigin, nonce, 5000, '#sidebar', '#content',
+  ))).toEqual({ installed: true });
+  return {
+    entry: page.locator('[data-taskboard-entry="9"]'),
+    overlay: page.locator('[data-taskboard-owned="9"]'),
+  };
+}
 const sendResponse = (value: string, target: string) =>
   `parent.postMessage({type:'taskboard:ready-response',nonce:${JSON.stringify(value)}},${JSON.stringify(target)})`;
 
 describe('iframe readiness in real Chromium', () => {
+  it('dismisses the board for native chat/project clicks and keyboard activation without stealing focus', async () => {
+    await isolated(async (page) => {
+      const { entry, overlay } = await installNativeBoard(page);
+      const child = page.frames().find((item) => item.url() === `${boardOrigin}/react`)!;
+      await child.locator('main').evaluate((node) => {
+        const input = document.createElement('input');
+        input.id = 'board-draft';
+        input.value = '未保存的任务';
+        node.append(input);
+      });
+      for (const target of ['#chat span', '#other-chat', '#new-chat', '#project']) {
+        await entry.click();
+        expect(await overlay.isVisible()).toBe(true);
+        await child.locator('#board-draft').focus();
+        expect(await overlay.isVisible()).toBe(true);
+        await page.locator(target).click();
+        expect(await overlay.isVisible()).toBe(false);
+        expect(await entry.getAttribute('aria-pressed')).toBe('false');
+        expect(await entry.getAttribute('title')).toBe('打开任务看板');
+        expect(await entry.evaluate((node) => node === document.activeElement)).toBe(false);
+        expect(await page.locator('#chat-draft').inputValue()).toBe('未发送草稿');
+        expect(await child.locator('#board-draft').inputValue()).toBe('未保存的任务');
+      }
+      await entry.click();
+      await page.locator('#other-chat').focus();
+      await page.keyboard.press('Enter');
+      expect(await overlay.isVisible()).toBe(false);
+      expect(await page.locator('#other-chat').evaluate(
+        (node) => node === document.activeElement,
+      )).toBe(true);
+      await entry.click();
+      await page.locator('#new-chat').focus();
+      await page.keyboard.press('Space');
+      expect(await overlay.isVisible()).toBe(false);
+      expect(await page.locator('#new-chat').evaluate(
+        (node) => node === document.activeElement,
+      )).toBe(true);
+      expect(await page.locator('iframe').count()).toBe(1);
+    }, '/native');
+  });
+
+  it('dismisses for host selection changes without a URL change, while ignoring unrelated sidebar updates', async () => {
+    await isolated(async (page) => {
+      const { entry, overlay } = await installNativeBoard(page);
+      await entry.click();
+      await page.evaluate(() => {
+        document.querySelector('#project')!.setAttribute('aria-expanded', 'true');
+        document.querySelector('#chat span')!.textContent = '会话标题更新';
+        document.querySelector('#chat')!.setAttribute('aria-current', 'page');
+      });
+      expect(await overlay.isVisible()).toBe(true);
+      await page.evaluate(() => {
+        document.querySelector('#chat')!.removeAttribute('aria-current');
+        document.querySelector('#other-chat')!.setAttribute('aria-current', 'page');
+        (document.querySelector('#chat-draft') as HTMLInputElement).focus();
+      });
+      await page.waitForFunction(() =>
+        document.querySelector<HTMLElement>('[data-taskboard-owned]')!.style.display === 'none');
+      expect(await entry.getAttribute('aria-pressed')).toBe('false');
+      expect(await page.locator('#chat-draft').evaluate(
+        (node) => node === document.activeElement,
+      )).toBe(true);
+      expect(page.url()).toBe(`${hostOrigin}/native`);
+      await entry.click();
+      await page.evaluate(() => {
+        const chat = document.createElement('button');
+        chat.id = 'added-chat';
+        chat.setAttribute('aria-selected', 'true');
+        chat.textContent = '新增的会话';
+        document.querySelector('#sidebar')!.append(chat);
+      });
+      await page.waitForFunction(() =>
+        document.querySelector<HTMLElement>('[data-taskboard-owned]')!.style.display === 'none');
+      await entry.click();
+      await page.locator('#added-chat').click();
+      expect(await overlay.isVisible()).toBe(false);
+    }, '/native');
+  });
+
+  it('dismisses for same-document host navigation and removes navigation hooks on cleanup', async () => {
+    await isolated(async (page) => {
+      const { entry, overlay } = await installNativeBoard(page);
+      for (const method of ['pushState', 'replaceState'] as const) {
+        await entry.click();
+        await page.evaluate((method) => history[method]({}, '', `#${method}`), method);
+        expect(await overlay.isVisible()).toBe(false);
+      }
+      for (const event of ['popstate', 'hashchange']) {
+        await entry.click();
+        await page.evaluate((event) => window.dispatchEvent(new Event(event)), event);
+        expect(await overlay.isVisible()).toBe(false);
+      }
+      const removedHost = await overlay.elementHandle();
+      const removedEntry = await entry.elementHandle();
+      if (!removedHost || !removedEntry) throw new Error('Expected installed native board');
+      await page.evaluate('window.__taskboardEmbedCleanup_9()');
+      expect(await entry.count()).toBe(0);
+      expect(await overlay.count()).toBe(0);
+      expect(await page.locator('#content').evaluate((node) => node.style.position)).toBe('');
+      // Retain detached nodes so leaked listeners/observers remain observable.
+      await removedHost.evaluate((node) => { node.style.display = 'flex'; });
+      await removedEntry.evaluate((node) =>
+        node.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+      expect(await removedHost.evaluate((node) => node.style.display)).toBe('flex');
+      await page.evaluate(() => {
+        history.replaceState({}, '', '/native');
+        document.querySelector('#other-chat')!.setAttribute('aria-selected', 'true');
+        window.dispatchEvent(new Event('popstate'));
+        window.dispatchEvent(new Event('hashchange'));
+      });
+      await page.locator('#other-chat').click();
+      expect(await removedHost.evaluate((node) => node.style.display)).toBe('flex');
+      const installed = await installNativeBoard(page);
+      await installed.entry.click();
+      expect(await installed.overlay.isVisible()).toBe(true);
+      await page.locator('#other-chat').click();
+      expect(await installed.overlay.isVisible()).toBe(false);
+      expect(await page.locator('iframe').count()).toBe(1);
+    }, '/native');
+  });
+
   it('commits readiness in a hidden native sidebar before first paint and again after reload', async () => {
     await isolated(async (page) => {
       for (let round = 0; round < 2; round += 1) {
