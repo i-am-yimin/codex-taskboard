@@ -1,4 +1,26 @@
-# Codex Taskboard 客户端 0.1.4（预发布）
+# Codex Taskboard 服务端 0.1.3-preview.1
+
+发布日期：2026-10-25。Linux amd64 镜像已公开，新增个人外观和声明式主题包的账号同步。客户端独立版本化，本次没有发布 Windows 0.1.5 安装包，也不自动升级已有服务器。
+
+```bash
+docker pull ghcr.io/i-am-yimin/codex-taskboard:server-0.1.3-preview.1
+```
+
+不可变镜像引用：`ghcr.io/i-am-yimin/codex-taskboard@sha256:a6cee039a851f0cdd5ca963370ad709dd81e79583db55ac73bcf86224e2d4c91`。提交号镜像为 `server-a63d8761342f`，源码标签为 [`vserver-0.1.3-preview.1`](https://github.com/i-am-yimin/codex-taskboard/tree/vserver-0.1.3-preview.1)。
+
+### 功能与兼容
+
+- 外观选择与主题包按账号保存，支持版本冲突、幂等重试、内容去重，以及删除正在使用的主题时原子回退。
+- 启动自动执行 `0004_user_themes`，仅新增主题相关表；原任务、账号、密钥和已有客户端接口保留。
+- 浏览器和 0.1.5 客户端候选可使用账号主题同步；0.1.4 客户端继续使用原任务功能。
+
+### 升级与验证
+
+已有实例先备份数据库、密钥和配置，在原部署目录更新镜像版本。无需重新初始化管理员；单实例切换期间有短暂断连。本次仅新增表，程序回退可保留新增表，数据库恢复则会撤销备份后的数据。
+
+[发布工作流](https://github.com/i-am-yimin/codex-taskboard/actions/runs/40145424631)及固定源码 CI 通过；匿名下载并校验全部 10 个镜像层，两个镜像标签摘要一致，provenance 与 SPDX SBOM 已核对。生产服务器尚未升级。完整范围见[镜像验收](acceptance-server-0.1.3-preview.1.md)，操作见[部署与升级](deployment-openresty.md)。
+
+## Codex Taskboard 客户端 0.1.4（预发布）
 
 发布日期：2026-10-24。本次为 Windows 客户端更新。在 Taskboard 主界面直接打开或连接日常 Codex，沿用原登录、项目和聊天，无需专用连接快捷方式。版本摘要见[更新日志](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/CHANGELOG.md)。
 

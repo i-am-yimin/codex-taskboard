@@ -1,12 +1,16 @@
 # 预构建镜像与 OpenResty 部署
 
-适用于服务端预览标签 [`vserver-0.1.2-preview.1`](https://github.com/i-am-yimin/codex-taskboard/tree/vserver-0.1.2-preview.1)，对应镜像 `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1`，支持匿名拉取。服务端版本独立维护在 `apps/server/package.json`，当前 Windows 客户端与操作说明见[使用手册](user-guide.md)；两端版本号无需相同，实际兼容范围以验收记录为准。固定 `v0.1.1` 的旧镜像不支持这份 Compose。
+适用于服务端预览标签 [`vserver-0.1.3-preview.1`](https://github.com/i-am-yimin/codex-taskboard/tree/vserver-0.1.3-preview.1)，对应镜像 `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.3-preview.1`，支持 Linux amd64 和匿名拉取。服务端版本独立维护在 `apps/server/package.json`，当前 Windows 客户端与操作说明见[使用手册](user-guide.md)；两端版本号无需相同，实际兼容范围以验收记录为准。固定 `v0.1.1` 的旧镜像不支持这份 Compose。
 
-发布标签按 `server-<服务端版本>` 命名，预览版如 `server-0.1.2-preview.1`，正式版如 `server-0.1.2`。已发布版本不能覆盖；提交号标签仍保留供追溯。OCI 索引摘要见[发布运行摘要](https://github.com/i-am-yimin/codex-taskboard/actions/workflows/publish-server-image.yml)，也可执行 `docker buildx imagetools inspect ghcr.io/i-am-yimin/codex-taskboard:server-0.1.2-preview.1` 查看。需要严格固定内容时，可将 Compose 顶部的 `x-app-image` 改为 `ghcr.io/i-am-yimin/codex-taskboard@sha256:<发布摘要>`，同时固定 init 和 app 的镜像。
+发布标签按 `server-<服务端版本>` 命名，预览版如 `server-0.1.3-preview.1`，正式版如 `server-0.1.3`。已发布版本不能覆盖；提交号标签仍保留供追溯。OCI 索引摘要见[本次发布运行](https://github.com/i-am-yimin/codex-taskboard/actions/runs/40145424631)，也可执行 `docker buildx imagetools inspect ghcr.io/i-am-yimin/codex-taskboard:server-0.1.3-preview.1` 查看。需要严格固定内容时，可将 Compose 顶部的 `x-app-image` 改为以下引用，同时固定 init 和 app 的镜像：
 
-## 0.1.5 主题同步的部署变化（未发布）
+```text
+ghcr.io/i-am-yimin/codex-taskboard@sha256:a6cee039a851f0cdd5ca963370ad709dd81e79583db55ac73bcf86224e2d4c91
+```
 
-配套服务端开发版本为 `0.1.3-preview.1`，新增 `0004_user_themes` 迁移，仅增加个人外观和主题表。先备份数据库，再按原流程部署包含该迁移的版本。旧客户端兼容；新客户端连接旧服务端时仅使用本机主题。升级及回退边界见[主题指南](themes.md#服务端升级)。该版本镜像尚未公开，以下仍为现有已发布版本的部署方法。
+## 0.1.5 主题同步的部署变化
+
+配套服务端 `0.1.3-preview.1` 已于 2026-10-25 发布，新增 `0004_user_themes` 迁移，仅增加个人外观和主题表。已有实例保留数据库和密钥，备份后更新应用镜像；启动时自动迁移，无需重新初始化账号。旧客户端兼容；新客户端连接旧服务端时仅使用本机主题。客户端 0.1.5 安装包仍未公开发布。升级及回退边界见[主题指南](themes.md#服务端升级)，镜像来源与验证见[服务端验收](acceptance-server-0.1.3-preview.1.md)。
 
 ## 直接使用固定预览镜像
 
@@ -15,9 +19,9 @@
 ```bash
 mkdir taskboard-server-preview
 cd taskboard-server-preview
-curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.2-preview.1/compose.openresty.yaml --output compose.yaml
-curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.2-preview.1/deploy/openresty.conf --output openresty.conf
-printf '%s\n' 'TASKBOARD_VERSION=server-0.1.2-preview.1' 'TASKBOARD_IMAGE=ghcr.io/i-am-yimin/codex-taskboard' 'TASKBOARD_PORT=47830' > .env
+curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.3-preview.1/compose.openresty.yaml --output compose.yaml
+curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.3-preview.1/deploy/openresty.conf --output openresty.conf
+printf '%s\n' 'TASKBOARD_VERSION=server-0.1.3-preview.1' 'TASKBOARD_IMAGE=ghcr.io/i-am-yimin/codex-taskboard' 'TASKBOARD_PORT=47830' > .env
 docker compose pull
 docker compose up -d
 docker compose logs --tail=100 app
@@ -66,7 +70,7 @@ CI 的容器测试成功后也会提供 `server-image-preview` artifact，内含
 建立一个独立部署目录，将仓库的 [`compose.openresty.yaml`](../compose.openresty.yaml) 保存为该目录的 **compose.yaml**，将 [`deploy/openresty.env.example`](../deploy/openresty.env.example) 保存为 **.env**，填写刚刚发布成功的镜像标签：
 
 ```dotenv
-TASKBOARD_VERSION=server-0.1.2-preview.1
+TASKBOARD_VERSION=server-0.1.3-preview.1
 TASKBOARD_IMAGE=ghcr.io/i-am-yimin/codex-taskboard
 TASKBOARD_PORT=47830
 ```
@@ -146,7 +150,21 @@ cp .env compose.yaml backups/
 
 以上固定文件名会覆盖同名备份，定时备份应改为按日期命名并异机保存。恢复演练需要同时恢复数据库及对应密钥；保留仓库脚本时，可按[部署文档](deployment.md#备份与恢复)使用数据库恢复脚本。不要运行 `docker compose down -v`。
 
-升级前备份并记录旧镜像标签，停止 app，再修改 `.env` 的固定版本、执行 `docker compose pull` 和 `docker compose up -d`。应用会自动迁移；验收健康接口、登录、任务读写和实时同步后再结束维护。失败时恢复升级前数据库与旧镜像，不单独假定数据库迁移可逆。
+### 保留数据升级到 0.1.3-preview.1
+
+在原部署目录操作，保留原 Compose 项目名、数据库卷、密钥卷和其他配置。提前拉取新镜像，停止 app 写入后执行上面的备份，再仅修改 `.env` 中的 `TASKBOARD_VERSION=server-0.1.3-preview.1`：
+
+```bash
+docker pull ghcr.io/i-am-yimin/codex-taskboard:server-0.1.3-preview.1
+docker compose stop app
+# 执行上面的备份；记录旧版本，再编辑 .env 的 TASKBOARD_VERSION。
+docker compose up -d
+docker compose logs --tail=100 app
+```
+
+应用自动执行增量迁移。原账号、任务与密钥继续使用，正常有效的会话无需重新登录；单实例切换期间会短暂断连。验收健康接口、登录、任务读写、实时同步，以及同账号的双设备主题同步后再结束维护。
+
+本次迁移仅新增表，回退旧应用镜像时可保留这些表。若数据确需恢复，应先保留故障现场，再恢复升级前数据库及对应密钥；恢复会撤销备份之后新增的任务和主题数据。其他版本的迁移不自动继承这项兼容承诺。
 
 ```bash
 curl --fail https://你的域名/api/v1/health
