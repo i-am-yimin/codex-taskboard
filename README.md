@@ -2,7 +2,7 @@
 
 嵌入 Codex 侧栏的任务看板。共享待办、进度和验收，保留原有项目与聊天，适合个人多设备和可信团队协作。
 
-[下载 0.1.7](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.7) · [使用手册](docs/user-guide.md) · [服务端部署](docs/deployment-openresty.md) · [更新日志](CHANGELOG.md) · [English](README.en.md)
+[下载 0.1.7](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.7) · [使用手册](docs/user-guide.md) · [服务端部署](docs/deployment-openresty.md) · [文档索引](docs/README.md) · [更新日志](CHANGELOG.md) · [English](README.en.md)
 
 ![看板预览](docs/screenshots/board-light.png)
 
@@ -88,6 +88,18 @@ pnpm dev:web
 
 打开 [交互演示](http://127.0.0.1:4173/?demo=1)，演示不连接真实账号或执行任务。
 
-[开发指南](docs/development.md) · [开发规范](CONTRIBUTING.md) · [架构](docs/architecture.md) · [桌面技术说明](docs/desktop.md) · [安全说明](SECURITY.md) · [0.1.4 验收](docs/acceptance-0.1.4.md)
+## 参与开发
+
+长期集成分支为 `main`，工作分支使用 `codex/<topic>`。开发前阅读[贡献规范](CONTRIBUTING.md)，环境和验证命令见[开发指南](docs/development.md)；Agent 从 [AGENTS.md](AGENTS.md) 进入同一规范。
+
+| 路径 | 内容 |
+| --- | --- |
+| `apps/` | Web、服务端、本机伴随服务与 Windows 桌面应用 |
+| `packages/` | 领域契约、Codex 适配器与任务 CLI |
+| `scripts/`、`tests/` | 构建、验证、诊断及测试 |
+| `deploy/`、`.github/` | 部署配置、CI 与发布工作流 |
+| `docs/` | 使用、开发、架构决策和按版本组织的验收记录 |
+
+[全部文档](docs/README.md) · [架构](docs/architecture.md) · [架构决策](docs/adr/README.md) · [仓库维护](docs/maintenance.md) · [验收索引](docs/acceptance.md) · [安全说明](SECURITY.md)
 
 欢迎通过 Issue 和 fork PR 参与。MIT License；产品灵感来自 [dashi-taskboard](https://github.com/chuspeeism/dashi-taskboard)。本项目独立实现，是社区工具，不代表 OpenAI 官方产品。

@@ -6,7 +6,7 @@
 - 切换保留双方视图和同一个 iframe；退出 Taskboard 恢复完整原生工作区、导航状态与临时样式。
 - 沿用四套主题、声明式主题包与账号外观同步；日常 Codex 不自动填写或发送草稿。
 
-[Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.7/Codex.Taskboard_0.1.7_x64-setup.exe) · [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.7/SHA256SUMS) · [使用手册](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/docs/user-guide.md) · [验收记录](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/docs/acceptance-0.1.7.md)
+[Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.7/Codex.Taskboard_0.1.7_x64-setup.exe) · [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.7/SHA256SUMS) · [使用手册](https://github.com/i-am-yimin/codex-taskboard/blob/main/docs/user-guide.md) · [验收记录](https://github.com/i-am-yimin/codex-taskboard/blob/main/docs/acceptance-0.1.7.md)
 
 固定标签源码 CI、应用与独立数据库、浏览器、离线、Windows 原生和容器部署门禁通过。全部五项发布资产的校验和、严格 GitHub 来源证明、Linux 层摘要与 SPDX 已核验。
 
@@ -26,9 +26,9 @@ Windows 安装器为 NotSigned 未签名开发预发布，不设为 latest。首
 
 - [Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.6/Codex.Taskboard_0.1.6_x64-setup.exe)
 - [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.6/SHA256SUMS)
-- [使用手册](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/docs/user-guide.md)
-- [主题指南](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/docs/themes.md)
-- [验收记录](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/docs/acceptance-0.1.6.md)
+- [使用手册](https://github.com/i-am-yimin/codex-taskboard/blob/main/docs/user-guide.md)
+- [主题指南](https://github.com/i-am-yimin/codex-taskboard/blob/main/docs/themes.md)
+- [验收记录](https://github.com/i-am-yimin/codex-taskboard/blob/main/docs/acceptance-0.1.6.md)
 
 本版同时公开此前 0.1.5 的四套主题、明暗与布局选择、声明式 JSON 主题包导入导出及账号外观同步。支持即时预览、应用、取消和恢复默认；跨设备冲突由用户选择。旧服务端保留本机外观，账号同步需要服务端 0.1.3-preview.1 的 0004_user_themes 迁移。
 
@@ -64,12 +64,12 @@ docker pull ghcr.io/i-am-yimin/codex-taskboard:server-0.1.3-preview.1
 
 ## Codex Taskboard 客户端 0.1.4（预发布）
 
-发布日期：2026-10-24。本次为 Windows 客户端更新。在 Taskboard 主界面直接打开或连接日常 Codex，沿用原登录、项目和聊天，无需专用连接快捷方式。版本摘要见[更新日志](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/CHANGELOG.md)。
+发布日期：2026-10-24。本次为 Windows 客户端更新。在 Taskboard 主界面直接打开或连接日常 Codex，沿用原登录、项目和聊天，无需专用连接快捷方式。版本摘要见[更新日志](https://github.com/i-am-yimin/codex-taskboard/blob/main/CHANGELOG.md)。
 
 - [Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/Codex.Taskboard_0.1.4_x64-setup.exe)
 - [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/SHA256SUMS)
-- [使用手册](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/docs/user-guide.md)
-- [验收记录](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/docs/acceptance-0.1.4.md)
+- [使用手册](https://github.com/i-am-yimin/codex-taskboard/blob/main/docs/user-guide.md)
+- [验收记录](https://github.com/i-am-yimin/codex-taskboard/blob/main/docs/acceptance-0.1.4.md)
 
 ### 新增
 
@@ -105,7 +105,7 @@ docker pull ghcr.io/i-am-yimin/codex-taskboard:server-0.1.3-preview.1
 
 - [Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.3/Codex.Taskboard_0.1.3_x64-setup.exe)
 - [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.3/SHA256SUMS)
-- [使用手册](https://github.com/i-am-yimin/codex-taskboard/blob/codex/initial-implementation/README.md#使用手册)
+- [使用手册](https://github.com/i-am-yimin/codex-taskboard/blob/main/README.md#使用手册)
 
 Windows 安装器未签名（NotSigned），本版为开发预览，不设为 latest。客户端自带运行时。首次使用请在登录页填写自己的 HTTPS 服务端根地址并保存，再登录 Taskboard。
 
