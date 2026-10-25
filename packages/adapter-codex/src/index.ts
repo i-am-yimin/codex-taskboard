@@ -28,6 +28,11 @@ export function codexHostMarkers(version: string) {
     contentMarker: redesignedShell
       ? 'main[data-app-shell-main-surface]'
       : '.app-shell-left-panel + div',
+    // This complete workspace, including its fixed thread toolbar, was observed
+    // on this exact host. Other versions retain their verified content boundary.
+    workspaceMarker: version === '26.1016.8622.0'
+      ? '[data-app-shell-workspace-row] > [data-app-shell-header-placement]'
+      : undefined,
     composerMarker: '[contenteditable="true"][role="textbox"]',
     modalMarker: '[role="dialog"]',
   };
@@ -54,6 +59,8 @@ export interface CodexCdpConfig {
   /** Observed Codex selectors for the optional native sidebar entry and content pane. */
   sidebarMarker?: string;
   contentMarker?: string;
+  /** Complete native view, including toolbars outside the main content pane. */
+  workspaceMarker?: string;
   composerMarker?: string;
   modalMarker?: string;
   /** Bounds CDP connect, commands, and teardown; never wait on Codex indefinitely. */
@@ -268,6 +275,7 @@ export function boardEmbedScript(
   timeoutMs: number,
   sidebarMarker?: string,
   contentMarker?: string,
+  workspaceMarker?: string,
 ): string {
   return `(() => {
     if (location.href !== ${JSON.stringify(exactPageUrl)}) return { installed: false };
@@ -280,21 +288,22 @@ export function boardEmbedScript(
     const root = selectOne(${JSON.stringify(shellMarker)});
     const sidebar = ${sidebarMarker ? `selectOne(${JSON.stringify(sidebarMarker)})` : 'null'};
     const content = ${contentMarker ? `selectOne(${JSON.stringify(contentMarker)})` : 'null'};
-    if (!root || (${Boolean(sidebarMarker || contentMarker)} && (!sidebar || !content || !root.contains(sidebar) || !root.contains(content))))
+    const workspace = ${workspaceMarker ? `selectOne(${JSON.stringify(workspaceMarker)})` : 'content'};
+    const mount = workspace && workspace.parentElement;
+    if (!root || (${Boolean(sidebarMarker || contentMarker || workspaceMarker)} &&
+      (!sidebar || !content || !workspace || !mount || !root.contains(sidebar) || !root.contains(content)
+        || !root.contains(mount) || workspace === root || workspace.contains(sidebar) || !workspace.contains(content))))
       return { installed: false, reason: 'shell-marker-not-observed' };
     const oldCleanup = window[cleanupKey];
     if (typeof oldCleanup === 'function') oldCleanup();
     const installFocus = document.activeElement;
-    const contentStyle = content && content.style;
-    const priorPosition = contentStyle && contentStyle.getPropertyValue('position');
-    const priorPriority = contentStyle && contentStyle.getPropertyPriority('position');
-    const positionedContent = Boolean(sidebar && content && getComputedStyle(content).position === 'static');
-    if (positionedContent) contentStyle.setProperty('position', 'relative');
-    const host = document.createElement('aside');
+    const host = document.createElement(sidebar ? 'section' : 'aside');
     host.id = 'taskboard-codex-sidebar';
     host.setAttribute('data-taskboard-owned', owner);
+    host.setAttribute('role', 'region');
+    host.setAttribute('aria-label', '任务看板');
     host.style.cssText = sidebar
-      ? 'position:absolute;inset:0;display:none;flex-direction:column;min-width:0;background:var(--background,#fff);z-index:2147483000'
+      ? 'position:relative;display:none;flex:1;flex-direction:column;align-self:stretch;min-width:0;min-height:0;overflow:hidden;background:var(--background,#fff)'
       : 'width:380px;min-width:280px;border-left:1px solid rgba(127,127,127,.22);background:var(--background,#fff);z-index:2147483000';
     const frame = document.createElement('iframe');
     frame.title = '任务看板';
@@ -303,13 +312,20 @@ export function boardEmbedScript(
       ? 'border:0;width:100%;flex:1;min-height:0'
       : 'border:0;width:100%;height:100%';
     host.append(frame);
-    (content || root).append(host);
+    (sidebar ? mount : (content || root)).append(host);
+    const navStyle = sidebar ? document.createElement('style') : null;
+    if (navStyle) {
+      navStyle.setAttribute('data-taskboard-style', owner);
+      navStyle.textContent = '[data-taskboard-suspended-current="' + owner + '"]:not(:hover):not(:focus-visible){background-color:transparent!important}';
+      root.append(navStyle);
+    }
     const entry = sidebar ? document.createElement('button') : null;
     if (entry) {
       entry.type = 'button';
       entry.setAttribute('data-taskboard-entry', owner);
       entry.setAttribute('aria-label', '任务看板');
       entry.setAttribute('aria-pressed', 'false');
+      entry.setAttribute('aria-controls', host.id);
       entry.title = '打开任务看板';
       entry.style.cssText = 'box-sizing:border-box;display:flex;flex:none;align-items:center;gap:10px;width:100%;height:32px;padding:0 12px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;font-size:14px;text-align:left;cursor:pointer';
       const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -341,44 +357,139 @@ export function boardEmbedScript(
     }
     return new Promise((resolve) => {
       let finished = false;
+      let viewState = null;
+      let returnFocus = workspace && workspace.contains(installFocus) ? installFocus : null;
+      const nativeCurrent = new Map();
+      const restoreAttribute = (node, name, value) => value === null ? node.removeAttribute(name) : node.setAttribute(name, value);
+      const selectedMarker = '[aria-current]:not([aria-current="false"]),[aria-selected="true"],[data-app-action-sidebar-thread-active="true"],[data-app-action-sidebar-thread-selected="true"]';
+      const suspendCurrent = () => {
+        for (const node of sidebar.querySelectorAll(selectedMarker)) {
+          if (entry.contains(node)) continue;
+          const attributes = new Map();
+          for (const name of ['aria-current', 'aria-selected']) {
+            const value = node.getAttribute(name);
+            if (value !== null && value !== 'false') attributes.set(name, value);
+          }
+          nativeCurrent.set(node, { attributes, marker: node.getAttribute('data-taskboard-suspended-current') });
+          node.setAttribute('data-taskboard-suspended-current', owner);
+          for (const name of attributes.keys()) node.setAttribute(name, 'false');
+        }
+      };
+      const restoreCurrent = () => {
+        for (const [node, state] of nativeCurrent) {
+          if (node.getAttribute('data-taskboard-suspended-current') !== owner) continue;
+          for (const [name, value] of state.attributes) {
+            if (node.getAttribute(name) === 'false') restoreAttribute(node, name, value);
+          }
+          restoreAttribute(node, 'data-taskboard-suspended-current', state.marker);
+        }
+        nativeCurrent.clear();
+      };
+      const suspendWorkspace = () => {
+        viewState = { display: workspace.style.getPropertyValue('display'), priority: workspace.style.getPropertyPriority('display'),
+          hidden: workspace.getAttribute('aria-hidden'), inert: workspace.getAttribute('inert') };
+        workspace.style.setProperty('display', 'none', 'important');
+        workspace.setAttribute('aria-hidden', 'true');
+        workspace.inert = true;
+        viewState.appliedInert = workspace.getAttribute('inert');
+      };
+      const restoreWorkspace = () => {
+        if (!viewState) return;
+        if (workspace.style.getPropertyValue('display') === 'none' && workspace.style.getPropertyPriority('display') === 'important')
+          workspace.style.setProperty('display', viewState.display, viewState.priority);
+        if (workspace.getAttribute('aria-hidden') === 'true') restoreAttribute(workspace, 'aria-hidden', viewState.hidden);
+        if (workspace.getAttribute('inert') === viewState.appliedInert) restoreAttribute(workspace, 'inert', viewState.inert);
+        viewState = null;
+      };
       const ownsFocus = () => host.contains(document.activeElement) || document.activeElement === entry;
-      const hide = (focusEntry = true) => { host.style.display = 'none'; if (entry) { entry.style.background = 'transparent'; entry.setAttribute('aria-pressed', 'false'); entry.title = '打开任务看板'; if (focusEntry) entry.focus(); } };
-      const show = () => { host.style.display = sidebar ? 'flex' : 'block'; if (entry) { entry.style.background = 'rgba(127,127,127,.14)'; entry.setAttribute('aria-pressed', 'true'); entry.title = '再次点击返回 Codex'; entry.focus(); } };
-      const toggle = () => { if (host.style.display === 'none') show(); else hide(); };
+      const hide = (focusEntry = true) => {
+        const resumeFocus = !focusEntry && ownsFocus() && returnFocus && returnFocus.isConnected ? returnFocus : null;
+        host.style.display = 'none';
+        restoreWorkspace(); restoreCurrent();
+        if (entry) { entry.style.background = 'transparent'; entry.setAttribute('aria-pressed', 'false'); entry.removeAttribute('aria-current'); entry.title = '打开任务看板'; if (focusEntry) entry.focus(); }
+        resumeFocus && resumeFocus.focus({ preventScroll: true });
+      };
+      const show = () => {
+        if (host.style.display !== 'none') return;
+        if (sidebar && (!workspace.isConnected || workspace.parentElement !== mount || !host.isConnected)) return cleanup();
+        if (sidebar) { suspendWorkspace(); suspendCurrent(); }
+        host.style.display = sidebar ? 'flex' : 'block';
+        if (entry) { entry.style.background = 'rgba(127,127,127,.14)'; entry.setAttribute('aria-pressed', 'true'); entry.setAttribute('aria-current', 'page'); entry.title = '当前显示任务看板'; entry.focus(); }
+      };
+      const onFocus = (event) => {
+        if (workspace && host.style.display === 'none' && workspace.contains(event.target)) returnFocus = event.target;
+      };
       const onKey = (event) => { if (event.key === 'Escape' && host.style.display !== 'none' && ownsFocus()) hide(); };
-      // Host navigation dismisses the overlay without taking focus from the
-      // selected chat. Keep the iframe mounted to preserve unsaved board work.
+      // Native navigation resumes the complete conversation view. Neither view
+      // is unmounted, so editors, streaming output and unsaved board work survive.
       const onHostNavigation = () => { if (sidebar && host.style.display !== 'none') hide(false); };
       const onHostClick = (event) => {
         if (sidebar.contains(event.target) && !entry.contains(event.target)) onHostNavigation();
       };
-      const selectedMarker = '[aria-current]:not([aria-current="false"]),[aria-selected="true"],[data-app-action-sidebar-thread-active="true"],[data-app-action-sidebar-thread-selected="true"]';
       const hasSelection = (node) => node.nodeType === 1 && (node.matches(selectedMarker) || node.querySelector(selectedMarker));
       // Codex can switch chats in memory without changing the document URL.
       // Observe selection only; streamed titles and expanding folders are not navigation.
       const selectionObserver = sidebar ? new MutationObserver((records) => {
-        if (records.some(record => record.type === 'attributes'
-          ? record.oldValue !== record.target.getAttribute(record.attributeName)
-          : [...record.addedNodes, ...record.removedNodes].some(hasSelection))) onHostNavigation();
+        if (host.style.display === 'none') return;
+        let changed = false;
+        for (let index = 0; index < records.length; index++) {
+          const record = records[index];
+          if (entry.contains(record.target)) continue;
+          if (record.type !== 'attributes') {
+            if ([...record.addedNodes, ...record.removedNodes].some(hasSelection)) changed = true;
+            continue;
+          }
+          // A batch can contain both our presentation write and a host refresh.
+          // Recover each mutation's value rather than confusing it with the last one.
+          const next = records.slice(index + 1).find(item => item.target === record.target && item.attributeName === record.attributeName);
+          const value = next ? next.oldValue : record.target.getAttribute(record.attributeName);
+          const state = nativeCurrent.get(record.target);
+          if (record.oldValue === value) {
+            // A native deselection can write the same false value that we are
+            // presenting. Keep that newer native state when the view resumes.
+            if (state && state.attributes.has(record.attributeName) && value === 'false'
+              && state.attributes.get(record.attributeName) !== 'false') {
+              state.attributes.set(record.attributeName, value); changed = true;
+            }
+            continue;
+          }
+          if (state && state.attributes.has(record.attributeName)) {
+            const original = state.attributes.get(record.attributeName);
+            if (record.oldValue === original && value === 'false') continue;
+            if (value === original) {
+              if (record.target.getAttribute(record.attributeName) === original) record.target.setAttribute(record.attributeName, 'false');
+              continue;
+            }
+            state.attributes.set(record.attributeName, value);
+          }
+          changed = true;
+        }
+        if (changed) onHostNavigation();
+      }) : null;
+      const workspaceObserver = sidebar ? new MutationObserver(() => {
+        if (!root.isConnected || !workspace.isConnected || workspace.parentElement !== mount || !host.isConnected || !root.contains(sidebar)) return cleanup();
+        if (viewState && (workspace.style.getPropertyValue('display') !== 'none' || workspace.style.getPropertyPriority('display') !== 'important'
+          || workspace.getAttribute('aria-hidden') !== 'true' || !workspace.inert)) hide(false);
       }) : null;
       const navigation = sidebar ? window.navigation : null;
       const teardown = () => {
-        const restore = ownsFocus() && installFocus && installFocus !== entry && installFocus.isConnected ? installFocus : null;
+        const restore = ownsFocus() && returnFocus && returnFocus.isConnected ? returnFocus : null;
         window.removeEventListener('message', onMessage);
         document.removeEventListener('keydown', onKey);
+        document.removeEventListener('focusin', onFocus);
         document.removeEventListener('click', onHostClick, true);
         window.removeEventListener('popstate', onHostNavigation);
         window.removeEventListener('hashchange', onHostNavigation);
         navigation && navigation.removeEventListener('navigate', onHostNavigation);
         selectionObserver && selectionObserver.disconnect();
-        entry && entry.removeEventListener('click', toggle);
+        workspaceObserver && workspaceObserver.disconnect();
+        entry && entry.removeEventListener('click', show);
         clearTimeout(timeout);
         clearInterval(challengeTimer);
         frame.removeEventListener('load', challenge);
-        host.remove();
+        restoreWorkspace(); restoreCurrent();
+        host.remove(); navStyle && navStyle.remove();
         entry && entry.remove();
-        if (positionedContent && contentStyle.getPropertyValue('position') === 'relative' && contentStyle.getPropertyPriority('position') === '')
-          contentStyle.setProperty('position', priorPosition, priorPriority);
         if (window[cleanupKey] === cleanup) delete window[cleanupKey];
         restore && restore.focus();
       };
@@ -393,6 +504,10 @@ export function boardEmbedScript(
         resolve(value);
       };
       const cleanup = () => { if (finished) teardown(); else finish({ installed: false, reason: 'unloaded' }, true); };
+      // Private generation-bound view controls let guarded draft validation read
+      // the real native selection, rather than accepting our suspended ARIA state.
+      cleanup.showNative = () => { const active = host.style.display !== 'none'; if (active) hide(false); return active; };
+      cleanup.showBoard = show;
       const onMessage = (event) => {
         const data = event.data;
         if (event.origin !== ${JSON.stringify(boardOrigin)} || event.source !== frame.contentWindow || !data || typeof data !== 'object' || data.type !== ${JSON.stringify(READY_RESPONSE)} || data.nonce !== ${JSON.stringify(nonce)}) return;
@@ -404,6 +519,7 @@ export function boardEmbedScript(
       window[cleanupKey] = cleanup;
       window.addEventListener('message', onMessage);
       document.addEventListener('keydown', onKey);
+      document.addEventListener('focusin', onFocus);
       if (sidebar) {
         document.addEventListener('click', onHostClick, true);
         window.addEventListener('popstate', onHostNavigation);
@@ -412,8 +528,10 @@ export function boardEmbedScript(
         selectionObserver.observe(sidebar, { subtree: true, childList: true, attributes: true,
           attributeOldValue: true, attributeFilter: ['aria-current', 'aria-selected',
             'data-app-action-sidebar-thread-active', 'data-app-action-sidebar-thread-selected'] });
+        workspaceObserver.observe(root, { subtree: true, childList: true });
+        workspaceObserver.observe(workspace, { attributes: true, attributeFilter: ['style', 'aria-hidden', 'inert'] });
       }
-      entry && entry.addEventListener('click', toggle);
+      entry && entry.addEventListener('click', show);
       frame.addEventListener('load', challenge);
       const challengeTimer = setInterval(challenge, 100);
       const timeout = setTimeout(() => finish({ installed: false, reason: 'board-ready-timeout' }, true), ${timeoutMs});
@@ -615,6 +733,8 @@ export class CodexDesktopAdapter implements AgentAdapter {
     const board = this.config.boardUrl ? boardEndpoint(this.config.boardUrl) : undefined;
     if (Boolean(this.config.sidebarMarker) !== Boolean(this.config.contentMarker))
       throw new Error('Codex native sidebar and content markers must be provided together');
+    if (this.config.workspaceMarker && !this.config.sidebarMarker)
+      throw new Error('Codex workspace marker requires verified native sidebar and content markers');
     const capabilities = await this.probe();
     if (capabilities.reason !== '尚未观察到已验证的 Codex 页面标记')
       throw new Error(capabilities.reason ?? '不允许注入');
@@ -707,6 +827,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
           HANDSHAKE_TIMEOUT_MS,
           this.config.sidebarMarker,
           this.config.contentMarker,
+          this.config.workspaceMarker,
         ),
         HANDSHAKE_COMMAND_TIMEOUT_MS,
       );
@@ -892,7 +1013,15 @@ export class CodexDesktopAdapter implements AgentAdapter {
           if (generation !== this.generation || connection !== this.connection) return;
           const ready = await this.evaluate<boolean>(
             connection,
-            `(() => { const root = document.querySelectorAll(${JSON.stringify(shellMarker)}); if (root.length !== 1 || location.href !== ${JSON.stringify(binding.exactPageUrl)}) return false; const sidebar = ${this.config.sidebarMarker ? `document.querySelectorAll(${JSON.stringify(this.config.sidebarMarker)})` : '[]'}; const content = ${this.config.contentMarker ? `document.querySelectorAll(${JSON.stringify(this.config.contentMarker)})` : '[]'}; return ${Boolean(this.config.sidebarMarker || this.config.contentMarker)} ? sidebar.length === 1 && content.length === 1 && root[0].contains(sidebar[0]) && root[0].contains(content[0]) : true; })()`,
+            `(() => { const root = document.querySelectorAll(${JSON.stringify(shellMarker)});
+              if (root.length !== 1 || location.href !== ${JSON.stringify(binding.exactPageUrl)}) return false;
+              const sidebar = ${this.config.sidebarMarker ? `document.querySelectorAll(${JSON.stringify(this.config.sidebarMarker)})` : '[]'};
+              const content = ${this.config.contentMarker ? `document.querySelectorAll(${JSON.stringify(this.config.contentMarker)})` : '[]'};
+              const workspace = ${this.config.workspaceMarker ? `document.querySelectorAll(${JSON.stringify(this.config.workspaceMarker)})` : '[]'};
+              if (${Boolean(this.config.sidebarMarker || this.config.contentMarker)} &&
+                (sidebar.length !== 1 || content.length !== 1 || !root[0].contains(sidebar[0]) || !root[0].contains(content[0]))) return false;
+              return ${Boolean(this.config.workspaceMarker)} ? workspace.length === 1 && workspace[0] !== root[0]
+                && root[0].contains(workspace[0]) && workspace[0].contains(content[0]) && !workspace[0].contains(sidebar[0]) : true; })()`,
           ).catch(() => false);
           if (ready) break;
           await new Promise((resolve) => setTimeout(resolve, 100));
@@ -917,6 +1046,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
             HANDSHAKE_TIMEOUT_MS,
             this.config.sidebarMarker,
             this.config.contentMarker,
+            this.config.workspaceMarker,
           ),
           HANDSHAKE_COMMAND_TIMEOUT_MS,
         );
@@ -1085,23 +1215,49 @@ export class CodexDesktopAdapter implements AgentAdapter {
             overlayVisible: !!overlay && getComputedStyle(overlay).display !== 'none',
             overlayGeneration: overlay?.getAttribute('data-taskboard-owned') ?? null }; })()`,
       );
-      // Refuse unsafe requests before removing the persistent entry or reloading
-      // the host. The active board may cover a valid, empty composer.
+      // Read the real native selection before removing the entry or restoring
+      // CSP. A refused request returns to the same mounted board.
       const sidebarSession = this.session;
       if (sidebarSession) this.assertCurrentSession(sidebarSession);
-      const initial = await readSurface();
-      const initialId = initial?.selectedIds.length === 1 ? initial.selectedIds[0] : undefined;
-      const initialProject = initialId ? resolveCodexProject(home, initialId) : undefined;
-      const initialProjectMatches = !!initialProject &&
-        (process.platform === 'win32' ? initialProject.path.toLowerCase() === requestedPath.toLowerCase() : initialProject.path === requestedPath) &&
-        initial?.labels.length === 1 && initial.labels[0] === initialProject.name &&
-        initial.composerLabels.length === 1 && initial.composerLabels[0] === `切换项目：${initialProject.name}`;
-      const knownOverlay = !initial?.overlayVisible ||
-        (!!sidebarSession && initial.overlayGeneration === String(sidebarSession.generation));
-      if (!initialProjectMatches || !initial?.editorEmpty || !initial.editorModelEmpty || initial.modal || !knownOverlay)
-        throw new Error('DRAFT_UNAVAILABLE: 项目身份、空白编辑器或页面状态未通过验证');
-      if (sidebarSession) this.assertCurrentSession(sidebarSession);
-      await this.assertOwner();
+      let resumeBoard = false;
+      if (sidebarSession) {
+        await this.assertOwner();
+        const active = await this.evaluate<boolean | null>(connection,
+          `(() => { if (location.href !== ${JSON.stringify(binding.exactPageUrl)}) return null;
+            const host = document.querySelectorAll('[data-taskboard-owned="${sidebarSession.generation}"]');
+            const control = window[${JSON.stringify(`__taskboardEmbedCleanup_${sidebarSession.generation}`)}];
+            return host.length === 1 && typeof control?.showNative === 'function' ? control.showNative() : null; })()`);
+        if (active === null) throw new Error('DRAFT_UNAVAILABLE: 已安装的看板视图身份未确认');
+        resumeBoard = active;
+      }
+      try {
+        const initial = await readSurface();
+        const initialId = initial?.selectedIds.length === 1 ? initial.selectedIds[0] : undefined;
+        const initialProject = initialId ? resolveCodexProject(home, initialId) : undefined;
+        const initialProjectMatches = !!initialProject &&
+          (process.platform === 'win32' ? initialProject.path.toLowerCase() === requestedPath.toLowerCase() : initialProject.path === requestedPath) &&
+          initial?.labels.length === 1 && initial.labels[0] === initialProject.name &&
+          initial.composerLabels.length === 1 && initial.composerLabels[0] === `切换项目：${initialProject.name}`;
+        const knownOverlay = !initial?.overlayVisible ||
+          (!!sidebarSession && initial.overlayGeneration === String(sidebarSession.generation));
+        if (!initialProjectMatches || !initial?.editorEmpty || !initial.editorModelEmpty || initial.modal || !knownOverlay)
+          throw new Error('DRAFT_UNAVAILABLE: 项目身份、空白编辑器或页面状态未通过验证');
+        if (sidebarSession) this.assertCurrentSession(sidebarSession);
+        await this.assertOwner();
+      } catch (error) {
+        if (resumeBoard && sidebarSession && this.session === sidebarSession) {
+          await this.assertOwner();
+          this.assertCurrentSession(sidebarSession);
+          const restored = await this.evaluate<boolean>(connection,
+            `(() => { if (location.href !== ${JSON.stringify(binding.exactPageUrl)}) return false;
+              const host = document.querySelectorAll('[data-taskboard-owned="${sidebarSession.generation}"]');
+              const control = window[${JSON.stringify(`__taskboardEmbedCleanup_${sidebarSession.generation}`)}];
+              if (host.length !== 1 || typeof control?.showBoard !== 'function') return false;
+              control.showBoard(); return getComputedStyle(host[0]).display !== 'none'; })()`);
+          if (!restored) throw new Error('DRAFT_UNAVAILABLE: 草稿验证未通过，看板视图恢复未确认');
+        }
+        throw error;
+      }
       // Restore CSP before filling an unsent draft, then validate the reloaded
       // project and editor again. Cleanup must not reload after text is inserted.
       const restoringSidebar = Boolean(sidebarSession);
