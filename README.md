@@ -6,6 +6,8 @@
 
 ![看板预览](docs/screenshots/board-light.png)
 
+> 0.1.5 开发中：四套主题、主题包导入导出与账号外观同步，见[主题指南](docs/themes.md)。当前公开下载仍为 0.1.4。
+
 ## 产品功能
 
 - **任务管理**：工作与个人空间、看板与列表、优先级、检查清单、评论和活动记录。
@@ -14,7 +16,7 @@
 - **任务执行**：日常模式手动复制需求到 Codex；随包 CLI 可另行登录后读取、领取和回写。独立测试环境保留自动草稿能力。
 - **离线浏览**：查看已缓存任务、保留本机草稿，联网后再保存；支持浅色、深色和系统主题。
 
-Windows 客户端为 **0.1.4 未签名预发布版**，日常 Codex 本轮精确验收版本为 `26.1016.8622.0`。服务端独立保持 `0.1.2-preview.1`。当前不提供完整离线编辑、自动发送消息、完整聊天同步、历史会话跳转或 GitHub 自动同步。
+Windows 客户端为 **0.1.4 未签名预发布版**，日常 Codex 本轮精确验收版本为 `26.1016.8622.0`。服务端独立发布为 `0.1.3-preview.1`，提供账号主题同步，兼容原任务接口。当前不提供完整离线编辑、自动发送消息、完整聊天同步、历史会话跳转或 GitHub 自动同步。
 
 ## 使用手册
 
@@ -53,9 +55,9 @@ Windows 客户端为 **0.1.4 未签名预发布版**，日常 Codex 本轮精确
 ```bash
 mkdir taskboard-server
 cd taskboard-server
-curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.2-preview.1/compose.openresty.yaml --output compose.yaml
-curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.2-preview.1/deploy/openresty.conf --output openresty.conf
-printf '%s\n' 'TASKBOARD_VERSION=server-0.1.2-preview.1' 'TASKBOARD_IMAGE=ghcr.io/i-am-yimin/codex-taskboard' 'TASKBOARD_PORT=47830' > .env
+curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.3-preview.1/compose.openresty.yaml --output compose.yaml
+curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.3-preview.1/deploy/openresty.conf --output openresty.conf
+printf '%s\n' 'TASKBOARD_VERSION=server-0.1.3-preview.1' 'TASKBOARD_IMAGE=ghcr.io/i-am-yimin/codex-taskboard' 'TASKBOARD_PORT=47830' > .env
 docker compose pull
 docker compose up -d
 docker compose logs --tail=100 app

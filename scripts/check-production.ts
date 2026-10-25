@@ -53,8 +53,15 @@ try {
     const rows = await db.query('SELECT count(*)::int count FROM users WHERE instance_admin=true');
     if (rows.rows[0].count !== 1)
       throw new Error('Compiled bootstrap did not create exactly one admin');
-    const migrations = await db.query('SELECT id FROM schema_migrations');
-    if (migrations.rowCount !== 3) throw new Error('Unexpected migration state');
+    const migrations = await db.query('SELECT id FROM schema_migrations ORDER BY id');
+    const expected = [
+      '0001_initial',
+      '0002_owner_integrity',
+      '0003_instance_settings',
+      '0004_user_themes',
+    ];
+    if (migrations.rows.map((row) => row.id).join(',') !== expected.join(','))
+      throw new Error('Unexpected migration state');
   } finally {
     await db.end();
   }

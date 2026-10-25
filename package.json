@@ -1,6 +1,6 @@
 {
   "name": "codex-taskboard",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -30,7 +30,8 @@
     "desktop:check-runtime": "tsx scripts/check-desktop-runtime.ts",
     "desktop:bundle": "node scripts/bundle-desktop.mjs",
     "desktop:build": "pnpm build && pnpm desktop:prepare && pnpm desktop:bundle",
-    "release:checksums": "tsx scripts/checksums.ts"
+    "release:checksums": "tsx scripts/checksums.ts",
+    "test:appearance": "tsx scripts/check-appearance.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

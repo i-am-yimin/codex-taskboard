@@ -5,12 +5,27 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   smallint,
   text,
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
 const created = () => timestamp('created_at', { withTimezone: true }).notNull();
+export const userAppearance = pgTable('user_appearance', {
+  userId: uuid('user_id').primaryKey(),
+  preferences: jsonb('preferences').notNull(),
+  version: integer('version').notNull(),
+});
+export const userThemes = pgTable(
+  'user_themes',
+  {
+    userId: uuid('user_id').notNull(),
+    id: text('id').notNull(),
+    manifest: jsonb('manifest').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.id] })],
+);
 export const users = pgTable('users', {
   id: uuid('id').primaryKey(),
   email: text('email').notNull(),

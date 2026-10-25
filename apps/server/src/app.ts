@@ -24,6 +24,7 @@ import { createDatabase, type Database, withTransaction, afterCommit } from './d
 import type pg from 'pg';
 import { readInstanceSettings, registerInstanceRoutes } from './instance.ts';
 import { RuntimeLogs } from './runtime.ts';
+import { registerAppearanceRoutes } from './appearance.ts';
 
 type Auth = {
   id: string;
@@ -313,9 +314,11 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
             ? new BoardError('VALIDATION_ERROR', '标识或参数格式无效', 422)
             : (error as { code?: string }).code === '23505'
               ? new BoardError('CONFLICT', '记录已存在或排序位置冲突', 409)
-              : (error as { statusCode?: number }).statusCode === 429
-                ? new BoardError('RATE_LIMITED', '请求过于频繁，请稍后重试', 429)
-                : new BoardError('INTERNAL_ERROR', '服务器发生错误', 500);
+              : (error as { statusCode?: number }).statusCode === 413
+                ? new BoardError('PAYLOAD_TOO_LARGE', '请求文件过大', 413)
+                : (error as { statusCode?: number }).statusCode === 429
+                  ? new BoardError('RATE_LIMITED', '请求过于频繁，请稍后重试', 429)
+                  : new BoardError('INTERNAL_ERROR', '服务器发生错误', 500);
     if (!(error instanceof BoardError)) app.log.error(error);
     reply.status(known.status).send({
       error: {
@@ -427,6 +430,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     return { fields, values };
   }
 
+  registerAppearanceRoutes(app, { db, stored, saveIdempotency });
   registerInstanceRoutes(app, {
     db,
     setupToken: options.setupToken,

@@ -1,6 +1,6 @@
 {
   "name": "@taskboard/server",
-  "version": "0.1.2-preview.1",
+  "version": "0.1.3-preview.1",
   "private": true,
   "type": "module",
   "dependencies": {

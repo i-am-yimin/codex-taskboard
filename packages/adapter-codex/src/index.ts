@@ -342,14 +342,36 @@ export function boardEmbedScript(
     return new Promise((resolve) => {
       let finished = false;
       const ownsFocus = () => host.contains(document.activeElement) || document.activeElement === entry;
-      const hide = () => { host.style.display = 'none'; if (entry) { entry.style.background = 'transparent'; entry.setAttribute('aria-pressed', 'false'); entry.title = '打开任务看板'; entry.focus(); } };
+      const hide = (focusEntry = true) => { host.style.display = 'none'; if (entry) { entry.style.background = 'transparent'; entry.setAttribute('aria-pressed', 'false'); entry.title = '打开任务看板'; if (focusEntry) entry.focus(); } };
       const show = () => { host.style.display = sidebar ? 'flex' : 'block'; if (entry) { entry.style.background = 'rgba(127,127,127,.14)'; entry.setAttribute('aria-pressed', 'true'); entry.title = '再次点击返回 Codex'; entry.focus(); } };
       const toggle = () => { if (host.style.display === 'none') show(); else hide(); };
       const onKey = (event) => { if (event.key === 'Escape' && host.style.display !== 'none' && ownsFocus()) hide(); };
+      // Host navigation dismisses the overlay without taking focus from the
+      // selected chat. Keep the iframe mounted to preserve unsaved board work.
+      const onHostNavigation = () => { if (sidebar && host.style.display !== 'none') hide(false); };
+      const onHostClick = (event) => {
+        if (sidebar.contains(event.target) && !entry.contains(event.target)) onHostNavigation();
+      };
+      const selectedMarker = '[aria-current]:not([aria-current="false"]),[aria-selected="true"],[data-app-action-sidebar-thread-active="true"],[data-app-action-sidebar-thread-selected="true"]';
+      const hasSelection = (node) => node.nodeType === 1 && (node.matches(selectedMarker) || node.querySelector(selectedMarker));
+      // Codex can switch chats in memory without changing the document URL.
+      // Observe selection only; streamed titles and expanding folders are not navigation.
+      const selectionObserver = sidebar ? new MutationObserver((records) => {
+        if (records.some(record => record.type === 'attributes'
+          ? record.oldValue !== record.target.getAttribute(record.attributeName)
+          : [...record.addedNodes, ...record.removedNodes].some(hasSelection))) onHostNavigation();
+      }) : null;
+      const navigation = sidebar ? window.navigation : null;
       const teardown = () => {
         const restore = ownsFocus() && installFocus && installFocus !== entry && installFocus.isConnected ? installFocus : null;
         window.removeEventListener('message', onMessage);
         document.removeEventListener('keydown', onKey);
+        document.removeEventListener('click', onHostClick, true);
+        window.removeEventListener('popstate', onHostNavigation);
+        window.removeEventListener('hashchange', onHostNavigation);
+        navigation && navigation.removeEventListener('navigate', onHostNavigation);
+        selectionObserver && selectionObserver.disconnect();
+        entry && entry.removeEventListener('click', toggle);
         clearTimeout(timeout);
         clearInterval(challengeTimer);
         frame.removeEventListener('load', challenge);
@@ -382,6 +404,15 @@ export function boardEmbedScript(
       window[cleanupKey] = cleanup;
       window.addEventListener('message', onMessage);
       document.addEventListener('keydown', onKey);
+      if (sidebar) {
+        document.addEventListener('click', onHostClick, true);
+        window.addEventListener('popstate', onHostNavigation);
+        window.addEventListener('hashchange', onHostNavigation);
+        navigation && navigation.addEventListener('navigate', onHostNavigation);
+        selectionObserver.observe(sidebar, { subtree: true, childList: true, attributes: true,
+          attributeOldValue: true, attributeFilter: ['aria-current', 'aria-selected',
+            'data-app-action-sidebar-thread-active', 'data-app-action-sidebar-thread-selected'] });
+      }
       entry && entry.addEventListener('click', toggle);
       frame.addEventListener('load', challenge);
       const challengeTimer = setInterval(challenge, 100);

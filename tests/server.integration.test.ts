@@ -75,6 +75,38 @@ suite('server API', () => {
       ...headers,
     });
 
+  it('isolates theme packages, retries idempotently, rejects stale versions and falls back atomically on deletion', async () => {
+    const current = await request('GET', '/api/v1/me/appearance');
+    expect(current.json().data).toMatchObject({ themeId: 'glass', version: 1 });
+    const manifest = { formatVersion: 1, name: 'Forest', author: 'Test', version: '1.0.0', base: 'island', layout: 'rail', light: {}, dark: {} };
+    const uploaded = await write('POST', '/api/v1/me/themes', manifest);
+    expect(uploaded.statusCode).toBe(200);
+    const id = uploaded.json().data.id;
+    expect((await write('POST', '/api/v1/me/themes', manifest)).json().data.id).toBe(id);
+    expect((await request('GET', '/api/v1/me/themes')).json().data).toHaveLength(1);
+    const selection = { themeId: id, mode: 'dark', layout: 'auto' };
+    const headers = { 'if-match': '1', 'idempotency-key': randomUUID() };
+    expect((await write('PUT', '/api/v1/me/appearance', selection, headers)).json().data.version).toBe(2);
+    expect((await write('PUT', '/api/v1/me/appearance', selection, headers)).json().data.version).toBe(2);
+    expect((await write('PUT', '/api/v1/me/appearance', selection, { 'if-match': '1' })).statusCode).toBe(409);
+    expect((await write('PUT', '/api/v1/me/appearance', { ...selection, themeId: 'a'.repeat(64) }, { 'if-match': '2' })).statusCode).toBe(422);
+    const otherId = randomUUID();
+    await db.query('INSERT INTO users(id,email,name,password_hash) VALUES ($1,$2,$3,$4)', [otherId, `${otherId}@example.test`, 'Other', await hash(password)]);
+    const otherLogin = await app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email: `${otherId}@example.test`, password, deviceName: 'theme-isolation' } });
+    const rawCookie = otherLogin.headers['set-cookie'];
+    const otherCookie = Array.isArray(rawCookie) ? rawCookie[0] : rawCookie!;
+    const other = await app.inject({ method: 'GET', url: '/api/v1/me/themes', headers: { cookie: otherCookie } });
+    expect(other.json().data).toEqual([]);
+    await app.inject({ method: 'DELETE', url: `/api/v1/me/themes/${id}`, headers: { cookie: otherCookie, 'idempotency-key': randomUUID() } });
+    expect((await request('GET', '/api/v1/me/themes')).json().data).toHaveLength(1);
+    const removed = await write('DELETE', `/api/v1/me/themes/${id}`);
+    expect(removed.json().data).toMatchObject({ themeId: 'glass', mode: 'dark', version: 3 });
+    await migrate(db);
+    expect((await request('GET', '/api/v1/me/appearance')).json().data.version).toBe(3);
+    expect((await write('POST', '/api/v1/me/themes', { ...manifest, css: 'body{display:none}' })).statusCode).toBe(422);
+    expect((await write('POST', '/api/v1/me/themes', { ...manifest, name: 'x'.repeat(66000) })).statusCode).toBe(413);
+  });
+
   it('creates a space with the default workflow and enforces optimistic task updates', async () => {
     const created = await write('POST', '/api/v1/spaces', {
       name: '工作',
