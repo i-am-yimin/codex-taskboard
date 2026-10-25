@@ -2,6 +2,8 @@
 
 开发前先阅读[开发与贡献规范](../CONTRIBUTING.md)。该文档统一模块边界、代码风格、数据保护、测试和 PR / 发布要求；本页提供环境搭建与运行命令。Agent 另从根目录 [AGENTS.md](../AGENTS.md) 进入同一规范。
 
+从最新 `origin/main` 创建 `codex/<topic>` 工作分支。已有克隆的默认分支迁移、合并后清理和恢复见[仓库维护](maintenance.md)；查找其他说明见[文档索引](README.md)。
+
 依赖：Node.js 22.16+、pnpm 10.28.0。服务端需要 PostgreSQL 16+。Windows 安装包另需 Rust stable、MSVC C++ 工具链与 Windows SDK。
 
 ```sh
