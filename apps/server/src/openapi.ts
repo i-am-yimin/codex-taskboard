@@ -1,3 +1,4 @@
+import { collaborationSchemas, collaborationPaths } from './collaboration-openapi.ts';
 /** Static OpenAPI supplement for clients; handlers remain the authorization authority. */
 import { z } from 'zod';
 import {
@@ -69,6 +70,7 @@ export const openapiDocument = {
           position: { type: 'number' },
         },
       },
+      ...collaborationSchemas,
     },
   },
   paths: {
@@ -371,5 +373,6 @@ export const openapiDocument = {
         responses: { '200': json({ type: 'object' }), '422': json(error) },
       },
     },
+    ...collaborationPaths,
   },
 } as const;

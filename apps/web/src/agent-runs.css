@@ -1,0 +1,67 @@
+.agent-run-panel {
+  border-top: 1px solid var(--divider);
+  padding-top: 1rem;
+  margin-top: 1rem;
+}
+.agent-run-panel p {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.agent-run-panel ul {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+.agent-run-panel li {
+  border: 1px solid var(--divider);
+  padding: 0.8rem;
+  border-radius: 0.5rem;
+}
+.agent-run-panel button {
+  margin: 0.3rem 0.5rem 0.3rem 0;
+  white-space: normal;
+}
+.agent-run-panel label {
+  display: block;
+  margin-block: 0.5rem;
+}
+.agent-run-panel textarea {
+  display: block;
+  width: 100%;
+  min-height: 5rem;
+}
+.agent-run-recovery {
+  margin-top: 0.7rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--divider);
+}
+.agent-run-panel [role='alert'] {
+  color: var(--danger);
+}
+@media (max-width: 480px) {
+  .agent-run-panel button {
+    width: 100%;
+  }
+}
+
+.agent-run-panel select {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--glass-solid);
+  color: var(--ink);
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+}
+.agent-run-panel button {
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--tag-bg, var(--glass-solid));
+}
+.agent-run-panel textarea {
+  padding: 10px;
+  color: var(--ink);
+  background: var(--glass-solid);
+  border-color: var(--divider);
+}

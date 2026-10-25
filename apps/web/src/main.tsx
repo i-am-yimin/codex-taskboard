@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tan
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   DndContext,
+  DragOverlay,
   useDroppable,
   useSensor,
   useSensors,
@@ -21,6 +22,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   Archive,
+  Bell,
+  GitBranch,
   ArrowUpRight,
   Check,
   CheckCircle2,
@@ -62,12 +65,21 @@ import {
   saveOfflineSnapshot,
 } from './offlineSnapshot';
 import { TaskDrawer } from './TaskDrawer';
+import { NotificationCenter } from './NotificationCenter';
+import { useNotificationInbox } from './useNotificationInbox';
+import { AutomationPanel } from './AutomationPanel';
+import { MyTaskViews } from './MyTaskViews';
 import { subscribeDesktopBoardEvents } from './realtime';
 import { SpaceActions } from './SpaceActions';
 import { demoUser, makeDemoBoard } from './demo';
 import { useEmbeddedReadyResponder } from './embeddedReady';
 import type { Board, Member, Semantic, Space, Status, Task } from './types';
 import './styles.css';
+import { TaskboardBrand } from './brand/TaskboardBrand';
+import { useBoardReflow, boardMotion, prefersReducedMotion } from './motion/boardMotion';
+import './motion/boardMotion.css';
+import './collaboration.css';
+import './workflow.css';
 import './glass.css';
 import './themes.css';
 import { AppearanceSettings } from './AppearanceSettings';
@@ -125,14 +137,23 @@ function App() {
   const [view, setView] = useState<'board' | 'list'>('board');
   const [spaceMenu, setSpaceMenu] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [automationOpen, setAutomationOpen] = useState(false);
   const [serverAdmin, setServerAdmin] = useState(location.hash === '#admin');
   const [newTask, setNewTask] = useState(false);
   const [newSpace, setNewSpace] = useState(false);
-  const [drawer, setDrawer] = useState<string | null>(null);
+  const [drawer, setDrawer] = useState<string | null>(
+    new URLSearchParams(location.search).get('task'),
+  );
+  const [drawerIntent, setDrawerIntent] = useState<
+    'submit' | 'accept' | 'return' | 'cancel' | 'reopen' | null
+  >(null);
   const [search, setSearch] = useState('');
   const [priority, setPriority] = useState<number | null>(null);
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [labelFilter, setLabelFilter] = useState('');
+  const [relation, setRelation] = useState('');
+  const [personalTasks, setPersonalTasks] = useState<Task[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [conflict, setConflict] = useState<{ task: Task; changes: Partial<Task> } | null>(null);
   const [offline, setOffline] = useState(!navigator.onLine);
@@ -188,7 +209,9 @@ function App() {
       }
     },
   });
-  const [spaceId, setSpaceId] = useState(isDemo ? 'space-work' : '');
+  const [spaceId, setSpaceId] = useState(
+    isDemo ? 'space-work' : (new URLSearchParams(location.search).get('space') ?? ''),
+  );
   useEffect(() => {
     if (!spaceId && spacesQuery.data?.[0]) setSpaceId(spacesQuery.data[0].id);
   }, [spaceId, spacesQuery.data]);
@@ -227,7 +250,18 @@ function App() {
   useEffect(() => {
     if (!user || isDemo) return;
     if (priorAccountId.current && priorAccountId.current !== user.id) {
-      for (const kind of ['spaces', 'board', 'task']) {
+      for (const kind of [
+        'spaces',
+        'board',
+        'task',
+        'my-tasks',
+        'saved-filters',
+        'notifications',
+        'notification-preferences',
+        'notification-delivery-candidates',
+        'automation-rules',
+        'workflow-metrics',
+      ]) {
         const queryKey = [kind, priorAccountId.current];
         void client.cancelQueries({ queryKey });
         client.removeQueries({ queryKey });
@@ -269,14 +303,39 @@ function App() {
     };
     const revoke = () => {
       localStorage.removeItem(`tb:board:${user.id}:${spaceId}`);
+      for (const key of Object.keys(localStorage)) {
+        if (
+          !['tb:draft:', 'tb:result:', 'tb:comment:'].some((prefix) =>
+            key.startsWith(`${prefix}${user.id}:`),
+          )
+        )
+          continue;
+        try {
+          const value = JSON.parse(localStorage.getItem(key) ?? 'null');
+          if (value?.spaceId === spaceId) localStorage.removeItem(key);
+        } catch {
+          /* Legacy plain text is covered by the known board task IDs below. */
+        }
+      }
       latestBoard.current?.tasks.forEach((task) => {
         localStorage.removeItem(`tb:draft:${user.id}:${task.id}`);
         localStorage.removeItem(`tb:result:${user.id}:${task.id}`);
+        localStorage.removeItem(`tb:comment:${user.id}:${task.id}`);
       });
       removeOfflineBoard(user.id, spaceId);
       setOfflineSession(readOfflineSnapshot());
       client.removeQueries({ queryKey: ['board', user.id, spaceId] });
       client.removeQueries({ queryKey: ['task'] });
+      client.removeQueries({ queryKey: ['my-tasks', user.id] });
+      client.removeQueries({ queryKey: ['saved-filters', user.id] });
+      client.removeQueries({ queryKey: ['notifications', user.id] });
+      client.removeQueries({
+        queryKey: ['notification-preferences', user.id],
+      });
+      client.removeQueries({ queryKey: ['notification-delivery-candidates', user.id] });
+      client.removeQueries({ queryKey: ['automation-rules', user.id, spaceId] });
+      client.removeQueries({ queryKey: ['workflow-metrics', user.id, spaceId] });
+      setPersonalTasks(null);
       client.setQueryData<Space[]>(['spaces', user.id], (spaces) =>
         spaces?.filter((space) => space.id !== spaceId),
       );
@@ -356,9 +415,16 @@ function App() {
       removeEventListener('offline', change);
     };
   }, [client, spaceId, user?.id]);
+  useEffect(() => {
+    const url = new URL(location.href);
+    if (spaceId) url.searchParams.set('space', spaceId);
+    if (drawer) url.searchParams.set('task', drawer);
+    else url.searchParams.delete('task');
+    history.replaceState(null, '', url);
+  }, [spaceId, drawer]);
   const visible = useMemo(
     () =>
-      board?.tasks.filter(
+      (personalTasks ?? board?.tasks ?? []).filter(
         (t) =>
           !t.archived &&
           (!search ||
@@ -367,10 +433,22 @@ function App() {
           (!assigneeFilter || t.assigneeId === assigneeFilter) &&
           (!labelFilter || t.labels.includes(labelFilter)),
       ) ?? [],
-    [board, search, priority, assigneeFilter, labelFilter],
+    [board, personalTasks, search, priority, assigneeFilter, labelFilter],
   );
   const editor = board?.space.role !== 'viewer' && !board?.space.archived;
   const readOnlyCached = offline || showingCached || (!isDemo && sync !== 'synced');
+
+  const inbox = useNotificationInbox({
+    userId: user?.id,
+    enabled: !!user && !isDemo,
+    offline: readOnlyCached,
+    onOpen: (taskId, targetSpace) => {
+      setSpaceId(targetSpace);
+      setDrawerIntent(null);
+      setDrawer(taskId);
+    },
+  });
+  const unreadNotifications = inbox.items.filter((item) => !item.readAt).length;
 
   const refresh = () => client.invalidateQueries({ queryKey: ['board', user?.id, spaceId] });
   const move = async (task: Task, statusId: string, position?: number) => {
@@ -398,6 +476,36 @@ function App() {
       return;
     }
     try {
+      const from = board.statuses.find((status) => status.id === task.statusId)?.semantic;
+      const to = board.statuses.find((status) => status.id === statusId)?.semantic;
+      if (from !== to) {
+        if ((from === 'todo' || from === 'in_progress') && to === 'in_progress') {
+          await api.claim(task.id, task.version);
+          setNotice('任务已领取；领取不代表 Agent 已启动。');
+          refresh();
+          return;
+        }
+        const intent =
+          to === 'in_review' && from === 'in_progress'
+            ? 'submit'
+            : to === 'done' && from === 'in_review'
+              ? 'accept'
+              : to === 'in_progress' && from === 'in_review'
+                ? 'return'
+                : to === 'cancelled' && from !== 'done'
+                  ? 'cancel'
+                  : to === 'todo' && (from === 'done' || from === 'cancelled')
+                    ? 'reopen'
+                    : null;
+        if (!intent) {
+          setNotice('此状态转换不可直接执行，请在任务详情中选择操作。');
+          return;
+        }
+        setDrawerIntent(intent);
+        setDrawer(task.id);
+        setNotice('请补充操作材料并确认；状态尚未更改。');
+        return;
+      }
       await api.patchTask(task.id, changes, task.version);
       refresh();
     } catch (e) {
@@ -410,6 +518,14 @@ function App() {
     if (user) {
       clearAccountCache(user.id);
       clearOfflineSnapshot(user.id);
+      for (const kind of [
+        'notifications',
+        'notification-preferences',
+        'notification-delivery-candidates',
+        'automation-rules',
+        'workflow-metrics',
+      ])
+        client.removeQueries({ queryKey: [kind, user.id] });
     }
     location.href = location.pathname;
   };
@@ -490,8 +606,7 @@ function App() {
     >
       <aside className="rail" aria-label="看板导航">
         <div className="brand">
-          <Sparkles size={18} />
-          <span>taskboard</span>
+          <TaskboardBrand compact />
         </div>
         <button
           className={`rail-icon${view === 'board' ? ' active' : ''}`}
@@ -527,6 +642,9 @@ function App() {
       <section className="workspace">
         <header className="topbar">
           <div className="space-switcher-wrap">
+            <span className="topbar-brand">
+              <TaskboardBrand compact />
+            </span>
             <button className="space-switcher" onClick={() => setSpaceMenu(!spaceMenu)}>
               <i style={{ background: board.space.color }}>{board.space.icon}</i>
               <span>
@@ -575,6 +693,25 @@ function App() {
             )}
           </div>
           <div className="topbar-right">
+            <button
+              className="button ghost"
+              aria-label={`收件箱${unreadNotifications ? `，已加载 ${unreadNotifications} 条未读` : ''}`}
+              onClick={() => setInboxOpen(true)}
+            >
+              <Bell size={17} />
+              <span className="toolbar-word">收件箱</span>
+              {unreadNotifications > 0 && (
+                <span className="inbox-count">{unreadNotifications}</span>
+              )}
+            </button>
+            <button
+              className="button ghost"
+              aria-label="规则与统计"
+              onClick={() => setAutomationOpen(true)}
+            >
+              <GitBranch size={17} />
+              <span className="toolbar-word">规则与统计</span>
+            </button>
             <span className={sync === 'offline' ? 'connection offline' : 'connection'}>
               {sync === 'offline' ? <CloudOff size={14} /> : <Cloud size={14} />}{' '}
               {sync === 'offline'
@@ -667,6 +804,21 @@ function App() {
           </select>
           <span className="result-count">{visible.length} 个任务</span>
         </div>
+        <MyTaskViews
+          userId={user!.id}
+          spaceId={board.space.id}
+          offline={readOnlyCached}
+          demo={isDemo}
+          filters={{ search, priority, assigneeId: assigneeFilter, label: labelFilter, relation }}
+          onTasks={setPersonalTasks}
+          onFilter={(filter) => {
+            setSearch(filter.search ?? '');
+            setPriority(filter.priority ?? null);
+            setAssigneeFilter(filter.assigneeId ?? '');
+            setLabelFilter(filter.label ?? '');
+            setRelation(filter.relation ?? '');
+          }}
+        />
         {readOnlyCached && sync === 'connecting' && !showingCached && !offline ? (
           <div className="banner">正在确认实时连接；所有写入已暂停。</div>
         ) : (
@@ -703,16 +855,48 @@ function App() {
           />
         )}
       </section>
+      <NotificationCenter
+        key={`inbox:${user!.id}`}
+        open={inboxOpen}
+        onClose={() => setInboxOpen(false)}
+        inbox={inbox}
+        spaces={spacesQuery.data ?? []}
+        spaceId={board.space.id}
+        offline={readOnlyCached || isDemo}
+        onOpen={(taskId, targetSpace) => {
+          setSpaceId(targetSpace);
+          setDrawerIntent(null);
+          setDrawer(taskId);
+        }}
+      />
+      <AutomationPanel
+        key={`automation:${user!.id}:${board.space.id}`}
+        userId={user!.id}
+        open={automationOpen}
+        onClose={() => setAutomationOpen(false)}
+        board={board}
+        offline={readOnlyCached}
+        demo={isDemo}
+        onChanged={refresh}
+      />
       {drawer && (
         <TaskDrawer
           key={drawer}
           taskId={drawer}
+          initialIntent={drawerIntent}
+          onOpenTask={(id) => {
+            setDrawerIntent(null);
+            setDrawer(id);
+          }}
           userId={user!.id}
           editable={!!editor && !readOnlyCached}
           board={board}
           demo={isDemo}
           offline={readOnlyCached}
-          onClose={() => setDrawer(null)}
+          onClose={() => {
+            setDrawer(null);
+            setDrawerIntent(null);
+          }}
           onRefresh={refresh}
           onNotice={setNotice}
         />
@@ -906,11 +1090,19 @@ function BoardView({
   onMove: (task: Task, statusId: string, position?: number) => void;
   editable: boolean;
 }) {
+  const boardRef = useRef<HTMLDivElement>(null);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  useBoardReflow(
+    boardRef,
+    tasks.map((task) => [task.id, task.statusId, task.position, task.version].join(':')).join('|'),
+  );
+  const draggedTask = tasks.find((task) => task.id === draggedId);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const drop = (event: DragEndEvent) => {
+    setDraggedId(null);
     const task = tasks.find((t) => t.id === event.active.id);
     const overId = event.over?.id.toString();
     if (!task || !overId || overId === task.id) return;
@@ -928,8 +1120,14 @@ function BoardView({
     onMove(task, statusId, (previous + next) / 2);
   };
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={drop}>
-      <div className="board">
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={(event) => setDraggedId(String(event.active.id))}
+      onDragCancel={() => setDraggedId(null)}
+      onDragEnd={drop}
+    >
+      <div className="board" ref={boardRef}>
         {board.statuses.map((status) => (
           <BoardColumn
             status={status}
@@ -941,6 +1139,14 @@ function BoardView({
           />
         ))}
       </div>
+      <DragOverlay dropAnimation={prefersReducedMotion() ? null : boardMotion.drop}>
+        {draggedTask ? (
+          <div className="task-card task-drag-overlay">
+            <span className="task-title">{draggedTask.title}</span>
+            <span className="task-id">TB-{draggedTask.number}</span>
+          </div>
+        ) : null}
+      </DragOverlay>
     </DndContext>
   );
 }
@@ -1000,6 +1206,16 @@ function TaskCard({
   disabled: boolean;
 }) {
   const assignee = members.find((m) => m.id === task.assigneeId);
+  const reviewer = members.find((member) => member.id === task.reviewerId);
+  const priorVersion = useRef(task.version);
+  const [updated, setUpdated] = useState(false);
+  useEffect(() => {
+    if (priorVersion.current === task.version) return;
+    priorVersion.current = task.version;
+    setUpdated(true);
+    const timer = setTimeout(() => setUpdated(false), 900);
+    return () => clearTimeout(timer);
+  }, [task.version]);
   const { attributes, listeners, setNodeRef, isDragging, transform, transition } = useSortable({
     id: task.id,
     disabled,
@@ -1013,6 +1229,9 @@ function TaskCard({
   return (
     <button
       ref={setNodeRef}
+      data-motion-id={task.id}
+      data-dragging={isDragging}
+      data-motion-state={updated ? 'updated' : undefined}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={`task-card${isDragging ? ' dragging' : ''}`}
       onClick={() => onOpen(task.id)}
@@ -1030,6 +1249,16 @@ function TaskCard({
             {label}
           </span>
         ))}
+      </span>
+      {updated && (
+        <span className="card-update-announcement" role="status" key={task.version}>
+          任务已更新
+        </span>
+      )}
+      <span className="card-collaboration">
+        <span>{assignee ? `负责 ${assignee.name}` : '未派负责人'}</span>
+        <span>{reviewer ? `验收 ${reviewer.name}` : '待派验收人'}</span>
+        {task.parentTaskId && <span>独立子任务</span>}
       </span>
       <span className="card-footer">
         <span className={`priority p${task.priority}`}>
@@ -1672,8 +1901,7 @@ function Onboarding({ error }: { error?: string }) {
     <main className="onboarding">
       <div className="onboard-side">
         <div className="brand">
-          <Sparkles size={19} />
-          <span>taskboard</span>
+          <TaskboardBrand />
         </div>
         <div className="onboard-copy">
           <p className="eyebrow">为 Codex 而生</p>
@@ -1771,8 +1999,7 @@ function AuthFrame({
     <main className="onboarding">
       <div className="onboard-side">
         <div className="brand">
-          <Sparkles size={19} />
-          <span>taskboard</span>
+          <TaskboardBrand />
         </div>
         <div className="onboard-copy">
           <p className="eyebrow">{eyebrow}</p>

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-import { Command } from 'commander';
+import { Command, CommanderError } from 'commander';
 import { randomUUID } from 'node:crypto';
 import { basename, join } from 'node:path';
 import { SecretStore } from '@taskboard/companion/secret';
 import { defaultDataDirectory } from '@taskboard/companion/store';
+import { configureRunner } from '@taskboard/companion/runners';
+import { runnerKindSchema, type Task } from '@taskboard/core';
 
 export const EXIT_CODES = {
   AUTH_REQUIRED: 20,
@@ -13,6 +15,7 @@ export const EXIT_CODES = {
   OFFLINE: 24,
   VALIDATION: 25,
   REMOTE_ERROR: 26,
+  RUN_FAILED: 27,
   INTERNAL: 70,
 } as const;
 export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
@@ -40,12 +43,29 @@ function companionUrl(value: string): URL {
   return url;
 }
 function exitCode(code: string): ExitCode {
-  if (code === 'AUTH_REQUIRED' || code === 'LOCAL_AUTH_REQUIRED') return EXIT_CODES.AUTH_REQUIRED;
-  if (code === 'FORBIDDEN') return EXIT_CODES.FORBIDDEN;
+  if (code === 'AUTH_REQUIRED' || code === 'LOCAL_AUTH_REQUIRED' || code === 'UNAUTHENTICATED')
+    return EXIT_CODES.AUTH_REQUIRED;
+  if (
+    code === 'FORBIDDEN' ||
+    code === 'CLAIM_OWNER_REQUIRED' ||
+    code === 'AGENT_SCOPE_FORBIDDEN' ||
+    code === 'LOCAL_SURFACE_DENIED'
+  )
+    return EXIT_CODES.FORBIDDEN;
   if (code === 'NOT_FOUND') return EXIT_CODES.NOT_FOUND;
-  if (code === 'VERSION_CONFLICT' || code === 'CONFLICT') return EXIT_CODES.CONFLICT;
+  if (
+    code === 'VERSION_CONFLICT' ||
+    code === 'CONFLICT' ||
+    code === 'CLAIM_CONFLICT' ||
+    code === 'RUN_STATE_UNCONFIRMED' ||
+    code === 'REQUIREMENTS_CHANGED'
+  )
+    return EXIT_CODES.CONFLICT;
   if (code === 'OFFLINE') return EXIT_CODES.OFFLINE;
-  if (code === 'VALIDATION' || code === 'BAD_REQUEST') return EXIT_CODES.VALIDATION;
+  if (code === 'VALIDATION' || code === 'BAD_REQUEST' || code === 'VALIDATION_ERROR')
+    return EXIT_CODES.VALIDATION;
+  if (code === 'RUN_FAILED' || code === 'RUNNER_UNAVAILABLE' || code === 'RUNNER_UNSUPPORTED')
+    return EXIT_CODES.RUN_FAILED;
   return EXIT_CODES.REMOTE_ERROR;
 }
 
@@ -74,6 +94,9 @@ export class CompanionClient {
       method,
       headers: { 'content-type': 'application/json', 'x-taskboard-companion-key': key },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(12000),
+    }).catch(() => {
+      throw new CliError('OFFLINE', '本机伴随服务不可用，请先查询原操作状态后重试');
     });
     const payload = (await response.json().catch(() => ({}))) as { data?: T } & ApiError;
     if (!response.ok)
@@ -105,7 +128,9 @@ function fail(error: unknown): never {
   const value =
     error instanceof CliError
       ? error
-      : new CliError('INTERNAL', error instanceof Error ? error.message : '未知错误');
+      : error instanceof CommanderError
+        ? new CliError('VALIDATION', error.message)
+        : new CliError('INTERNAL', error instanceof Error ? error.message : '未知错误');
   process.stderr.write(
     `${JSON.stringify({ ok: false, error: { code: value.code, message: value.message, details: value.details } })}\n`,
   );
@@ -128,6 +153,8 @@ function version(value: string): number {
 
 export function createProgram(client = new CompanionClient()): Command {
   const program = new Command()
+    .exitOverride()
+    .configureOutput({ writeErr: () => undefined })
     .name('taskctl')
     .description('Codex Taskboard 的本机任务 CLI')
     .option('--json', '输出 JSON（默认即 JSON，供 Agent 稳定解析）')
@@ -208,19 +235,19 @@ export function createProgram(client = new CompanionClient()): Command {
     );
   program
     .command('claim <taskId>')
-    .requiredOption(
+    .option(
       '--thread <threadId>',
       'Codex 线程 ID，默认 CODEX_THREAD_ID',
       process.env.CODEX_THREAD_ID,
     )
+    .option('--agent-kind <kind>', '执行Agent类型', 'manual')
     .requiredOption('--version <version>')
     .action(async (taskId, options) => {
-      if (!options.thread) throw new CliError('VALIDATION', '需要 --thread 或 CODEX_THREAD_ID');
       output(
         await client.mutation(
           `/tasks/${taskId}/claim`,
           'POST',
-          { threadId: options.thread },
+          { ...(options.thread ? { threadId: options.thread } : {}), agentKind: options.agentKind },
           version(options.version),
           key(),
         ),
@@ -269,16 +296,134 @@ export function createProgram(client = new CompanionClient()): Command {
   program
     .command('submit <taskId> <summary> <verification>')
     .requiredOption('--version <version>')
-    .action(async (taskId, summary, verification, options) =>
+    .option('--requirements-version <version>', '提交所依据的需求版本（默认先读取快照）')
+    .option('--handoff <text>', '交接摘要', '')
+    .option('--blockers <text>', '阻塞', '')
+    .option('--next-step <text>', '下一步', '')
+    .option('--limitations <text>', '验证限制', '')
+    .action(async (taskId, summary, verification, options) => {
+      const requirementsVersion = options.requirementsVersion
+        ? version(options.requirementsVersion)
+        : (await client.get<{ task: Task }>(`/tasks/${taskId}/detail`)).task.requirementsVersion;
       output(
         await client.mutation(
           `/tasks/${taskId}/submit`,
           'POST',
-          { summary, verification },
+          {
+            summary,
+            verification,
+            requirementsVersion,
+            handoffSummary: options.handoff,
+            blockers: options.blockers,
+            nextStep: options.nextStep,
+            limitations: options.limitations,
+          },
           version(options.version),
           key(),
         ),
-      ),
+      );
+    });
+  for (const [command, path] of [
+    ['progress', 'progress'],
+    ['propose', 'proposals'],
+    ['artifact', 'artifacts'],
+  ] as const) {
+    program
+      .command(`${command} <taskId> <payloadJson>`)
+      .requiredOption('--version <version>')
+      .action(async (taskId, payload, options) =>
+        output(
+          await client.mutation(
+            `/tasks/${taskId}/${path}`,
+            'POST',
+            json(payload),
+            version(options.version),
+            key(),
+          ),
+        ),
+      );
+  }
+  const run = program.command('run').description('本机真实CLI运行；领取、提交与人类验收独立');
+  run
+    .command('configure <runner> <executable> <home>')
+    .description('仅本机设置：原生程序与专用登录目录')
+    .option('--api-key-stdin', 'Claude API密钥从标准输入保存到本机加密存储')
+    .option('--auth-mode <mode>', 'Claude认证：cli-login或api-key', 'cli-login')
+    .option('--test-commands <json>', 'Claude开发模式允许的测试命令JSON白名单', '[]')
+    .action(async (runner, executable, home, options) => {
+      const parsed = runnerKindSchema.safeParse(runner);
+      if (!parsed.success) throw new CliError('VALIDATION', 'runner必须为codex-cli或claude-code');
+      if (!['cli-login', 'api-key'].includes(options.authMode))
+        throw new CliError('VALIDATION', '无效认证模式');
+      if (options.apiKeyStdin && options.authMode !== 'api-key')
+        throw new CliError('VALIDATION', 'API密钥需明确 --auth-mode api-key');
+      const commands = json(options.testCommands);
+      if (!Array.isArray(commands) || commands.some((value) => typeof value !== 'string'))
+        throw new CliError('VALIDATION', '测试命令必须是字符串JSON数组');
+      await configureRunner(
+        defaultDataDirectory(),
+        parsed.data,
+        executable,
+        home,
+        options.authMode,
+        commands,
+      );
+      if (options.apiKeyStdin) {
+        if (runner !== 'claude-code' || process.stdin.isTTY)
+          throw new CliError('VALIDATION', '仅Claude支持此方式，请从标准输入提供密钥');
+        const chunks: Buffer[] = [];
+        for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+        const secret = Buffer.concat(chunks).toString('utf8').trim();
+        if (!secret || secret.length > 4096) throw new CliError('VALIDATION', '密钥为空或过长');
+        await new SecretStore(join(defaultDataDirectory(), 'claude-runner-key.dpapi')).write(
+          secret,
+        );
+      }
+      output({ configured: true, runner });
+    });
+  run.command('probe').action(async () => output(await client.request('/v1/runners/probe')));
+  for (const action of ['start', 'resume'] as const) {
+    const command = run
+      .command(`${action} <taskId> <claimId> <runner>`)
+      .requiredOption('--version <version>')
+      .option(
+        '--permission-mode <mode>',
+        'read-only只读分析 / workspace-write工作区开发',
+        'read-only',
+      );
+    if (action === 'resume')
+      command.requiredOption('--from <runId>', '同设备已结束且具有官方会话ID的原运行');
+    command.action(async (taskId, claimId, runner, options) => {
+      if (!runnerKindSchema.safeParse(runner).success)
+        throw new CliError('VALIDATION', '未知runner');
+      output(
+        await client.request('/v1/runners/start', 'POST', {
+          taskId,
+          claimId,
+          runner,
+          permissionMode: options.permissionMode,
+          version: version(options.version),
+          idempotencyKey: key(),
+          ...(options.from ? { resumeFrom: options.from } : {}),
+        }),
+      );
+    });
+  }
+  run
+    .command('status <taskId> <runId>')
+    .action(async (taskId, runId) =>
+      output(await client.request(`/v1/runners/${taskId}/${runId}`)),
+    );
+  run
+    .command('cancel <taskId> <runId>')
+    .action(async (taskId, runId) =>
+      output(await client.request(`/v1/runners/${taskId}/${runId}/cancel`, 'POST', {})),
+    );
+  run
+    .command('sync <taskId> <runId>')
+    .description('显式按最新任务快照同步本机运行事实，不重新启动')
+    .action(async (taskId, runId) =>
+      output(await client.request(`/v1/runners/${taskId}/${runId}/sync`, 'POST', {})),
     );
   return program;
 }
@@ -290,6 +435,10 @@ if (
   createProgram()
     .parseAsync(process.argv)
     .catch((error) => {
+      if (error instanceof CommanderError && error.exitCode === 0) {
+        process.exitCode = 0;
+        return;
+      }
       try {
         fail(error);
       } catch {

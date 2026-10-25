@@ -10,5 +10,6 @@
 | [0004 · 日常 Codex 连接](0004-daily-codex-connection.md) | 原环境接入、数据保护与能力限制 |
 | [0005 · 账号主题](0005-account-themes.md) | 主题模型、同步、离线与冲突 |
 | [0006 · 同级工作区视图](0006-peer-workspace-views.md) | 看板与完整会话工作区互斥呈现 |
+| [0007 · 协作任务与运行分离](0007-collaborative-task-workflows.md) | 多人责任、人类验收、父子依赖、领取/运行分离和持久通知 |
 
 [返回文档索引](../README.md)

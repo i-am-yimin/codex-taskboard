@@ -91,6 +91,12 @@ export const tasks = pgTable('tasks', {
   statusId: uuid('status_id').notNull(),
   priority: smallint('priority').notNull(),
   assigneeId: uuid('assignee_id'),
+  reviewerId: uuid('reviewer_id'),
+  parentTaskId: uuid('parent_task_id'),
+  requiredForParent: boolean('required_for_parent').notNull(),
+  requirementsVersion: integer('requirements_version').notNull(),
+  acceptanceCriteria: text('acceptance_criteria').notNull(),
+  dueAt: timestamp('due_at', { withTimezone: true }),
   labels: jsonb('labels').notNull(),
   checklist: jsonb('checklist').notNull(),
   repository: text('repository'),
@@ -123,6 +129,16 @@ export const executions = pgTable('executions', {
   actorId: uuid('actor_id').notNull(),
   deviceId: uuid('device_id').notNull(),
   threadId: text('thread_id'),
+  claimId: uuid('claim_id'),
+  agentKind: text('agent_kind').notNull(),
+  branch: text('branch').notNull(),
+  prUrl: text('pr_url'),
+  commitSha: text('commit_sha').notNull(),
+  handoffSummary: text('handoff_summary').notNull(),
+  blockers: text('blockers').notNull(),
+  nextStep: text('next_step').notNull(),
+  limitations: text('limitations').notNull(),
+  requirementsVersion: integer('requirements_version').notNull(),
   phase: text('phase').notNull(),
   summary: text('summary').notNull(),
   verification: text('verification').notNull(),
@@ -156,3 +172,7 @@ export const recoveryLinks = pgTable('recovery_links', {
   usedAt: timestamp('used_at', { withTimezone: true }),
   createdAt: created(),
 });
+
+export * from './collaboration-schema.ts';
+
+export * from './workflow-schema.ts';

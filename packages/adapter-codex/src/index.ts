@@ -330,19 +330,19 @@ export function boardEmbedScript(
       entry.style.cssText = 'box-sizing:border-box;display:flex;flex:none;align-items:center;gap:10px;width:100%;height:32px;padding:0 12px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;font-size:14px;text-align:left;cursor:pointer';
       const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       icon.setAttribute('aria-hidden', 'true');
-      icon.setAttribute('viewBox', '0 0 16 16');
+      icon.setAttribute('viewBox', '0 0 32 32');
       icon.setAttribute('width', '16');
       icon.setAttribute('height', '16');
       icon.style.flex = 'none';
-      for (const x of [2, 6, 10]) {
-        const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        bar.setAttribute('x', String(x));
-        bar.setAttribute('y', '3');
-        bar.setAttribute('width', '3');
-        bar.setAttribute('height', x === 6 ? '7' : '10');
-        bar.setAttribute('rx', '1');
-        bar.setAttribute('fill', 'currentColor');
-        icon.append(bar);
+      for (const d of [
+        'M6 4h13a3 3 0 0 1 3 3v3h-4V8H7v14h4v4H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Z',
+        'M13 6v4h12v14H14v-3h-4v4a3 3 0 0 0 3 3h13a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3H13Z',
+        'm12 13 7 3-7 3v-6Z',
+      ]) {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', d);
+        path.setAttribute('fill', 'currentColor');
+        icon.append(path);
       }
       const label = document.createElement('span');
       label.textContent = '任务看板';

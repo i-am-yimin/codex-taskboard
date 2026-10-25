@@ -1,10 +1,23 @@
 import Fastify, { type FastifyInstance } from 'fastify';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { z } from 'zod';
-import { taskPrompt, type Task } from '@taskboard/core';
-import { CodexDesktopAdapter, SUPPORTED_CODEX_VERSIONS, codexHostMarkers } from '@taskboard/adapter-codex';
+import {
+  taskPrompt,
+  runStartSchema,
+  runFactsMatch,
+  planRunSynchronization,
+  type Task,
+  type TaskRun,
+  type TaskClaim,
+} from '@taskboard/core';
+import { LocalAgentRunner } from './runners.ts';
+import {
+  CodexDesktopAdapter,
+  SUPPORTED_CODEX_VERSIONS,
+  codexHostMarkers,
+} from '@taskboard/adapter-codex';
 import type { AdapterCapabilities, AgentAdapter, DraftRequest } from '@taskboard/core';
 import { CompanionStore, defaultDataDirectory, normalizeUpstream } from './store.ts';
 import { SecretStore } from './secret.ts';
@@ -31,6 +44,12 @@ const writeSchema = z
   .strict();
 
 export interface CompanionOptions {
+  createRunner?: (
+    directory: string,
+    resolveRepository: (repository: string) => string | undefined,
+    report: (run: TaskRun) => Promise<void>,
+    authorize: (run: TaskRun) => void,
+  ) => LocalAgentRunner;
   dataDirectory?: string;
   upstream?: string;
   port?: number;
@@ -103,8 +122,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
   const control = options.launcherControl ?? LauncherControl.fromEnvironment();
   const embeddedKey = randomBytes(32).toString('base64url');
   const embeddedBase = `/embedded/${embeddedKey}/`;
-  const embeddedBoardUrl = (port: number) =>
-    `http://127.0.0.1:${port}${embeddedBase}?embedded=1`;
+  const embeddedBoardUrl = (port: number) => `http://127.0.0.1:${port}${embeddedBase}?embedded=1`;
   const embeddedWebRoot = options.embeddedWebRoot ?? join(dirname(process.argv[1] ?? ''), 'web');
   let embeddedPort = options.port ?? PORT;
   const directory = options.dataDirectory ?? defaultDataDirectory();
@@ -204,8 +222,11 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     if (adapterTransition) return adapterTransition;
     const transition = refreshAdapter();
     adapterTransition = transition;
-    try { return await transition; }
-    finally { if (adapterTransition === transition) adapterTransition = undefined; }
+    try {
+      return await transition;
+    } finally {
+      if (adapterTransition === transition) adapterTransition = undefined;
+    }
   };
   const origins = new Set(options.allowedOrigins ?? allowedOrigins);
   const app = Fastify({
@@ -233,6 +254,59 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
   };
   const isCurrentSession = (value: ReturnType<typeof session>) =>
     value.epoch === authEpoch && value.identity === store.activeIdentity()?.key;
+  const runTransports = new Map<
+    string,
+    {
+      transport: RemoteTransport;
+      session: ReturnType<typeof session>;
+      version: number;
+      clientKind: 'agent' | 'browser';
+    }
+  >();
+  const createRunner =
+    options.createRunner ??
+    ((directory, resolveRepository, report, authorize) =>
+      new LocalAgentRunner(directory, resolveRepository, report, undefined, authorize));
+  const runners = createRunner(
+    directory,
+    (repository) => store.localPath(repository),
+    async (run) => {
+      const binding = runTransports.get(run.id);
+      if (!binding || !isCurrentSession(binding.session)) return;
+      const body = {
+        phase: run.phase,
+        ...(run.externalSessionId ? { externalSessionId: run.externalSessionId } : {}),
+        failureReason: run.failureReason,
+      };
+      const path = `/tasks/${run.taskId}/runs/${run.id}/events`;
+      // Persist original version/key before sending. An uncertain response is retried verbatim.
+      const queued = await store.queue({
+        clientKind: binding.clientKind,
+        path,
+        body,
+        version: binding.version,
+        idempotencyKey: randomUUID(),
+      });
+      binding.version += 1;
+      try {
+        await binding.transport.request(path, {
+          method: 'POST',
+          body,
+          version: queued.version,
+          idempotencyKey: queued.idempotencyKey,
+        });
+        if (isCurrentSession(binding.session)) await store.removeOutbox(queued.id);
+      } catch {
+        /* Remains an explicit unsynchronized report, never a second process. */
+      }
+    },
+    (run) => {
+      const binding = runTransports.get(run.id);
+      if (!binding || !isCurrentSession(binding.session) || pendingAuthMutations > 0)
+        throw new CompanionError('AUTH_SUPERSEDED', '认证状态已变化，拒绝操作原运行', 409);
+    },
+  );
+  await runners.load();
   const withAuthMutation = async <T>(action: () => Promise<T>): Promise<T> => {
     let release!: () => void;
     const previous = authQueue;
@@ -590,27 +664,41 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
               projects: false,
               draft: false,
               thread: false,
-              reason: unsupportedHostReason ?? '尚未连接 Codex；请在连接与设备中选择“接入日常 Codex”。已打开且未启用连接的窗口需先正常退出一次。',
+              reason:
+                unsupportedHostReason ??
+                '尚未连接 Codex；请在连接与设备中选择“接入日常 Codex”。已打开且未启用连接的窗口需先正常退出一次。',
             },
     };
   });
-  let sidebarInstallation: { adapter: CodexDesktopAdapter; task: Promise<{ data: AdapterCapabilities }> } | undefined;
+  let sidebarInstallation:
+    { adapter: CodexDesktopAdapter; task: Promise<{ data: AdapterCapabilities }> } | undefined;
   app.post('/v1/codex/install', async () => {
     const current = await currentAdapter();
     if (retirementError) throw new CompanionError('RESTORATION_UNCONFIRMED', retirementError, 409);
     if (!(current instanceof CodexDesktopAdapter))
-      throw new CompanionError('ADAPTER_UNAVAILABLE', unsupportedHostReason ?? '当前设备没有可安装的 Codex 适配器', 409);
+      throw new CompanionError(
+        'ADAPTER_UNAVAILABLE',
+        unsupportedHostReason ?? '当前设备没有可安装的 Codex 适配器',
+        409,
+      );
     if (sidebarInstallation?.adapter === current) return sidebarInstallation.task;
     const task = (async () => {
-      try { return { data: await current.ensureInstalled() }; }
-      catch (error) {
-        throw new CompanionError('CODEX_INSTALL_REFUSED',
-          error instanceof Error ? error.message : 'Codex 内嵌安装失败', 409);
+      try {
+        return { data: await current.ensureInstalled() };
+      } catch (error) {
+        throw new CompanionError(
+          'CODEX_INSTALL_REFUSED',
+          error instanceof Error ? error.message : 'Codex 内嵌安装失败',
+          409,
+        );
       }
     })();
     sidebarInstallation = { adapter: current, task };
-    try { return await task; }
-    finally { if (sidebarInstallation?.task === task) sidebarInstallation = undefined; }
+    try {
+      return await task;
+    } finally {
+      if (sidebarInstallation?.task === task) sidebarInstallation = undefined;
+    }
   });
   app.post('/v1/codex/open-draft', async (request) => {
     const requestBody = z
@@ -642,9 +730,10 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
       return {
         data: {
           opened: false,
-          fallback: error instanceof Error && error.message.startsWith('DRAFT_UNCONFIRMED')
-            ? '草稿状态未确认，请先检查独立 Codex 窗口，不要重复填入。'
-            : '当前 Codex 项目、空白编辑器或页面归属未通过验证；草稿未写入。请手动检查。',
+          fallback:
+            error instanceof Error && error.message.startsWith('DRAFT_UNCONFIRMED')
+              ? '草稿状态未确认，请先检查独立 Codex 窗口，不要重复填入。'
+              : '当前 Codex 项目、空白编辑器或页面归属未通过验证；草稿未写入。请手动检查。',
         },
       };
     }
@@ -671,7 +760,11 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     const path = `/${suffix}${query}`;
     const pathOnly = path.split('?', 1)[0];
     const appearancePath = /^\/me\/(appearance|themes(?:\/[a-f0-9]{64})?)$/.test(pathOnly);
-    if (!(/^\/me$/.test(pathOnly) || appearancePath || /^\/(spaces|tasks|statuses|devices)(?:\/|$)/.test(pathOnly)))
+    if (!(
+      /^\/me$/.test(pathOnly) ||
+      appearancePath ||
+      /^\/(spaces|tasks|statuses|devices)(?:\/|$)/.test(pathOnly)
+    ))
       throw new CompanionError('PATH_DENIED', '不允许的远程 API 路径', 403);
     const browserRequest = request.routeOptions.url === '/api/v1/*';
     if (appearancePath && !browserRequest)
@@ -745,7 +838,11 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
   // `/api/v1` is the UI-facing proxy; `/v1/api` is retained for taskctl.
   // Both still require the local bridge capability and never expose the remote token.
   app.route({ method: ['GET', 'POST', 'PATCH', 'DELETE'], url: '/v1/api/*', handler: proxy });
-  app.route({ method: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], url: '/api/v1/*', handler: proxy });
+  app.route({
+    method: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    url: '/api/v1/*',
+    handler: proxy,
+  });
   app.get('/api/v1/spaces/:spaceId/events', async (request, reply) => {
     const { spaceId } = z.object({ spaceId: z.uuid() }).parse(request.params);
     assertStableAuth();
@@ -824,6 +921,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     const items = store.outbox();
     const flushSession = session();
     const flushToken = agentToken;
+    const flushCookie = browserSession;
     for (const item of items) {
       if (!isCurrentSession(flushSession))
         throw new CompanionError('AUTH_SUPERSEDED', '认证状态已变更，已停止发送待发送结果', 409);
@@ -833,7 +931,12 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
           '待发送结果属于其他账户，已拒绝发送',
           409,
         );
-      await new RemoteTransport(upstream, async () => flushToken).request(item.path, {
+      await new RemoteTransport(
+        upstream,
+        async () => (item.clientKind === 'browser' ? flushCookie : flushToken),
+        item.clientKind === 'browser' ? 'cookie' : 'bearer',
+        item.clientKind === 'browser' ? 'browser' : 'agent',
+      ).request(item.path, {
         method: 'POST',
         body: item.body,
         version: item.version,
@@ -854,12 +957,230 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
       },
     };
   });
+  for (const prefix of ['/v1/runners', '/v1/browser/runners']) {
+    const transportFor = () => {
+      const browser = prefix.includes('/browser/');
+      const credential = browser ? browserSession : agentToken;
+      return new RemoteTransport(
+        upstream,
+        async () => credential,
+        browser ? 'cookie' : 'bearer',
+        browser ? 'browser' : 'agent',
+      );
+    };
+    app.get(`${prefix}/probe`, async () => ({ data: await runners.probe() }));
+    app.post(`${prefix}/start`, async (request) => {
+      assertStableAuth();
+      const input = z
+        .object({
+          taskId: z.uuid(),
+          ...runStartSchema.shape,
+          version: z.number().int().positive(),
+          idempotencyKey: z.uuid(),
+        })
+        .strict()
+        .parse(request.body);
+      const transport = transportFor();
+      const pinned = session();
+      const detail = await transport.request<{ task: Task; claims: TaskClaim[] }>(
+        `/tasks/${input.taskId}/detail`,
+      );
+      if (!isCurrentSession(pinned))
+        throw new CompanionError('AUTH_SUPERSEDED', '认证状态已变化', 409);
+      if (!detail.task.repository || !store.localPath(detail.task.repository))
+        throw new CompanionError('REPOSITORY_UNMAPPED', '请先配置任务仓库的本机映射', 409);
+      const result = await transport.request<{ task: Task; run: TaskRun }>(
+        `/tasks/${input.taskId}/runs`,
+        {
+          method: 'POST',
+          body: {
+            claimId: input.claimId,
+            runner: input.runner,
+            permissionMode: input.permissionMode,
+            ...(input.resumeFrom ? { resumeFrom: input.resumeFrom } : {}),
+          },
+          version: input.version,
+          idempotencyKey: input.idempotencyKey,
+        },
+      );
+      if (!isCurrentSession(pinned))
+        throw new CompanionError(
+          'AUTH_SUPERSEDED',
+          '认证状态已变化；启动尚未确认，请先查询原运行',
+          409,
+        );
+      runTransports.set(result.run.id, {
+        transport,
+        session: pinned,
+        version: result.task.version,
+        clientKind: prefix.includes('/browser/') ? 'browser' : 'agent',
+      });
+      const prompt = `任务已由当前设备领取。读取并实施以下任务，遵守仓库规范。进程退出不等于提交或人类验收；请明确报告验证与限制。\n任务ID：${detail.task.id}\n需求版本：${detail.task.requirementsVersion}\n${detail.task.title}\n${detail.task.description}\n验收标准：${detail.task.acceptanceCriteria}`;
+      try {
+        const run = input.resumeFrom
+          ? await runners.resume(result.run, prompt, detail.task.repository)
+          : await runners.start(result.run, prompt, detail.task.repository);
+        return { data: { run } };
+      } catch (error) {
+        const binding = runTransports.get(result.run.id)!;
+        const localRun = await runners.status(result.run.id).catch(() => undefined);
+        await transport
+          .request(`/tasks/${input.taskId}/runs/${result.run.id}/events`, {
+            method: 'POST',
+            body: {
+              phase: localRun ? 'unknown' : 'failed',
+              failureReason: localRun
+                ? '进程可能已创建，但启动观察未确认；请查询原运行，不得重复启动'
+                : error instanceof CompanionError
+                  ? `${error.code}：${error.message}`
+                  : 'SPAWN_FAILED：本机CLI启动失败',
+            },
+            version: binding.version,
+            idempotencyKey: randomUUID(),
+          })
+          .catch(() => undefined);
+        throw error;
+      }
+    });
+    app.get(`${prefix}/:taskId/:runId`, async (request) => {
+      const pinned = session();
+      const { taskId, runId } = z
+        .object({ taskId: z.uuid(), runId: z.uuid() })
+        .parse(request.params);
+      const remoteRuns = await transportFor().request<TaskRun[]>(`/tasks/${taskId}/runs`);
+      const serverRun = remoteRuns.find((run) => run.id === runId);
+      if (!serverRun) throw new CompanionError('NOT_FOUND', '运行不存在或无权读取', 404);
+      await runners.reconcileServerResolution(serverRun);
+      const local = await runners.status(runId).catch(() => undefined);
+      if (!isCurrentSession(pinned))
+        throw new CompanionError('AUTH_SUPERSEDED', '认证状态已变化', 409);
+      if (
+        local?.phase === 'unknown' &&
+        ['starting', 'running', 'cancel_requested'].includes(serverRun.phase)
+      ) {
+        const detail = await transportFor().request<{ task: Task }>(`/tasks/${taskId}/detail`);
+        await transportFor().request(`/tasks/${taskId}/runs/${runId}/events`, {
+          method: 'POST',
+          body: { phase: 'unknown', failureReason: local.failureReason },
+          version: detail.task.version,
+          idempotencyKey: randomUUID(),
+        });
+      }
+      return {
+        data: {
+          run: local ?? serverRun,
+          synchronized: local
+            ? runFactsMatch(serverRun, local) &&
+              !store.outbox().some((item) => item.path === `/tasks/${taskId}/runs/${runId}/events`)
+            : true,
+        },
+      };
+    });
+    app.post(`${prefix}/:taskId/:runId/sync`, async (request) => {
+      assertStableAuth();
+      z.object({})
+        .strict()
+        .parse(request.body ?? {});
+      const { taskId, runId } = z
+        .object({ taskId: z.uuid(), runId: z.uuid() })
+        .parse(request.params);
+      const pinned = session();
+      const transport = transportFor();
+      let detail = await transport.request<{ task: Task; runs: TaskRun[] }>(
+        `/tasks/${taskId}/detail`,
+      );
+      const local = await runners.status(runId);
+      const original = detail.runs.find((value) => value.id === runId);
+      if (!original || local.taskId !== taskId)
+        throw new CompanionError('NOT_FOUND', '运行不存在', 404);
+      if (!isCurrentSession(pinned))
+        throw new CompanionError('AUTH_SUPERSEDED', '认证状态已变化', 409);
+      // Explicit reconciliation is a new intent. Original uncertain writes retain their original key/version.
+      const pending = store
+        .outbox()
+        .filter((item) => item.path === `/tasks/${taskId}/runs/${runId}/events`);
+      for (const item of pending) {
+        try {
+          await transport.request(item.path, {
+            method: 'POST',
+            body: item.body,
+            version: item.version,
+            idempotencyKey: item.idempotencyKey,
+          });
+        } catch (error) {
+          if (
+            !(error instanceof CompanionError) ||
+            !['VERSION_CONFLICT', 'INVALID_RUN_TRANSITION'].includes(error.code)
+          )
+            throw error;
+        }
+        if (!isCurrentSession(pinned))
+          throw new CompanionError('AUTH_SUPERSEDED', '认证状态已变化', 409);
+        await store.removeOutbox(item.id);
+      }
+      detail = await transport.request<{ task: Task; runs: TaskRun[] }>(`/tasks/${taskId}/detail`);
+      const server = detail.runs.find((value) => value.id === runId)!;
+      const plan = planRunSynchronization(server, local);
+      if (plan.conflict) throw new CompanionError('RUN_FACTS_DIFFER', plan.conflict, 409);
+      const phases = plan.phases;
+      let version = detail.task.version;
+      for (const phase of phases) {
+        if (!isCurrentSession(pinned))
+          throw new CompanionError('AUTH_SUPERSEDED', '认证状态已变化', 409);
+        const result = await transport.request<{ task: Task }>(
+          `/tasks/${taskId}/runs/${runId}/events`,
+          {
+            method: 'POST',
+            body: {
+              phase,
+              ...(local.externalSessionId ? { externalSessionId: local.externalSessionId } : {}),
+              failureReason: local.failureReason,
+            },
+            version,
+            idempotencyKey: randomUUID(),
+          },
+        );
+        version = result.task.version;
+      }
+      const binding = runTransports.get(runId);
+      if (binding) binding.version = version;
+      return { data: { run: local, synchronized: true } };
+    });
+    app.post(`${prefix}/:taskId/:runId/cancel`, async (request) => {
+      const pinned = session();
+      const { taskId, runId } = z
+        .object({ taskId: z.uuid(), runId: z.uuid() })
+        .parse(request.params);
+      z.object({})
+        .strict()
+        .parse(request.body ?? {});
+      // Revalidate current membership/claim/device online before touching a local process.
+      const transport = transportFor();
+      const detail = await transport.request<{ task: Task; claims: TaskClaim[]; runs: TaskRun[] }>(
+        `/tasks/${taskId}/detail`,
+      );
+      const run = detail.runs.find((value) => value.id === runId);
+      if (!run) throw new CompanionError('NOT_FOUND', '运行不存在', 404);
+      await transport.request(`/tasks/${taskId}/runs/${runId}/events`, {
+        method: 'POST',
+        body: { phase: 'cancel_requested' },
+        version: detail.task.version,
+        idempotencyKey: randomUUID(),
+      });
+      const binding = runTransports.get(runId);
+      if (!isCurrentSession(pinned) || pendingAuthMutations > 0)
+        throw new CompanionError('AUTH_SUPERSEDED', '认证状态已变化，取消尚未发送', 409);
+      if (binding) binding.version = detail.task.version + 1;
+      return { data: { run: await runners.cancel(runId) } };
+    });
+  }
   let stopping: Promise<void> | undefined;
   const stop = () =>
     (stopping ??= (async () => {
       closing = true;
       liveStreams.forEach((close) => close());
       try {
+        await runners.shutdown();
         await adapter?.dispose();
       } finally {
         await app.close();

@@ -1,5 +1,19 @@
 import { z } from 'zod';
+export * from './runner.ts';
 export * from './themes.ts';
+export * from './collaboration.ts';
+export * from './workflow.ts';
+import {
+  collaborationTaskFields,
+  type TaskParticipant,
+  type TaskDependency,
+  type TaskClaim,
+  type TaskRun,
+  type TaskArtifact,
+  type TaskProposal,
+  type TaskDecision,
+  type TaskReview,
+} from './collaboration.ts';
 export const VERSION = '0.1.2';
 export const API_VERSION = 1;
 export const semantics = ['todo', 'in_progress', 'in_review', 'done', 'cancelled'] as const;
@@ -47,6 +61,12 @@ export interface Task {
   statusId: string;
   priority: number;
   assigneeId: string | null;
+  reviewerId?: string | null;
+  parentTaskId?: string | null;
+  requiredForParent?: boolean;
+  requirementsVersion?: number;
+  acceptanceCriteria?: string;
+  dueAt?: string | null;
   labels: string[];
   checklist: ChecklistItem[];
   repository: string | null;
@@ -73,7 +93,17 @@ export interface Execution {
   actorId: string;
   deviceId: string;
   threadId: string | null;
-  phase: 'running' | 'submitted' | 'released';
+  phase: 'running' | 'claimed' | 'submitted' | 'released';
+  claimId?: string | null;
+  agentKind?: string;
+  branch?: string;
+  prUrl?: string | null;
+  commitSha?: string;
+  handoffSummary?: string;
+  blockers?: string;
+  nextStep?: string;
+  limitations?: string;
+  requirementsVersion?: number;
   summary: string;
   verification: string;
   createdAt: string;
@@ -88,6 +118,16 @@ export interface TaskDetail {
   task: Task;
   activities: Activity[];
   executions: Execution[];
+  participants?: TaskParticipant[];
+  parent?: Task | null;
+  children?: Task[];
+  dependencies?: TaskDependency[];
+  claims?: TaskClaim[];
+  runs?: TaskRun[];
+  artifacts?: TaskArtifact[];
+  proposals?: TaskProposal[];
+  decisions?: TaskDecision[];
+  reviews?: TaskReview[];
 }
 export class BoardError extends Error {
   constructor(
@@ -161,6 +201,7 @@ export const statusSchema = z
   .strict();
 export const taskSchema = z
   .object({
+    ...collaborationTaskFields,
     title: z.string().trim().min(1).max(240),
     description: z.string().max(100000).default(''),
     statusId: idSchema,
@@ -182,6 +223,11 @@ export const taskSchema = z
   .strict();
 export const taskPatchSchema = z
   .object({
+    reviewerId: collaborationTaskFields.reviewerId.unwrap().optional(),
+    parentTaskId: collaborationTaskFields.parentTaskId.unwrap().optional(),
+    requiredForParent: collaborationTaskFields.requiredForParent.unwrap().optional(),
+    acceptanceCriteria: collaborationTaskFields.acceptanceCriteria.unwrap().optional(),
+    dueAt: collaborationTaskFields.dueAt.unwrap().optional(),
     title: z.string().trim().min(1).max(240).optional(),
     description: z.string().max(100000).optional(),
     statusId: idSchema.optional(),

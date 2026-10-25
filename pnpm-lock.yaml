@@ -187,6 +187,9 @@ importers:
       '@taskboard/companion':
         specifier: workspace:*
         version: link:../../apps/companion
+      '@taskboard/core':
+        specifier: workspace:*
+        version: link:../core
       commander:
         specifier: ^14.0.1
         version: 14.0.3

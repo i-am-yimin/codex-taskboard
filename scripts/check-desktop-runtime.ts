@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { copyFile, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 
-if (process.platform !== 'win32') throw new Error('This check requires the staged Windows runtime.');
+if (process.platform !== 'win32')
+  throw new Error('This check requires the staged Windows runtime.');
 const artifacts = resolve('.artifacts');
 await mkdir(artifacts, { recursive: true });
 const fixture = join(artifacts, `desktop-runtime-${randomUUID()}`);
@@ -19,7 +20,9 @@ await writeFile(join(parent, 'package.json'), '{"type":"module"}\n');
 for (const name of ['node.exe', 'companion.cjs', 'taskctl.cjs'])
   await copyFile(resolve('apps/desktop/runtime', name), join(runtime, name));
 const probe = join(parent, 'factory-probe.cjs');
-await writeFile(probe, `
+await writeFile(
+  probe,
+  `
 const assert = require('node:assert/strict');
 const { createCompanion } = require(process.argv[2]);
 (async () => {
@@ -34,7 +37,8 @@ const { createCompanion } = require(process.argv[2]);
   } finally { await runtime.stop(); }
   process.stdout.write('Factory started and stopped normally\\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });
-`);
+`,
+);
 const env = { ...process.env };
 for (const key of Object.keys(env))
   if (key.startsWith('TASKBOARD_') || key === 'NODE_OPTIONS') delete env[key];
@@ -48,12 +52,36 @@ const options = {
 let passed = false;
 try {
   const node = join(runtime, 'node.exe');
-  const output = execFileSync(node, [probe, join(runtime, 'companion.cjs'), join(fixture, 'data')], options);
+  const output = execFileSync(
+    node,
+    [probe, join(runtime, 'companion.cjs'), join(fixture, 'data')],
+    options,
+  );
   assert.ok(output.includes('Factory started and stopped normally'));
   const help = execFileSync(node, [join(runtime, 'taskctl.cjs'), '--help'], options);
   assert.ok(help.includes('taskctl') && help.includes('login'));
+  const runnerHelp = execFileSync(node, [join(runtime, 'taskctl.cjs'), 'run', '--help'], options);
+  assert.ok(runnerHelp.includes('configure') && runnerHelp.includes('probe'));
+  // Exercise the bundled runners subpath from copied artifacts only. The Node
+  // executable is a harmless native-file fixture; configuration does not run it.
+  const runnerData = join(fixture, 'runner-data');
+  const runnerHome = join(fixture, '专用 Agent 配置');
+  const configured = execFileSync(
+    node,
+    [join(runtime, 'taskctl.cjs'), 'run', 'configure', 'codex-cli', node, runnerHome],
+    {
+      ...options,
+      env: { ...env, TASKBOARD_DATA_DIR: runnerData },
+    },
+  );
+  assert.equal(JSON.parse(configured).data.configured, true);
+  const runnerConfig = JSON.parse(await readFile(join(runnerData, 'runners.json'), 'utf8'));
+  assert.equal(runnerConfig['codex-cli'].executable, await realpath(node));
+  assert.equal(runnerConfig['codex-cli'].home, await realpath(runnerHome));
   passed = true;
-  console.log('Staged Windows companion and CLI execute from a long Chinese path inside an ES module package without a runtime package manifest.');
+  console.log(
+    'Staged Windows companion and CLI execute from a long Chinese path inside an ES module package without a runtime package manifest.',
+  );
 } finally {
   if (passed) {
     const actual = await realpath(fixture);

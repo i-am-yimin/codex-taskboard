@@ -7,6 +7,8 @@ export {
   hasLocalCompanion,
 } from './companionBridge';
 
+const uncertainWriteKeys = new Map<string, string>();
+
 const base = import.meta.env.VITE_API_BASE ?? '/api/v1';
 export class ApiError extends Error implements ApiFault {
   constructor(
@@ -28,8 +30,17 @@ export async function request<T>(
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (init.body !== undefined) headers['Content-Type'] = 'application/json';
   if (init.version !== undefined) headers['If-Match'] = String(init.version);
-  if (init.method && init.method !== 'GET')
-    headers['Idempotency-Key'] = init.idempotencyKey ?? idempotencyKey();
+  const writeSignature =
+    init.method && init.method !== 'GET'
+      ? JSON.stringify([init.method, path, init.version, init.body])
+      : null;
+  if (writeSignature) {
+    const key = init.idempotencyKey ?? uncertainWriteKeys.get(writeSignature) ?? idempotencyKey();
+    headers['Idempotency-Key'] = key;
+    if (uncertainWriteKeys.size >= 100 && !uncertainWriteKeys.has(writeSignature))
+      throw new ApiError('PENDING_WRITES_LIMIT', '待确认操作过多，请先恢复连接并核对现有操作。', 0);
+    uncertainWriteKeys.set(writeSignature, key);
+  }
   const desktop = hasLocalCompanion();
   if (desktop) {
     const key = await companionKey();
@@ -52,6 +63,7 @@ export async function request<T>(
   if (!response.ok) {
     if ((init.method ?? 'GET') === 'GET' && [502, 503, 504].includes(response.status))
       throw new ApiError('OFFLINE', '任务看板服务器暂时不可用', response.status);
+    if (writeSignature && response.status < 500) uncertainWriteKeys.delete(writeSignature);
     const err = payload.error ?? {};
     throw new ApiError(
       err.code ?? 'REQUEST_FAILED',
@@ -62,6 +74,7 @@ export async function request<T>(
   }
   if (desktop && payload.meta?.source === 'cache' && payload.meta?.offline === true)
     throw new ApiError('OFFLINE', '桌面伴随服务正在使用离线缓存', 0);
+  if (writeSignature) uncertainWriteKeys.delete(writeSignature);
   return payload.data as T;
 }
 export const api = {
@@ -111,8 +124,11 @@ export const api = {
     }),
   accept: (id: string, version: number) =>
     request<void>(`/tasks/${id}/accept`, { method: 'POST', body: {}, version }),
-  comment: (id: string, body: string) =>
-    request<void>(`/tasks/${id}/comments`, { method: 'POST', body: { body } }),
+  comment: (id: string, body: string, mentionIds: string[] = []) =>
+    request<void>(`/tasks/${id}/comments`, {
+      method: 'POST',
+      body: { body, ...(mentionIds.length ? { mentionIds } : {}) },
+    }),
   createStatus: (
     spaceId: string,
     body: { name: string; semantic: string; position: number; color: string },
@@ -194,12 +210,14 @@ export function readCachedBoard(accountId: string, spaceId: string): Board | nul
   }
 }
 export function clearAccountCache(accountId: string) {
+  uncertainWriteKeys.clear();
   Object.keys(localStorage)
     .filter(
       (k) =>
         k.startsWith(`tb:board:${accountId}:`) ||
         k.startsWith(`tb:draft:${accountId}:`) ||
         k.startsWith(`tb:result:${accountId}:`) ||
+        k.startsWith(`tb:comment:${accountId}:`) ||
         (k.startsWith('tb:appearance:') && k.endsWith(`:${accountId}`)),
     )
     .forEach((k) => localStorage.removeItem(k));

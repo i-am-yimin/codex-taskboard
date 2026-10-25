@@ -10,6 +10,7 @@
 | [OpenResty 部署](deployment-openresty.md) | 推荐的新实例镜像部署、初始化、备份与升级 |
 | [Caddy 与显式配置部署](deployment.md) | 现有部署方式、数据库恢复与迁移 |
 | [应用内 Codex 连接](in-app-codex-connection.md) | 连接日常环境、自动恢复与拒绝边界 |
+| [本机 Agent 运行](agent-runners.md) | taskctl、专用 CLI profile、权限模式、取消/恢复与证据范围 |
 | [主题指南](themes.md) | 外观设置、同步与声明式主题包 |
 | [隐私说明](privacy.md) / [安全说明](../SECURITY.md) | 数据存储、安全边界与漏洞报告 |
 
@@ -20,6 +21,7 @@
 | [开发与贡献规范](../CONTRIBUTING.md) | 模块边界、编码约定、验证和发布要求 |
 | [开发指南](development.md) | 环境安装、运行、测试与隔离探针命令 |
 | [架构](architecture.md) | 数据流、模块职责与一致性约束 |
+| [协作工作流设计](collaborative-workflows-design.md) | 责任、父子/依赖、状态、通知、自动化与 API 契约 |
 | [桌面技术说明](desktop.md) | 原生启动、伴随服务、兼容清单与打包 |
 | [架构决策](adr/README.md) | 已接受设计及其约束 |
 | [仓库维护](maintenance.md) | 目录约定、分支生命周期、清理与恢复 |
@@ -33,6 +35,7 @@
 | [更新日志](../CHANGELOG.md) | 用户可感知的版本变化 |
 | [详细发布说明](release-notes.md) | 安装包、兼容和升级说明 |
 | [验收索引](acceptance.md) | 各版本的结论、范围与固定来源 |
+| [协作界面验收](acceptance-collaborative-ui.md) | 浏览器模拟交互、主题/动效和截图的证据范围 |
 | [部署验证](deployment-verification.md) | 容器、备份恢复与 HTTPS 验证 |
 | [历史记录](archive/README.md) | 早期实验与交接过程；不作为当前版本状态 |
 

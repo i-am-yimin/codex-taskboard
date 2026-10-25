@@ -1,0 +1,195 @@
+.collaboration-section > summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  padding-block: 10px;
+}
+.collaboration-section > summary h3 {
+  display: inline;
+  margin: 0;
+}
+.collaboration-section > summary > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.collaboration-section > summary::after {
+  content: '+';
+  color: var(--accent);
+}
+.collaboration-section[open] > summary::after {
+  content: '−';
+}
+.collaboration-form {
+  display: grid;
+  gap: 12px;
+  padding-block: 12px;
+}
+.collaboration-form label,
+.collaboration-inline label {
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+}
+.collaboration-form :is(input, select, textarea),
+.collaboration-inline :is(input, select) {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line, var(--border));
+  border-radius: 8px;
+  background: var(--panel, var(--canvas));
+  color: var(--ink);
+}
+.collaboration-form textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+.collaboration-inline {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  padding-block: 12px;
+}
+.collaboration-inline label {
+  flex: 1;
+  min-width: 0;
+}
+.participant-item,
+.artifact-item,
+.proposal-item {
+  border-bottom: 1px solid var(--line, var(--border));
+  padding-block: 14px;
+  overflow-wrap: anywhere;
+}
+.participant-item > summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  cursor: pointer;
+}
+.participant-item > summary span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.artifact-item > :is(a, small),
+.proposal-item > small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.artifact-item :is(p, pre),
+.proposal-item :is(p, pre) {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.relation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.relation-list li {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: start;
+  padding-block: 10px;
+  border-bottom: 1px solid var(--line, var(--border));
+}
+.relation-list small {
+  display: block;
+  color: var(--muted);
+}
+.task-link {
+  text-align: start;
+  white-space: normal;
+}
+.workflow-warning {
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 9%, var(--panel, var(--canvas)));
+}
+.requirements-diff {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.requirements-diff section {
+  min-width: 0;
+}
+.requirements-diff pre {
+  font: inherit;
+}
+.drawer-top {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+.drawer-top .exec-actions {
+  flex-wrap: wrap;
+}
+.quick-views {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+}
+.quick-views button {
+  padding: 7px 12px;
+  border-radius: 8px;
+  color: var(--muted);
+}
+.quick-views button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.my-tasks {
+  padding: 12px 0;
+}
+.saved-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+@media (max-width: 760px) {
+  .collaboration-inline {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .requirements-diff {
+    grid-template-columns: 1fr;
+  }
+  .drawer-top .text-button {
+    font-size: 12px;
+  }
+}
+
+.card-collaboration {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: start;
+}
+
+@media (max-width: 760px) {
+  .drawer-top > .task-id {
+    flex-basis: 100%;
+    flex-shrink: 0;
+  }
+}
+
+.card-update-announcement {
+  display: block;
+  color: var(--accent);
+  font-size: 11px;
+  text-align: start;
+  animation: relay-confirm 120ms ease-out;
+}
+
+.topbar .space-switcher-wrap { display: flex; align-items: center; gap: 18px; min-width: 0; }
+.topbar-brand { display: inline-flex; flex-shrink: 0; }
+@media (max-width: 760px) { .topbar-brand .taskboard-brand__name { display: none; } .topbar .space-switcher-wrap { gap: 6px; } }

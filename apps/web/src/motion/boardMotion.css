@@ -1,0 +1,157 @@
+:root {
+  --motion-feedback: 120ms;
+  --motion-enter: 260ms;
+  --motion-exit: 160ms;
+  --motion-settle: cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* Positioning belongs to dnd-kit; material and destination cues belong here. */
+.task-card[data-dragging='true'],
+.task-card.dragging {
+  opacity: 0.38;
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+.task-drag-overlay {
+  cursor: grabbing;
+  pointer-events: none;
+  rotate: -1.2deg;
+  scale: 1.025;
+  box-shadow: 0 16px 32px color-mix(in srgb, var(--ink) 22%, transparent);
+  animation: relay-pickup 140ms var(--motion-settle);
+}
+.column[data-drop-target='true'],
+.column.is-over {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.task-card[data-motion-state='settled'] {
+  animation: relay-arrive 300ms var(--motion-settle);
+}
+.task-card[data-motion-state='updated'] {
+  animation: relay-update 900ms ease-out;
+}
+.motion-drawer[data-state='open'] {
+  animation: relay-drawer-in var(--motion-enter) var(--motion-settle);
+}
+.motion-drawer[data-state='closed'] {
+  animation: relay-drawer-out var(--motion-exit) ease-in;
+}
+.motion-scrim[data-state='open'] {
+  animation: relay-scrim-in 160ms ease-out;
+}
+.motion-scrim[data-state='closed'] {
+  animation: relay-scrim-out var(--motion-exit) ease-in;
+}
+.motion-feedback {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+}
+.motion-feedback[data-request-state='pending'] svg {
+  animation: relay-pending 900ms linear infinite;
+}
+.motion-feedback[data-request-state='success'] {
+  color: var(--accent);
+  animation: relay-confirm 180ms ease-out;
+}
+.motion-feedback[data-request-state='error'] {
+  color: var(--danger);
+  animation: relay-confirm 120ms ease-out;
+}
+@keyframes relay-pickup {
+  from {
+    rotate: 0deg;
+    scale: 1;
+  }
+  to {
+    rotate: -1.2deg;
+    scale: 1.025;
+  }
+}
+@keyframes relay-arrive {
+  from {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+  to {
+    outline: 2px solid transparent;
+    outline-offset: 0;
+  }
+}
+@keyframes relay-update {
+  from {
+    background-color: color-mix(in srgb, var(--accent) 18%, var(--panel, var(--canvas)));
+  }
+}
+@keyframes relay-drawer-in {
+  from {
+    transform: translateX(32px);
+    opacity: 0.5;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes relay-drawer-out {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+}
+@keyframes relay-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes relay-scrim-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes relay-pending {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes relay-confirm {
+  from {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (max-width: 760px) {
+  .task-drag-overlay {
+    rotate: 0deg;
+    scale: 1.015;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-drag-overlay {
+    animation: none;
+    rotate: none;
+    scale: none;
+  }
+  .motion-drawer[data-state],
+  .motion-scrim[data-state],
+  .task-card[data-motion-state],
+  .motion-feedback[data-request-state] {
+    animation: relay-confirm 80ms linear;
+  }
+  .motion-feedback[data-request-state='pending'] svg {
+    animation: none;
+  }
+}

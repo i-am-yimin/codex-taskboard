@@ -226,6 +226,11 @@ describe.skipIf(!databaseUrl)('browser server initialization and administration'
       '0002_owner_integrity',
       '0003_instance_settings',
       '0004_user_themes',
+      '0005_collaborative_workflows',
+      '0006_workflow_services',
+      '0007_run_recovery',
+      '0008_run_permissions',
+      '0009_active_workflow_intervals',
     ]);
   });
 });

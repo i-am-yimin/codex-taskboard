@@ -1,3 +1,8 @@
+import { migrateActiveWorkflowIntervals } from './workflow-interval-migration.ts';
+import { migrateWorkflowServices } from './workflow-migration.ts';
+import { migrateRunRecovery } from './run-recovery-migration.ts';
+import { migrateRunPermissions } from './run-permissions-migration.ts';
+import { migrateCollaboration } from './collaboration-migration.ts';
 import { type Database, withTransaction } from './db.ts';
 
 const migration = `
@@ -66,5 +71,10 @@ export async function migrate(db: Database): Promise<void> {
       )`);
       await client.query("INSERT INTO schema_migrations(id) VALUES ('0004_user_themes')");
     }
+    await migrateCollaboration(client);
+    await migrateWorkflowServices(client);
+    await migrateRunRecovery(client);
+    await migrateRunPermissions(client);
+    await migrateActiveWorkflowIntervals(client);
   });
 }

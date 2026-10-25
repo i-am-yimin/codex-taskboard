@@ -21,6 +21,7 @@ await build({
   alias: {
     '@taskboard/companion/secret': resolve('apps/companion/src/secret.ts'),
     '@taskboard/companion/store': resolve('apps/companion/src/store.ts'),
+    '@taskboard/companion/runners': resolve('apps/companion/src/runners.ts'),
     '@taskboard/core': resolve('packages/core/src/index.ts'),
     '@taskboard/adapter-codex': resolve('packages/adapter-codex/src/index.ts'),
   },
