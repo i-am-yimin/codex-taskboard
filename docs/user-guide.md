@@ -1,12 +1,12 @@
 # 使用手册
 
-适用客户端 **0.1.6**，服务端独立为 **0.1.3-preview.1**。更新日期：2026-10-25。
+适用客户端 **0.1.7**，服务端独立为 **0.1.3-preview.1**。更新日期：2026-10-25。
 
-[下载](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.6) · [服务端部署](deployment-openresty.md) · [更新日志](../CHANGELOG.md)
+[下载](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.7) · [服务端部署](deployment-openresty.md) · [更新日志](../CHANGELOG.md)
 
-## 0.1.7 本机候选：同级视图
+## 同级视图导航
 
-0.1.6 在用户复验中仍有会话标题栏穿透及两个入口同时高亮的问题。0.1.7 候选将看板与完整会话工作区作为同级页面：点击“任务看板”进入独立主视图，再次点击保持看板；点击具体会话切回。切换保留双方未提交内容，退出 Taskboard 后恢复原生界面。本机候选与当前公开下载分别记录，见[验收记录](acceptance-0.1.7.md)。
+0.1.6 在用户复验中仍有会话标题栏穿透及两个入口同时高亮的问题。0.1.7 将看板与完整会话工作区作为同级页面：点击“任务看板”进入独立主视图，再次点击保持看板；点击具体会话切回。切换保留双方未提交内容，退出 Taskboard 后恢复原生界面。本机候选与固定标签最终包的证据分别记录，见[验收记录](acceptance-0.1.7.md)。
 
 ## 外观与主题
 
@@ -24,13 +24,13 @@ Windows 包为未签名预发布版，本轮日常 Codex 精确验收版本为 `
 
 ## 安装与登录
 
-1. 下载 [Windows x64 0.1.6 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.6/Codex.Taskboard_0.1.6_x64-setup.exe)和 [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.6/SHA256SUMS)，核对摘要后安装，无需登录 GitHub。
+1. 下载 [Windows x64 0.1.7 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.7/Codex.Taskboard_0.1.7_x64-setup.exe)和 [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.7/SHA256SUMS)，核对摘要后安装，无需登录 GitHub。
 2. 打开 **Codex Taskboard**，填写服务器根地址，点击 **“保存服务器”**。
 3. 输入 Taskboard 邮箱与密码，点击 **“登录并继续”**。选择或创建空间，确认 **“已同步”** 后再修改任务；团队成员由管理员邀请加入。
 
 服务器地址形如 `https://board.example.com`，不加 `/api/v1`、子路径、查询参数或片段。本机开发允许 `http://127.0.0.1:47830`；其他设备不能用这个地址访问你的电脑。保存地址不代表已联网成功。
 
-安装器 SHA-256：`9cd07f165d8838e02d260c18a258fcbbbbf1740274d3d256aac52ea833f874b2`。可用 PowerShell 的 `Get-FileHash -Algorithm SHA256 -LiteralPath '下载文件的完整路径'` 核对；签名状态为 `NotSigned`。
+安装器 SHA-256：`467d4ac47eb54ab1c7452879e8b1181c61206a559c6e5a78b4862dae5fed7db2`。可用 PowerShell 的 `Get-FileHash -Algorithm SHA256 -LiteralPath '下载文件的完整路径'` 核对；签名状态为 `NotSigned`。
 
 ## 连接 Codex
 
@@ -40,9 +40,9 @@ Windows 包为未签名预发布版，本轮日常 Codex 精确验收版本为 `
 - 正在运行但未启用连接：保存工作并正常退出 Codex 一次，Taskboard 等待后自动继续，不会强制结束进程。
 - 暂不连接：点击 **“取消等待”**；五分钟未完成也会结束等待，准备好后重新连接。
 
-看到 Codex 左侧的 **“任务看板”** 即接入成功，点击可切换看板与 Codex。主界面按钮变为 **“打开 Codex”**，可返回或恢复原窗口，无需专用快捷方式。
+看到 Codex 左侧的 **“任务看板”** 即接入成功，点击进入看板，选择具体会话返回会话页面。主界面按钮变为 **“打开 Codex”**，可返回或恢复原窗口，无需专用快捷方式。
 
-看板打开时，点击 Codex 侧栏中的会话、项目或“新聊天”，看板会自动收起；键盘激活入口、宿主切换选中会话及页面前进/后退也会收起。再次点击“任务看板”可继续原来的操作，未保存内容会保留。0.1.6 公开预发布包已包含此修复；验证范围见[0.1.6 验收记录](acceptance-0.1.6.md)。
+看板与会话是同级页面：点击“任务看板”进入看板，会话标题栏、正文和操作区一并隐藏，侧栏只显示看板为当前页。再次点击已选中的看板保持当前页；点击具体会话、项目或“新聊天”切回原生页面，键盘激活与宿主导航同样恢复原生视图。双方视图保持挂载，未提交内容保留。退出 Taskboard 恢复完整原生工作区。验证范围见[0.1.7 验收记录](acceptance-0.1.7.md)。
 
 首次成功后，普通启动 Taskboard 可自动恢复侧栏。在 **“设置 → 连接与设备”** 可关闭 **“启动 Taskboard 时自动连接日常 Codex”**，手动连接仍保留关闭选择。若后来从其他入口启动了未启用连接的 Codex，仍需按提示正常退出一次。
 
