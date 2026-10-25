@@ -4,13 +4,13 @@
 
 A collaborative task layer for Codex Desktop. Share task intent, progress, and review across devices and trusted teams while Codex continues to own local projects and conversations.
 
-**0.1.4 in-app Codex connection preview.** Connect the normal Codex environment and retain its sign-in, projects and chats. Exact host `26.1016.8622.0`, the fixed-tag installer, real upgrade, in-app connection, automatic restoration, repeated opening and same-process reconnection passed acceptance; see [0.1.4 acceptance](docs/acceptance-0.1.4.md). **The Windows installer is unsigned; 0.1.4 is a public pre-release.** Earlier tags and assets remain unchanged.
+**0.1.6 navigation and themes preview.** Switching Codex chats, projects or starting a new chat dismisses the board while retaining its iframe and unfinished work. Includes four themes, declarative theme packages and account appearance synchronization. The exact host `26.1016.8622.0`, fixed-tag installer, upgrade, sign-in retention and five native navigation paths passed acceptance; see [0.1.6 acceptance](docs/acceptance-0.1.6.md). **The Windows installer is unsigned; 0.1.6 is a public pre-release.**
 
 ## Getting started
 
-[Download the Windows x64 client 0.1.4](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/Codex.Taskboard_0.1.4_x64-setup.exe) and [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.4/SHA256SUMS), or visit the [release page](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.4). GitHub sign-in is not required. Installer SHA-256: `317fbaef9e25b36d29b0dbcf16d7abb191f5e2d17f609998aabb1523f9314db0`.
+[Download the Windows x64 client 0.1.6](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.6/Codex.Taskboard_0.1.6_x64-setup.exe) and [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.6/SHA256SUMS), or visit the [release page](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.6). GitHub sign-in is not required. Installer SHA-256: `9cd07f165d8838e02d260c18a258fcbbbbf1740274d3d256aac52ea833f874b2`.
 
-The server is versioned independently as **0.1.3-preview.1**, published as `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.3-preview.1` from source tag `vserver-0.1.3-preview.1`. It adds account appearance and theme package synchronization while preserving existing task APIs. Its version comes from `apps/server/package.json`; the public Windows Taskboard client remains **0.1.4**. The 0.1.5 client candidate has a separate release process. See the [server image acceptance](docs/acceptance-server-0.1.3-preview.1.md).
+The server is versioned independently as **0.1.3-preview.1**, published as `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.3-preview.1` from source tag `vserver-0.1.3-preview.1`. It adds account appearance and theme package synchronization while preserving existing task APIs. Its version comes from `apps/server/package.json`; the public Windows Taskboard client is **0.1.6**, including the previously tested 0.1.5 theme features. See the [server image acceptance](docs/acceptance-server-0.1.3-preview.1.md).
 
 The [user guide (Chinese)](docs/user-guide.md) covers installation, sign-in, repository mapping, Codex integration, manual execution and review, optional CLI access, upgrades and troubleshooting. Deploy the server with [Docker Compose and OpenResty HTTPS](docs/deployment-openresty.md), then use its root URL in each client. The desktop installer does not provide a hosted server or account.
 
@@ -33,7 +33,7 @@ Features include isolated customizable spaces, role-based membership, board and 
 | Browser    | Chrome; board and list views, cached read-only offline views                                                                                         |
 | Server     | Linux amd64 / PostgreSQL 16+; deployment, backup/restore and upgrade rollback; HTTPS with an internal CA                                             |
 | Desktop    | Windows x64; two installed applications; unsigned development preview                                                                                |
-| Codex host | 26.1016.8622.0 daily environment checked with 0.1.4; 26.1013.4894.0 checked with 0.1.1; 26.1007.9446.0 full 0.1.0 baseline; unknown versions refused |
+| Codex host | 26.1016.8622.0 daily environment checked with 0.1.6; 26.1013.4894.0 checked with 0.1.1; 26.1007.9446.0 full 0.1.0 baseline; unknown versions refused |
 
 Acceptance applies to the fixed candidate and the environments recorded in the summary. Later source merges run their own CI. Full Codex conversations are not synchronized across devices. Automatic task scheduling, GitHub data synchronization, and full offline editing are outside the first release.
 
