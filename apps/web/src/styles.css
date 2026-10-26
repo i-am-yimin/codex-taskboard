@@ -1817,3 +1817,69 @@ h3 {
     padding-right: 12px;
   }
 }
+
+/* Independent windows reflow before four readable columns stop fitting.
+   Embedded panels retain their existing compact layout below. */
+@media (max-width: 1200px) {
+  :root .app-shell:not(.embedded) .board {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    overflow-x: hidden;
+  }
+}
+@media (max-width: 800px) {
+  :root .app-shell:not(.embedded) .topbar {
+    height: auto;
+    min-height: 56px;
+    padding-block: 8px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  :root .app-shell:not(.embedded) .space-switcher-wrap {
+    min-width: 0;
+    max-width: 100%;
+  }
+  :root .app-shell:not(.embedded) .topbar-right {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  :root .app-shell:not(.embedded) .search {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+  }
+  :root .app-shell:not(.embedded) .toolbar select {
+    flex: 1 1 120px;
+    min-width: 120px;
+    max-width: none;
+  }
+  :root .app-shell:not(.embedded) .list-header,
+  :root .app-shell:not(.embedded) .list-row {
+    grid-template-columns: minmax(0, 1fr) minmax(100px, 130px);
+  }
+  :root .app-shell:not(.embedded) .list-header span:nth-child(n + 3),
+  :root .app-shell:not(.embedded) .list-row span:nth-child(n + 3) {
+    display: none;
+  }
+}
+@media (max-width: 560px) {
+  :root .app-shell:not(.embedded) .page-head {
+    padding-top: 20px;
+    padding-bottom: 16px;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  :root .app-shell:not(.embedded) .head-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  :root .app-shell:not(.embedded) .toolbar {
+    padding-bottom: 16px;
+  }
+  :root .app-shell:not(.embedded) .result-count {
+    margin-left: 0;
+  }
+}
