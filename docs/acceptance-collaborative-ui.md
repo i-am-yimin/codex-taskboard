@@ -106,3 +106,13 @@
 有效基线目录为本机忽略的 `responsive-baseline-2026-10-26T08-12-15-540Z`，最终目录为 `responsive-final-2026-10-26T08-21-17-724Z`，均位于本轮 `.artifacts/acceptance/2026-10-26-v018/` 下；终态 `verification.json` 记录三文件摘要、验证及清理结果。有效视觉证据为基线与最终两批，早期无效夹具记录另行保留，未为读图评审增加截图轮次。Astra 与独立评审者只读核对实现、矩阵及代表截图，无阻断；Astra 确认磁盘三文件摘要与冻结记录一致。作者自有浏览器和 Vite 已退出，4173 监听为零。
 
 本轮使用独立 Chromium、Vite、合成 demo 数据并中止所有 API 请求；480×480 是低高度压力检查，不是原生最小尺寸承诺。这些证据不代替最终安装包、真实 WebView 缩放或物理设备验证；新固定来源、构建与实装结果由 [0.1.8 验收](acceptance-0.1.8.md)继续记录。
+
+### 原生用户缩放补充
+
+打包前检查发现主窗口没有设置 `zoomHotkeysEnabled`，本地 Tauri schema 默认值为 `false`，因此原生用户缩放快捷键尚未启用。候选仅增加主窗口 `zoomHotkeysEnabled: true`，用于 Windows WebView2 的原生页面缩放；这不是 CSS `zoom` 或额外的网页缩放接口。
+
+锁定的 Tauri 2.11.5 文档将 Windows 行为指向 WebView2 `IsZoomControlEnabled`；tauri-runtime-wry 2.11.4 将窗口属性传给 `with_hotkeys_zoom`，wry 0.55.1 的 Windows 实现再传给 `SetIsZoomControlEnabled`，同值也控制 `SetIsPinchZoomEnabled`。`core:webview:allow-set-webview-zoom` 权限说明针对 macOS/Linux 的注入式缩放实现，本次 Windows 配置没有新增该 IPC 权限，也没有改变 ACL、CSP、宿主身份检查或其他窗口字段。
+
+本地 schema 验证通过；相对 `db7bbfe` 的精确 JSON 比较确认只增加该字段，其余配置字节保留，42 个前端源码文件摘要不变。Astra 与独立评审者核对源码链、差异和最终摘要后通过；本机忽略证据保存在 `2026-10-26-v018-responsive/zoom-hotkeys-2026-10-26T09-16-59-316Z/verification.json`。
+
+此项只涉及原生用户缩放开关及文字；CSS、JavaScript 和既有测试不变，不重复上述 64 组合或 3 项回归。原生 200% 缩放后的布局、控件可达性和操作仍待最终安装包人工确认，不能将配置验证或浏览器 CSS 缩放记为实机通过。
