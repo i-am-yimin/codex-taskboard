@@ -57,7 +57,9 @@ impl Drop for Companion {
 // Keep each loopback attempt short, but avoid killing a healthy first launch.
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
 const READY_POLL: Duration = Duration::from_millis(150);
-const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+// Runner cleanup has a 35s total budget (15s identity + 15s tree helper + I/O).
+// Keep the owner alive until that budget and final state persistence can finish.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(40);
 
 fn taskboard_data_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     if let Some(override_path) = std::env::var_os("TASKBOARD_DATA_DIR") {

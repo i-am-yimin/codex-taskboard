@@ -14,11 +14,24 @@ import {
 import { CompanionClient } from '../packages/cli/src/main.ts';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const url = process.env.TEST_DATABASE_URL;
 const suite = url ? describe : describe.skip;
+async function within<T>(stage: string, operation: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`runtime stage timed out: ${stage}`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 suite('Agent run API in independent PostgreSQL', () => {
   let db: ReturnType<typeof createDatabase>;
   let app: ReturnType<typeof buildApp>;
@@ -124,19 +137,38 @@ suite('Agent run API in independent PostgreSQL', () => {
           ? spawn(process.execPath, ['-e', 'process.exit(0)'], options)
           : spawn(process.execPath, [fixture], options);
     let supervisor: LocalAgentRunner | undefined;
+    let blockReports = false;
+    let releaseReports!: () => void;
+    const reportGate = new Promise<void>((resolve) => {
+      releaseReports = resolve;
+    });
+    let retiredReportsDone!: () => void;
+    const retiredReports = new Promise<void>((resolve) => {
+      retiredReportsDone = resolve;
+    });
     const address = app.server.listening
       ? `http://127.0.0.1:${(app.server.address() as { port: number }).port}`
       : await app.listen({ host: '127.0.0.1', port: 0 });
-    const companion = await createCompanion({
+    let companion = await createCompanion({
       port: 0,
       dataDirectory: directory,
       upstream: address,
       createRunner: (path, mapping, report, authorize) => {
-        supervisor = new LocalAgentRunner(path, mapping, report, spawnProcess, authorize);
+        supervisor = new LocalAgentRunner(
+          path,
+          mapping,
+          async (run) => {
+            if (blockReports) await reportGate;
+            await report(run);
+            if (run.phase === 'cancelled') retiredReportsDone();
+          },
+          spawnProcess,
+          authorize,
+        );
         return supervisor;
       },
     });
-    const client = new CompanionClient({
+    let client = new CompanionClient({
       endpoint: `http://127.0.0.1:${companion.port}`,
       key: companion.clientKey,
     });
@@ -168,6 +200,12 @@ suite('Agent run API in independent PostgreSQL', () => {
         version: claimed.task.version,
         idempotencyKey: randomUUID(),
       });
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const observed = await client.get<TaskRun[]>(`/tasks/${task.id}/runs`);
+        if (observed[0]?.phase === 'running') break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      expect((await client.get<TaskRun[]>(`/tasks/${task.id}/runs`))[0]?.phase).toBe('running');
       const detail = await client.get<{ task: Task }>(`/tasks/${task.id}/detail`);
       expect(
         (
@@ -179,6 +217,7 @@ suite('Agent run API in independent PostgreSQL', () => {
           )
         ).statusCode,
       ).toBe(200);
+      blockReports = true;
       await supervisor!.cancel(started.run.id);
       for (let attempt = 0; attempt < 150; attempt++) {
         if ((await supervisor!.status(started.run.id)).phase === 'cancelled') break;
@@ -189,6 +228,23 @@ suite('Agent run API in independent PostgreSQL', () => {
         `/v1/runners/${task.id}/${started.run.id}`,
       );
       expect(unsynced.synchronized).toBe(false);
+      // Neither blocked cancellation report has reached the companion outbox.
+      // Retirement/restart must recover the durable final local fact instead.
+      await within('retire original companion', companion.stop(), 40000);
+      companion = await within(
+        'restart companion from durable facts',
+        createCompanion({ port: 0, dataDirectory: directory, upstream: address }),
+        25000,
+      );
+      client = new CompanionClient({
+        endpoint: `http://127.0.0.1:${companion.port}`,
+        key: companion.clientKey,
+      });
+      const restarted = await client.request<{ run: TaskRun; synchronized: boolean }>(
+        `/v1/runners/${task.id}/${started.run.id}`,
+      );
+      expect(restarted.run.phase).toBe('cancelled');
+      expect(restarted.synchronized).toBe(false);
       const synced = await client.request<{ synchronized: boolean }>(
         `/v1/runners/${task.id}/${started.run.id}/sync`,
         'POST',
@@ -198,7 +254,12 @@ suite('Agent run API in independent PostgreSQL', () => {
       const runs = await client.get<TaskRun[]>(`/tasks/${task.id}/runs`);
       expect(runs[0].phase).toBe('cancelled');
       expect(runs[0].externalSessionId).toBe('synthetic-http-session');
+      const currentStore = await readFile(join(directory, 'state.json'), 'utf8');
+      releaseReports();
+      await within('retired reports discarded', retiredReports, 5000);
+      expect(await readFile(join(directory, 'state.json'), 'utf8')).toBe(currentStore);
     } finally {
+      releaseReports();
       await companion.stop();
       await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }

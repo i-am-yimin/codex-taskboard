@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { spawn, execFile } from 'node:child_process';
+import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -14,8 +14,20 @@ import {
 
 const directories: string[] = [];
 const runners: LocalAgentRunner[] = [];
+const fixtureChildren: ChildProcess[] = [];
 afterEach(async () => {
-  await Promise.all(runners.splice(0).map((runner) => runner.shutdown()));
+  try {
+    await Promise.all(runners.splice(0).map((runner) => runner.shutdown()));
+  } finally {
+    await Promise.all(
+      fixtureChildren.splice(0).map(async (child) => {
+        if (child.exitCode !== null || child.signalCode !== null) return;
+        const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
+        child.kill();
+        await closed;
+      }),
+    );
+  }
   await Promise.all(
     directories
       .splice(0)
@@ -45,6 +57,7 @@ async function setup(
   script: string,
   kind: 'codex-cli' | 'claude-code' = 'codex-cli',
   authorize = () => undefined,
+  report: (run: TaskRun) => Promise<void> = async () => undefined,
 ) {
   const directory = await mkdtemp(join(tmpdir(), 'taskboard-runner-test-'));
   directories.push(directory);
@@ -70,15 +83,11 @@ async function setup(
       return spawn(process.execPath, ['-e', 'process.exit(0)'], options);
     launches++;
     argv.push(values as string[]);
-    return spawn(process.execPath, [fixture], options);
+    const child = spawn(process.execPath, [fixture], options);
+    fixtureChildren.push(child);
+    return child;
   };
-  const runner = new LocalAgentRunner(
-    directory,
-    () => directory,
-    async () => undefined,
-    spawnProcess,
-    authorize,
-  );
+  const runner = new LocalAgentRunner(directory, () => directory, report, spawnProcess, authorize);
   runners.push(runner);
   await runner.load();
   return { runner, directory, launches: () => launches, argv };
@@ -92,6 +101,43 @@ async function terminal(runner: LocalAgentRunner, id: string) {
   throw new Error('independent subprocess did not finish');
 }
 describe('real owned subprocess supervisor with synthetic protocol fixtures', () => {
+  it('terminates an owned subprocess while its remote report is blocked', async () => {
+    let release!: () => void;
+    let reporting!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const entered = new Promise<void>((resolve) => {
+      reporting = resolve;
+    });
+    const fixture = await setup(
+      'console.log(JSON.stringify({type:"thread.started",thread_id:"blocked-report"}));setInterval(()=>{},1000);',
+      'codex-cli',
+      () => undefined,
+      async () => {
+        reporting();
+        await gate;
+      },
+    );
+    const value = run();
+    const starting = fixture.runner.start(value, 'synthetic', repository);
+    await entered;
+    const cancelling = fixture.runner.cancel(value.id);
+    try {
+      const deadline = Date.now() + 35000;
+      while (Date.now() < deadline && (await fixture.runner.status(value.id)).phase !== 'cancelled')
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      expect((await fixture.runner.status(value.id)).phase).toBe('cancelled');
+      await fixture.runner.shutdown();
+      const restarted = new LocalAgentRunner(fixture.directory, () => fixture.directory);
+      await restarted.load();
+      expect((await restarted.status(value.id)).phase).toBe('cancelled');
+    } finally {
+      release();
+      await starting;
+      await cancelling;
+    }
+  }, 60000);
   it('starts once for concurrent identical run IDs and requires both Codex completion and exit zero', async () => {
     const fixture = await setup(
       `process.stdin.resume(); process.stdin.on('end',()=>{console.log(JSON.stringify({type:'thread.started',thread_id:'synthetic-session'}));console.log(JSON.stringify({type:'turn.completed'}));});`,

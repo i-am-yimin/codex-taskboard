@@ -144,7 +144,7 @@
   color: var(--on-accent);
 }
 .my-tasks {
-  padding: 12px 0;
+  padding: 12px var(--page-gutter);
 }
 .saved-filters {
   display: flex;
@@ -190,6 +190,28 @@
   animation: relay-confirm 120ms ease-out;
 }
 
-.topbar .space-switcher-wrap { display: flex; align-items: center; gap: 18px; min-width: 0; }
-.topbar-brand { display: inline-flex; flex-shrink: 0; }
-@media (max-width: 760px) { .topbar-brand .taskboard-brand__name { display: none; } .topbar .space-switcher-wrap { gap: 6px; } }
+.topbar .space-switcher-wrap {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+.topbar-brand {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+@media (max-width: 760px) {
+  .topbar-brand .taskboard-brand__name {
+    display: none;
+  }
+  .topbar .space-switcher-wrap {
+    gap: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  :root .drawer .title-editor {
+    font-size: 26px;
+    text-wrap: balance;
+  }
+}

@@ -61,8 +61,10 @@ interface OwnedRun {
   events: Promise<void>;
   termination?: Promise<boolean>;
   identity?: WindowsProcessIdentity;
+  identityReady: Promise<void>;
 }
 type Report = (run: TaskRun) => Promise<void>;
+export const RUNNER_SHUTDOWN_TIMEOUT_MS = 35000;
 export type SpawnProcess = (
   executable: string,
   args: readonly string[],
@@ -176,6 +178,7 @@ export class LocalAgentRunner implements AgentRunner {
   private records = new Map<string, TaskRun>();
   private starts = new Map<string, Promise<TaskRun>>();
   private writes: Promise<void> = Promise.resolve();
+  private reportWrites = new Map<string, Promise<void>>();
   private workingDirectories = new Map<string, string>();
   private runDirectories = new Map<string, string>();
   constructor(
@@ -419,7 +422,14 @@ export class LocalAgentRunner implements AgentRunner {
     };
     this.records.set(owned.run.id, owned.run);
     await this.save();
-    await this.report(structuredClone(owned.run));
+    const snapshot = structuredClone(owned.run);
+    const reporting = (this.reportWrites.get(snapshot.id) ?? Promise.resolve())
+      .then(() => this.report(snapshot))
+      .catch(() => undefined);
+    this.reportWrites.set(snapshot.id, reporting);
+    void reporting.finally(() => {
+      if (this.reportWrites.get(snapshot.id) === reporting) this.reportWrites.delete(snapshot.id);
+    });
   }
   start(run: TaskRun, prompt: string, repository: string): Promise<TaskRun> {
     const pending = this.starts.get(run.id);
@@ -515,6 +525,7 @@ export class LocalAgentRunner implements AgentRunner {
       }),
       cancelRequested: false,
       events: Promise.resolve(),
+      identityReady: Promise.resolve(),
     };
     this.records.set(run.id, owned.run);
     this.owned.set(run.id, owned);
@@ -526,6 +537,10 @@ export class LocalAgentRunner implements AgentRunner {
     const spawned = new Promise<void>((resolve) => {
       child.once('spawn', resolve);
       child.once('error', () => resolve());
+    });
+    owned.identityReady = spawned.then(async () => {
+      if (process.platform === 'win32' && child.pid && child.exitCode === null)
+        owned.identity = await inspectOwnedWindowsProcess(child.pid, configured.executable);
     });
     const enqueue = (action: () => Promise<void>) => {
       owned.events = owned.events.then(action).catch(() => undefined);
@@ -557,7 +572,8 @@ export class LocalAgentRunner implements AgentRunner {
         failed = true;
         failureCategory = event.type === 'result' ? 'CLAUDE_RESULT_ERROR' : 'CODEX_TURN_FAILED';
       }
-      if (owned.run.phase === 'starting') enqueue(() => this.update(owned, 'running'));
+      if (owned.run.phase === 'starting' && !owned.cancelRequested)
+        enqueue(() => this.update(owned, 'running'));
     };
     child.stdout!.on('data', (chunk: Buffer) => {
       buffer += chunk.toString('utf8');
@@ -616,9 +632,14 @@ export class LocalAgentRunner implements AgentRunner {
     child.stdin!.end(prompt);
     await this.save();
     await spawned;
-    if (process.platform === 'win32' && child.pid && child.exitCode === null)
-      owned.identity = await inspectOwnedWindowsProcess(child.pid, configured.executable);
-    if (child.pid && child.exitCode === null) enqueue(() => this.update(owned, 'running'));
+    await owned.identityReady;
+    if (
+      child.pid &&
+      child.exitCode === null &&
+      owned.run.phase === 'starting' &&
+      !owned.cancelRequested
+    )
+      enqueue(() => this.update(owned, 'running'));
     await owned.events;
     return structuredClone(owned.run);
   }
@@ -664,24 +685,27 @@ export class LocalAgentRunner implements AgentRunner {
     if (!owned.cancelRequested) {
       if (enforceAuthorization) this.authorize(owned.run);
       owned.cancelRequested = true;
-      await owned.events;
-      await this.update(owned, 'cancel_requested');
-      if (enforceAuthorization) this.authorize(owned.run);
-      if (owned.child.exitCode === null && owned.child.signalCode === null && owned.child.pid) {
-        if (process.platform === 'win32') {
-          // The PID is obtained solely from our retained live ChildProcess, never from a request or disk.
-          owned.termination = owned.identity
-            ? terminateOwnedWindowsTree(owned.identity)
-            : Promise.resolve(false);
-        } else {
-          try {
-            process.kill(-owned.child.pid, 'SIGTERM');
-            owned.termination = Promise.resolve(true);
-          } catch {
-            owned.termination = Promise.resolve(false);
+      const cancelling = owned.events.then(async () => {
+        await this.update(owned, 'cancel_requested');
+        await owned.identityReady;
+        if (enforceAuthorization) this.authorize(owned.run);
+        if (owned.child.exitCode === null && owned.child.signalCode === null && owned.child.pid) {
+          if (process.platform === 'win32') {
+            // The PID is obtained solely from our retained live ChildProcess, never from a request or disk.
+            owned.termination = owned.identity
+              ? terminateOwnedWindowsTree(owned.identity)
+              : Promise.resolve(false);
+          } else {
+            try {
+              process.kill(-owned.child.pid, 'SIGTERM');
+              owned.termination = Promise.resolve(true);
+            } catch {
+              owned.termination = Promise.resolve(false);
+            }
           }
         }
-      }
+      });
+      owned.events = cancelling.catch(() => undefined);
     }
     await Promise.race([
       owned.closed,
@@ -710,8 +734,28 @@ export class LocalAgentRunner implements AgentRunner {
     return this.start(run, prompt, repository);
   }
   async shutdown(): Promise<void> {
-    await Promise.all(
-      [...this.owned.keys()].map((id) => this.cancelOwned(id, false).catch(() => undefined)),
-    );
+    const owned = [...this.owned.values()];
+    for (const item of owned) void this.cancelOwned(item.run.id, false).catch(() => undefined);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.all(owned.map((item) => item.closed)),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new CompanionError(
+                  'RUN_STATE_UNCONFIRMED',
+                  '关闭预算内无法确认本实例运行结束；保留未知运行供人工核查',
+                  409,
+                ),
+              ),
+            RUNNER_SHUTDOWN_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

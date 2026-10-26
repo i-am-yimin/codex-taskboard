@@ -1,3 +1,4 @@
+import { compatibleServerHealth } from '../server-compatibility-fixture.ts';
 import { test, expect, type Page } from '@playwright/test';
 import { demoUser, makeDemoBoard, makeDemoDetail } from '../../apps/web/src/demo';
 import type { TaskDetail } from '../../apps/web/src/types';
@@ -52,7 +53,8 @@ async function fixture(page: Page, configure?: (detail: TaskDetail) => void) {
     const req = route.request();
     const path = new URL(req.url()).pathname.replace('/api/v1', '');
     let data: unknown = {};
-    if (path === '/setup') data = { required: false };
+    if (path === '/health') data = compatibleServerHealth;
+    else if (path === '/setup') data = { required: false };
     if (path === '/me') data = demoUser;
     if (path === '/spaces') data = [board.space];
     if (path.endsWith('/board')) data = board;

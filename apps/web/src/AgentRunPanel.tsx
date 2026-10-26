@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RunnerKind, RunnerProbe, Task, TaskClaim, TaskRun } from '@taskboard/core';
-import { companionKey, companionOrigin, hasLocalCompanion, request } from './api';
+import {
+  companionKey,
+  companionOrigin,
+  hasLocalCompanion,
+  request,
+  ensureCollaborationServer,
+} from './api';
 import './agent-runs.css';
 
 interface Props {
@@ -8,6 +14,7 @@ interface Props {
   claims: TaskClaim[];
   runs: TaskRun[];
   canWrite: boolean;
+  canControlExistingRuns?: boolean;
   userId: string;
   onChanged: () => void;
 }
@@ -20,20 +27,34 @@ const phases: Record<TaskRun['phase'], string> = {
   failed: 'CLI执行失败',
   unknown: '运行状态未知',
 };
-async function local<T>(path: string, body?: unknown): Promise<T> {
+export async function requestLocalRunner<T>(
+  path: string,
+  body?: Record<string, unknown> | (() => Record<string, unknown>),
+): Promise<T> {
+  if (body !== undefined && (path === '/start' || /\/sync$/.test(path)))
+    await ensureCollaborationServer();
+  const payloadBody = typeof body === 'function' ? body() : body;
   const key = await companionKey();
   if (!key) throw new Error('本机伴随服务尚未授权');
   const response = await fetch(`${companionOrigin()}/v1/browser/runners${path}`, {
-    method: body === undefined ? 'GET' : 'POST',
+    method: payloadBody === undefined ? 'GET' : 'POST',
     headers: { 'content-type': 'application/json', 'x-taskboard-companion-key': key },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: payloadBody === undefined ? undefined : JSON.stringify(payloadBody),
     signal: AbortSignal.timeout(15000),
   });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error?.message ?? '本机运行请求失败');
   return payload.data as T;
 }
-export default function AgentRunPanel({ task, claims, runs, canWrite, userId, onChanged }: Props) {
+export default function AgentRunPanel({
+  task,
+  claims,
+  runs,
+  canWrite,
+  canControlExistingRuns = canWrite,
+  userId,
+  onChanged,
+}: Props) {
   const [probes, setProbes] = useState<RunnerProbe[]>([]);
   const [runner, setRunner] = useState<RunnerKind>('codex-cli');
   const [permissionMode, setPermissionMode] = useState<'read-only' | 'workspace-write'>(
@@ -54,7 +75,7 @@ export default function AgentRunPanel({ task, claims, runs, canWrite, userId, on
       return;
     }
     setLoading(true);
-    void local<RunnerProbe[]>('/probe')
+    void requestLocalRunner<RunnerProbe[]>('/probe')
       .then((value) => {
         if (live) setProbes(value);
       })
@@ -103,10 +124,9 @@ export default function AgentRunPanel({ task, claims, runs, canWrite, userId, on
     const signature = JSON.stringify(body);
     if (pending.current && pending.current.signature !== signature)
       throw new Error('上次启动尚未确认，请先查询运行记录后重试');
-    pending.current ??= { signature, key: crypto.randomUUID() };
-    const result = await local<{ run: TaskRun }>('/start', {
-      ...body,
-      idempotencyKey: pending.current.key,
+    const result = await requestLocalRunner<{ run: TaskRun }>('/start', () => {
+      pending.current ??= { signature, key: crypto.randomUUID() };
+      return { ...body, idempotencyKey: pending.current.key };
     });
     pending.current = null;
     setObserved((value) => ({ ...value, [result.run.id]: result.run }));
@@ -163,7 +183,7 @@ export default function AgentRunPanel({ task, claims, runs, canWrite, userId, on
             disabled={busy}
             onClick={() =>
               void perform(async () => {
-                setProbes(await local<RunnerProbe[]>('/probe'));
+                setProbes(await requestLocalRunner<RunnerProbe[]>('/probe'));
               })
             }
           >
@@ -199,9 +219,10 @@ export default function AgentRunPanel({ task, claims, runs, canWrite, userId, on
                 disabled={busy}
                 onClick={() =>
                   void perform(async () => {
-                    const result = await local<{ run: TaskRun; synchronized: boolean }>(
-                      `/${task.id}/${run.id}`,
-                    );
+                    const result = await requestLocalRunner<{
+                      run: TaskRun;
+                      synchronized: boolean;
+                    }>(`/${task.id}/${run.id}`);
                     setObserved((value) => ({ ...value, [run.id]: result.run }));
                     pending.current = null;
                     if (!result.synchronized)
@@ -218,7 +239,10 @@ export default function AgentRunPanel({ task, claims, runs, canWrite, userId, on
                 disabled={busy}
                 onClick={() =>
                   void perform(async () => {
-                    const result = await local<{ run: TaskRun }>(`/${task.id}/${run.id}/sync`, {});
+                    const result = await requestLocalRunner<{ run: TaskRun }>(
+                      `/${task.id}/${run.id}/sync`,
+                      {},
+                    );
                     setObserved((value) => ({ ...value, [run.id]: result.run }));
                   })
                 }
@@ -227,7 +251,7 @@ export default function AgentRunPanel({ task, claims, runs, canWrite, userId, on
               </button>
             )}
             {available &&
-              canWrite &&
+              canControlExistingRuns &&
               run.actorId === userId &&
               ['starting', 'running', 'cancel_requested'].includes(run.phase) && (
                 <button
@@ -237,7 +261,7 @@ export default function AgentRunPanel({ task, claims, runs, canWrite, userId, on
                   }
                   onClick={() =>
                     void perform(async () => {
-                      const result = await local<{ run: TaskRun }>(
+                      const result = await requestLocalRunner<{ run: TaskRun }>(
                         `/${task.id}/${run.id}/cancel`,
                         {},
                       );

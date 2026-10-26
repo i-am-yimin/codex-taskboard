@@ -1,7 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Acceptance inspects HTTP JSON envelopes. */
-import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { isAbsolute, relative, resolve } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { createServer, request as proxyRequest, type Server } from 'node:http';
 import { chromium, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { hash } from '@node-rs/argon2';
 import pg from 'pg';
@@ -9,11 +12,92 @@ import { createDatabase } from '../apps/server/src/db';
 import { migrate } from '../apps/server/src/migrate';
 import { buildApp } from '../apps/server/src/app';
 
-// Independent acceptance: actual production page, HTTP, accounts and PostgreSQL. No route mocks.
+// Core collaboration uses production HTML, HTTP and PostgreSQL with no route mocks.
+// The separate compatibility phase replaces only health to simulate legacy capability absence.
+function argument(name: string): string {
+  const index = process.argv.indexOf(name);
+  const value = index < 0 ? undefined : process.argv[index + 1];
+  if (!value || value.startsWith('--'))
+    throw new Error(`Required: ${name}; acceptance never defaults to an earlier candidate`);
+  return value;
+}
+const candidate = argument('--candidate');
+const evidence = resolve(argument('--artifacts'));
+const webSnapshot = resolve(argument('--web-snapshot'));
+const artifactRoot = resolve('.artifacts');
+const legacyEvidence = resolve('.artifacts/collaborative-workflows/acceptance');
+function within(path: string, root: string): boolean {
+  const child = relative(root, path);
+  return child === '' || (!child.startsWith('..') && !isAbsolute(child));
+}
+if (!within(evidence, artifactRoot) || evidence === artifactRoot)
+  throw new Error('Evidence must be a new child directory inside ignored .artifacts');
+if (within(evidence, legacyEvidence) || within(webSnapshot, legacyEvidence))
+  throw new Error('Previous acceptance evidence and its frontend snapshot are immutable');
+if (within(webSnapshot, evidence))
+  throw new Error('Snapshot must already exist outside the new evidence directory');
+const packages = {
+  root: JSON.parse(await readFile('package.json', 'utf8')).version,
+  server: JSON.parse(await readFile('apps/server/package.json', 'utf8')).version,
+  desktop: JSON.parse(await readFile('apps/desktop/package.json', 'utf8')).version,
+};
+if (candidate !== packages.root)
+  throw new Error(`Candidate ${candidate} does not match current root package ${packages.root}`);
+await stat(resolve(webSnapshot, 'index.html'));
+// Nonrecursive creation refuses existing output, including a previous failed attempt.
+await mkdir(evidence);
+const git = async (...args: string[]) =>
+  (await promisify(execFile)('git', args, { maxBuffer: 20 * 1024 * 1024 })).stdout.trim();
+const sha256 = (bytes: string | Buffer) => createHash('sha256').update(bytes).digest('hex');
+async function manifest(directory: string): Promise<{ path: string; sha256: string }[]> {
+  const files: { path: string; sha256: string }[] = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = resolve(directory, entry.name);
+    if (entry.isSymbolicLink()) throw new Error('Snapshot must not contain symbolic links');
+    if (entry.isDirectory()) files.push(...(await manifest(path)));
+    else
+      files.push({
+        path: relative(webSnapshot, path).replaceAll('\\', '/'),
+        sha256: sha256(await readFile(path)),
+      });
+  }
+  return files.sort((a, b) => a.path.localeCompare(b.path));
+}
+const source = {
+  head: await git('rev-parse', 'HEAD'),
+  branch: await git('branch', '--show-current'),
+  status: await git('status', '--short'),
+  trackedDiffSha256: sha256(await git('diff', 'HEAD', '--')),
+  files: await Promise.all(
+    (await git('ls-files', '--cached', '--others', '--exclude-standard', '-z'))
+      .split('\0')
+      .filter(Boolean)
+      .map(async (path) => ({
+        path,
+        sha256: await readFile(path).then(sha256, (error: NodeJS.ErrnoException) => {
+          if (error.code === 'ENOENT') return null;
+          throw error;
+        }),
+      })),
+  ),
+};
+await writeFile(
+  resolve(evidence, 'manifest.json'),
+  JSON.stringify(
+    {
+      candidate,
+      recordedAt: new Date().toISOString(),
+      webSnapshot,
+      source,
+      packages,
+      files: await manifest(webSnapshot),
+    },
+    null,
+    2,
+  ),
+);
 const parent = new URL(process.env.TEST_DATABASE_URL ?? '');
 if (!parent.pathname.endsWith('_test')) throw new Error('Requires independent *_test database');
-const evidence = resolve('.artifacts/collaborative-workflows/acceptance');
-await mkdir(evidence, { recursive: true });
 const control = new pg.Client({ connectionString: parent.toString() });
 await control.connect();
 const name = `collaboration_acceptance_${randomUUID().replaceAll('-', '')}_test`;
@@ -21,9 +105,10 @@ await control.query(`CREATE DATABASE "${name}"`);
 const isolated = new URL(parent);
 isolated.pathname = `/${name}`;
 const db = createDatabase(isolated.toString());
-process.env.WEB_ROOT = resolve(evidence, 'web');
+process.env.WEB_ROOT = webSnapshot;
 const app = buildApp({ db, sessionSecret: randomBytes(32).toString('hex') });
 let browser: Browser | undefined;
+let compatibilityProxy: Server | undefined;
 let origin = '';
 let space = '';
 const observations: string[] = [];
@@ -72,10 +157,8 @@ async function submit(actor: Actor, id: string, integration = false) {
   await modal
     .getByLabel('验证记录', { exact: true })
     .fill('Actual HTTP / PostgreSQL / production-browser acceptance');
-  await modal.getByLabel('工作分支', { exact: true }).fill('codex/collaborative-agent-workflows');
-  await modal
-    .getByLabel('提交 SHA', { exact: true })
-    .fill('dde5d2eabf77adf1a4347525d85046c1f44b0a4b');
+  await modal.getByLabel('工作分支', { exact: true }).fill(source.branch);
+  await modal.getByLabel('提交 SHA', { exact: true }).fill(source.head);
   await modal
     .getByLabel('已知限制', { exact: true })
     .fill(
@@ -149,6 +232,12 @@ try {
     });
   }
   const [owner, a, b, reviewer, viewer, outsider] = actors;
+  const health = await ok(owner, 'GET', '/health');
+  expect(health.serverVersion).toBe(packages.server);
+  expect(health.apiVersion).toBe(1);
+  expect(health.capabilities?.collaborativeWorkflows).toBe(1);
+  expect(health.migrationRequired).toBe(false);
+  await writeFile(resolve(evidence, 'server-health.json'), JSON.stringify(health, null, 2));
   space = (await ok(owner, 'POST', '/spaces', { name: 'Independent collaboration acceptance' })).id;
   for (const person of [a, b, reviewer, viewer])
     await db.query('INSERT INTO space_members(space_id,user_id,role) VALUES($1,$2,$3)', [
@@ -398,6 +487,135 @@ try {
   observations.push(
     'All six material kinds persisted explicit scope/limitations; update and soft-delete retained records; javascript evidence URL rejected. No public PR was fabricated.',
   );
+  const motionTask = await ok(owner, 'POST', `/spaces/${space}/tasks`, {
+    title: 'Independent motion and epoch draft',
+    statusId: todo,
+    assigneeId: owner.id,
+    reviewerId: reviewer.id,
+  });
+  for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+    await owner.page.emulateMedia({ reducedMotion });
+    await open(owner, motionTask.id);
+    const draft = `Candidate ${candidate} ${reducedMotion} epoch draft`;
+    await owner.page.getByRole('textbox', { name: '评论', exact: true }).fill(draft);
+    // Synchronous dispatch deliberately exercises the close/reopen race in the real UI.
+    await owner.page.evaluate((id) => {
+      document.querySelector<HTMLButtonElement>('.drawer button[title="关闭"]')!.click();
+      document.querySelector<HTMLButtonElement>(`[data-motion-id="${id}"]`)!.click();
+    }, motionTask.id);
+    await expect(owner.page.getByRole('dialog', { name: '任务详情', exact: true })).toHaveAttribute(
+      'data-state',
+      'open',
+    );
+    await owner.page.waitForTimeout(350);
+    await expect(owner.page.getByRole('textbox', { name: '评论', exact: true })).toHaveValue(draft);
+    await owner.page.keyboard.press('Escape');
+    await expect(
+      owner.page.getByRole('dialog', { name: '任务详情', exact: true }),
+    ).not.toBeVisible();
+    const card = owner.page.locator(`[data-motion-id="${motionTask.id}"]`);
+    await card.focus();
+    await owner.page.keyboard.press('Space');
+    await expect(owner.page.locator('.task-drag-overlay')).toBeVisible();
+    await owner.page.keyboard.press('ArrowRight');
+    await owner.page.keyboard.press('Escape');
+    await expect(owner.page.locator('.task-drag-overlay')).not.toBeVisible();
+    await expect(card).toBeFocused();
+    await owner.page.screenshot({
+      path: resolve(evidence, `keyboard-motion-${reducedMotion}.png`),
+    });
+  }
+  observations.push(
+    'New production frontend: same-task close/reopen interrupts stale exit without losing epoch draft in both motion preferences; keyboard drag cancel removes overlay and restores focus.',
+  );
+  // Only health is synthetic. HTML, task reads and writes still reach the real server/PG.
+  let legacyHealth = false;
+  let forwardedMutations = 0;
+  compatibilityProxy = createServer((incoming, outgoing) => {
+    if (incoming.url === '/api/v1/health' && legacyHealth) {
+      outgoing.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      outgoing.end(JSON.stringify({ data: { status: 'ok', database: 'ok' } }));
+      return;
+    }
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(incoming.method ?? 'GET')) forwardedMutations++;
+    const upstream = proxyRequest(
+      new URL(incoming.url ?? '/', origin),
+      {
+        method: incoming.method,
+        headers: incoming.headers,
+      },
+      (response) => {
+        outgoing.writeHead(response.statusCode ?? 502, response.headers);
+        response.pipe(outgoing);
+      },
+    );
+    upstream.on('error', () => {
+      if (!outgoing.headersSent) outgoing.writeHead(502);
+      outgoing.end();
+    });
+    outgoing.on('close', () => upstream.destroy());
+    incoming.pipe(upstream);
+  });
+  await new Promise<void>((resolve) => compatibilityProxy!.listen(0, '127.0.0.1', resolve));
+  const proxyPort = (compatibilityProxy.address() as { port: number }).port;
+  const compatibilityUrl = `http://127.0.0.1:${proxyPort}/?space=${space}&task=${motionTask.id}`;
+  await owner.page.goto(compatibilityUrl);
+  await expect(owner.page.getByRole('button', { name: '保存任务', exact: true })).toBeEnabled();
+  const compatibilityDraft = `Candidate ${candidate} compatibility recovery draft`;
+  await owner.page.getByRole('textbox', { name: '评论', exact: true }).fill(compatibilityDraft);
+  legacyHealth = true;
+  forwardedMutations = 0;
+  await owner.page.reload();
+  const compatibilityNotice = owner.page.getByRole('region', { name: '服务器兼容性' });
+  await expect(compatibilityNotice).toContainText('服务器需要升级');
+  await expect(owner.page.getByRole('button', { name: '保存任务', exact: true })).toBeDisabled();
+  await expect(owner.page.getByRole('button', { name: '发送', exact: true })).toBeDisabled();
+  await expect(owner.page.getByRole('textbox', { name: '评论', exact: true })).toHaveValue(
+    compatibilityDraft,
+  );
+  expect(forwardedMutations).toBe(0);
+  await owner.page.screenshot({ path: resolve(evidence, 'legacy-health-readonly.png') });
+  await owner.context.setOffline(true);
+  await owner.page.evaluate(() => dispatchEvent(new Event('offline')));
+  await expect(owner.page.getByRole('button', { name: '保存任务', exact: true })).toBeDisabled();
+  await owner.context.setOffline(false);
+  await owner.page.evaluate(() => dispatchEvent(new Event('online')));
+  await expect(compatibilityNotice).toContainText('服务器需要升级');
+  legacyHealth = false;
+  await owner.page.keyboard.press('Escape');
+  await expect(owner.page.getByRole('dialog', { name: '任务详情', exact: true })).not.toBeVisible();
+  await compatibilityNotice.getByRole('button', { name: '重新检查服务器', exact: true }).click();
+  await expect(compatibilityNotice).not.toBeVisible();
+  await owner.page.locator(`[data-motion-id="${motionTask.id}"]`).click();
+  await expect(owner.page.getByRole('dialog', { name: '任务详情', exact: true })).toBeVisible();
+  await expect(owner.page.getByRole('button', { name: '发送', exact: true })).toBeEnabled();
+  await expect(owner.page.getByRole('textbox', { name: '评论', exact: true })).toHaveValue(
+    compatibilityDraft,
+  );
+  await owner.page.getByRole('button', { name: '发送', exact: true }).click();
+  await expect
+    .poll(async () =>
+      (await ok(owner, 'GET', `/tasks/${motionTask.id}/detail`)).activities.some(
+        (item: any) =>
+          item.kind === 'comment.added' &&
+          item.body === compatibilityDraft &&
+          item.actorId === owner.id &&
+          item.taskId === motionTask.id,
+      ),
+    )
+    .toBe(true);
+  const persistedCompatibilityComments = await db.query(
+    'SELECT id, task_id, actor_id, body FROM comments WHERE task_id=$1 AND actor_id=$2 AND body=$3',
+    [motionTask.id, owner.id, compatibilityDraft],
+  );
+  expect(persistedCompatibilityComments.rows).toHaveLength(1);
+  await writeFile(
+    resolve(evidence, 'compatibility-persisted-comment.json'),
+    JSON.stringify(persistedCompatibilityComments.rows, null, 2),
+  );
+  observations.push(
+    'Legacy capability RESPONSE SIMULATION ONLY: health-only loopback proxy retained real production HTML and new PostgreSQL API; old health forced readonly/no writes, draft survived reload/offline/reconnect, restored new health allowed UI comment persisted to PG. Not evidence of running an old server binary.',
+  );
   for (const person of [viewer, outsider]) {
     const denied = await call(
       person,
@@ -432,6 +650,9 @@ try {
     JSON.stringify({ database: name, observations }, null, 2),
   );
   await browser?.close();
+  compatibilityProxy?.closeAllConnections();
+  if (compatibilityProxy)
+    await new Promise<void>((resolve) => compatibilityProxy!.close(() => resolve()));
   await app.close();
   await db.end();
   await control.query(`DROP DATABASE "${name}" WITH (FORCE)`);

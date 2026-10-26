@@ -1,3 +1,9 @@
+import {
+  assessServerCompatibility,
+  requiresCollaborationContract,
+  MINIMUM_COLLABORATION_SERVER,
+  type ServerCompatibility,
+} from '@taskboard/core';
 import type { ApiFault, Board, Space, Task, TaskDetail, User } from './types';
 import { companionKey, companionOrigin, hasLocalCompanion } from './companionBridge';
 export {
@@ -23,7 +29,7 @@ export class ApiError extends Error implements ApiFault {
 export function idempotencyKey() {
   return crypto.randomUUID();
 }
-export async function request<T>(
+async function sendRequest<T>(
   path: string,
   init: { method?: string; body?: unknown; version?: number; idempotencyKey?: string } = {},
 ): Promise<T> {
@@ -51,6 +57,7 @@ export async function request<T>(
   try {
     response = await fetch(`${desktop ? `${companionOrigin()}/api/v1` : base}${path}`, {
       method: init.method ?? 'GET',
+      cache: path.split('?')[0] === '/health' ? 'no-store' : 'default',
       headers,
       credentials: desktop ? 'omit' : 'include',
       signal: AbortSignal.timeout(12000),
@@ -72,14 +79,65 @@ export async function request<T>(
       err.details,
     );
   }
-  if (desktop && payload.meta?.source === 'cache' && payload.meta?.offline === true)
+  if (
+    (desktop || path.split('?')[0] === '/health') &&
+    payload.meta?.source === 'cache' &&
+    payload.meta?.offline === true
+  )
     throw new ApiError('OFFLINE', '桌面伴随服务正在使用离线缓存', 0);
   if (writeSignature) uncertainWriteKeys.delete(writeSignature);
   return payload.data as T;
 }
+let compatibilityProbe: Promise<ServerCompatibility> | null = null;
+let compatibilityEpoch = 0;
+/** No previous success authorizes a new write: each wave probes the current server afresh. */
+export function resetServerCompatibility(): void {
+  compatibilityEpoch++;
+  compatibilityProbe = null;
+}
+export function checkServerCompatibility(): Promise<ServerCompatibility> {
+  if (compatibilityProbe) return compatibilityProbe;
+  const epoch = compatibilityEpoch;
+  const operation = sendRequest<unknown>('/health')
+    .catch((error) => {
+      if (error instanceof ApiError && error.status === 404) return {};
+      throw error;
+    })
+    .then((value) => {
+      if (epoch !== compatibilityEpoch)
+        throw new ApiError('SERVER_CHANGED', '服务器或账号已切换，请重新检查兼容性', 409);
+      return assessServerCompatibility(value);
+    });
+  compatibilityProbe = operation;
+  void operation
+    .finally(() => {
+      if (compatibilityProbe === operation) compatibilityProbe = null;
+    })
+    .catch(() => undefined);
+  return operation;
+}
+export async function ensureCollaborationServer(): Promise<void> {
+  const compatibility = await checkServerCompatibility();
+  if (compatibility.status !== 'compatible')
+    throw new ApiError(
+      'SERVER_UPGRADE_REQUIRED',
+      `服务器需要升级：${compatibility.reason}请使用配套 ${MINIMUM_COLLABORATION_SERVER} 或支持相同协作协议的服务器，并完成数据库迁移。现有看板仅供浏览，草稿保留。`,
+      409,
+      compatibility,
+    );
+}
+export const needsCollaborationContract = requiresCollaborationContract;
+export async function request<T>(
+  path: string,
+  init: { method?: string; body?: unknown; version?: number; idempotencyKey?: string } = {},
+): Promise<T> {
+  if (needsCollaborationContract(path, init.method)) await ensureCollaborationServer();
+  return sendRequest<T>(path, init);
+}
 export const api = {
   me: () => request<User>('/me'),
   login: async (body: { email: string; password: string; deviceName: string }) => {
+    resetServerCompatibility();
     if (!hasLocalCompanion())
       return request<{ user: User }>('/auth/login', { method: 'POST', body });
     const key = await companionKey();
@@ -98,6 +156,7 @@ export const api = {
     return payload.data;
   },
   logout: async () => {
+    resetServerCompatibility();
     if (!hasLocalCompanion()) return request<void>('/auth/logout', { method: 'POST' });
     const key = await companionKey();
     await fetch(`${companionOrigin()}/v1/browser/logout`, {
@@ -210,6 +269,7 @@ export function readCachedBoard(accountId: string, spaceId: string): Board | nul
   }
 }
 export function clearAccountCache(accountId: string) {
+  resetServerCompatibility();
   uncertainWriteKeys.clear();
   Object.keys(localStorage)
     .filter(

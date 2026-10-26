@@ -1,21 +1,22 @@
 :root {
   --motion-feedback: 120ms;
   --motion-enter: 260ms;
-  --motion-exit: 160ms;
+  --motion-exit: 180ms;
   --motion-settle: cubic-bezier(0.16, 1, 0.3, 1);
 }
 /* Positioning belongs to dnd-kit; material and destination cues belong here. */
 .task-card[data-dragging='true'],
 .task-card.dragging {
-  opacity: 0.38;
+  opacity: 0.2;
   outline: 2px dashed var(--accent);
   outline-offset: -2px;
 }
-.task-drag-overlay {
+:root .task-card.task-drag-overlay {
+  background: var(--glass-solid, var(--canvas));
   cursor: grabbing;
   pointer-events: none;
-  rotate: -1.2deg;
-  scale: 1.025;
+  rotate: -0.6deg;
+  scale: 1.015;
   box-shadow: 0 16px 32px color-mix(in srgb, var(--ink) 22%, transparent);
   animation: relay-pickup 140ms var(--motion-settle);
 }
@@ -23,9 +24,7 @@
 .column.is-over {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
-}
-.task-card[data-motion-state='settled'] {
-  animation: relay-arrive 300ms var(--motion-settle);
+  border-radius: 16px;
 }
 .task-card[data-motion-state='updated'] {
   animation: relay-update 900ms ease-out;
@@ -46,7 +45,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 24px;
+  min-height: 28px;
+  margin-block: 8px;
+  line-height: 20px;
 }
 .motion-feedback[data-request-state='pending'] svg {
   animation: relay-pending 900ms linear infinite;
@@ -65,18 +66,8 @@
     scale: 1;
   }
   to {
-    rotate: -1.2deg;
-    scale: 1.025;
-  }
-}
-@keyframes relay-arrive {
-  from {
-    outline: 2px solid var(--accent);
-    outline-offset: 3px;
-  }
-  to {
-    outline: 2px solid transparent;
-    outline-offset: 0;
+    rotate: -0.6deg;
+    scale: 1.015;
   }
 }
 @keyframes relay-update {
@@ -96,8 +87,8 @@
 }
 @keyframes relay-drawer-out {
   from {
-    transform: translateX(0);
-    opacity: 1;
+    transform: var(--drawer-exit-transform, translateX(0));
+    opacity: var(--drawer-exit-opacity, 1);
   }
   to {
     transform: translateX(20px);
@@ -134,13 +125,13 @@
   }
 }
 @media (max-width: 760px) {
-  .task-drag-overlay {
+  :root .task-card.task-drag-overlay {
     rotate: 0deg;
     scale: 1.015;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .task-drag-overlay {
+  :root .task-card.task-drag-overlay {
     animation: none;
     rotate: none;
     scale: none;
@@ -154,4 +145,20 @@
   .motion-feedback[data-request-state='pending'] svg {
     animation: none;
   }
+}
+
+.column[data-drop-target='true'] .column-head {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+/* Screen readers get confirmation without changing the card geometry. */
+.task-card .card-update-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

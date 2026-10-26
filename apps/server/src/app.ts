@@ -1,3 +1,4 @@
+import serverManifest from '../package.json' with { type: 'json' };
 /* eslint-disable @typescript-eslint/no-explicit-any -- PostgreSQL rows are dynamically shaped at the API boundary. */
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
@@ -11,6 +12,8 @@ import { hash, verify, Algorithm } from '@node-rs/argon2';
 import { z } from 'zod';
 import {
   BoardError,
+  COLLABORATION_PROTOCOL,
+  COLLABORATION_MIGRATIONS,
   requireRole,
   roles,
   spaceSchema,
@@ -498,7 +501,27 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   });
   app.get('/api/v1/health', async (_request, reply) => {
     await db.query('SELECT 1');
-    return ok(reply, { status: 'ok', database: 'ok' });
+    const migrations = await db
+      .query<{ id: string }>('SELECT id FROM schema_migrations WHERE id=ANY($1::text[])', [
+        [...COLLABORATION_MIGRATIONS],
+      ])
+      .catch((error: unknown) => {
+        if (error && typeof error === 'object' && 'code' in error && error.code === '42P01')
+          return { rows: [] };
+        throw error;
+      });
+    const ready = COLLABORATION_MIGRATIONS.every((id) =>
+      migrations.rows.some((row) => row.id === id),
+    );
+    reply.header('cache-control', 'no-store');
+    return ok(reply, {
+      status: 'ok',
+      database: 'ok',
+      serverVersion: serverManifest.version,
+      apiVersion: 1,
+      capabilities: { collaborativeWorkflows: ready ? COLLABORATION_PROTOCOL : 0 },
+      migrationRequired: !ready,
+    });
   });
   app.get('/api/v1/openapi.json', async () => openapiDocument);
   app.post('/api/v1/auth/login', async (request, reply) => {

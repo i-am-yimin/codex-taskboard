@@ -142,8 +142,23 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
   // DPAPI protects persistence; retaining the verified values only in this
   // process avoids a PowerShell DPAPI round trip on every stream-triggered UI
   // refresh. They are cleared with the encrypted copies on revocation.
-  let agentToken = await secret.read();
-  let browserSession = await browserSecret.read();
+  const cliKeyStore = new SecretStore(join(directory, 'cli-key.dpapi'));
+  // Key creation is independent too: a missing CLI key must not wait behind
+  // other decryptions and add a second serial helper window to startup.
+  const cliKeyReady = async () => {
+    const stored = await cliKeyStore.read();
+    if (stored !== undefined) return stored;
+    const key = randomBytes(32).toString('base64url');
+    await cliKeyStore.write(key);
+    return key;
+  };
+  const [storedAgentToken, storedBrowserSession, cliKey] = await Promise.all([
+    secret.read(),
+    browserSecret.read(),
+    cliKeyReady(),
+  ]);
+  let agentToken = storedAgentToken;
+  let browserSession = storedBrowserSession;
   let remote = new RemoteTransport(upstream, async () => agentToken);
   let browserRemote = new RemoteTransport(
     upstream,
@@ -155,9 +170,6 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
   // separate DPAPI key and can never call browser-session routes.
   const clientKey =
     options.clientKey ?? process.env.TASKBOARD_CLIENT_KEY ?? randomBytes(32).toString('base64url');
-  const cliKeyStore = new SecretStore(join(directory, 'cli-key.dpapi'));
-  const cliKey = (await cliKeyStore.read()) ?? randomBytes(32).toString('base64url');
-  if (!(await cliKeyStore.read())) await cliKeyStore.write(cliKey);
   // Only a launcher-owned session can supply an adapter. Environment variables
   // are diagnostics, never proof that an arbitrary Codex process belongs to us.
   let adapter = options.adapter;
@@ -272,7 +284,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     (repository) => store.localPath(repository),
     async (run) => {
       const binding = runTransports.get(run.id);
-      if (!binding || !isCurrentSession(binding.session)) return;
+      if (closing || !binding || !isCurrentSession(binding.session)) return;
       const body = {
         phase: run.phase,
         ...(run.externalSessionId ? { externalSessionId: run.externalSessionId } : {}),
@@ -295,7 +307,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
           version: queued.version,
           idempotencyKey: queued.idempotencyKey,
         });
-        if (isCurrentSession(binding.session)) await store.removeOutbox(queued.id);
+        if (!closing && isCurrentSession(binding.session)) await store.removeOutbox(queued.id);
       } catch {
         /* Remains an explicit unsynchronized report, never a second process. */
       }
@@ -752,21 +764,45 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
       return { data: { opened: false, fallback: '无法验证 Codex 会话路由。' } };
     }
   });
-  const proxy = async (request: import('fastify').FastifyRequest) => {
+  const proxy = async (
+    request: import('fastify').FastifyRequest,
+    reply: import('fastify').FastifyReply,
+  ) => {
     const suffix = (request.params as { '*': string })['*'];
     const query = request.raw.url?.includes('?')
       ? request.raw.url.slice(request.raw.url.indexOf('?'))
       : '';
     const path = `/${suffix}${query}`;
     const pathOnly = path.split('?', 1)[0];
+    const remoteHealthRead = request.method === 'GET' && path === '/health';
+    if (remoteHealthRead) reply.header('cache-control', 'no-store');
+    const browserRequest = request.routeOptions.url === '/api/v1/*';
+    const personalId =
+      '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
+    const personalList =
+      request.method === 'GET' && ['/me/tasks', '/me/notifications'].includes(pathOnly);
+    const personalExact =
+      path === pathOnly &&
+      ((path === '/me/saved-filters' && ['GET', 'POST'].includes(request.method)) ||
+        (new RegExp(`^/me/saved-filters/${personalId}$`).test(path) &&
+          ['PATCH', 'DELETE'].includes(request.method)) ||
+        (new RegExp(
+          `^/me/notifications/${personalId}/(read|handle|snooze|delivery|delivered)$`,
+        ).test(path) &&
+          request.method === 'POST') ||
+        (path === '/me/notification-preferences' && request.method === 'GET') ||
+        (new RegExp(`^/me/notification-preferences/${personalId}$`).test(path) &&
+          request.method === 'PUT'));
+    const personalPath = browserRequest && (personalList || personalExact);
     const appearancePath = /^\/me\/(appearance|themes(?:\/[a-f0-9]{64})?)$/.test(pathOnly);
     if (!(
+      remoteHealthRead ||
+      personalPath ||
       /^\/me$/.test(pathOnly) ||
       appearancePath ||
       /^\/(spaces|tasks|statuses|devices)(?:\/|$)/.test(pathOnly)
     ))
       throw new CompanionError('PATH_DENIED', '不允许的远程 API 路径', 403);
-    const browserRequest = request.routeOptions.url === '/api/v1/*';
     if (appearancePath && !browserRequest)
       throw new CompanionError('PATH_DENIED', '主题设置仅供用户界面使用', 403);
     const method = request.method;
@@ -795,13 +831,13 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
       });
       if (!isCurrentSession(requestSession))
         throw new CompanionError('AUTH_SUPERSEDED', '认证状态已变更，请重试请求', 409);
-      if (method === 'GET') await store.cachePut(cacheKey(path), data);
+      if (method === 'GET' && !remoteHealthRead) await store.cachePut(cacheKey(path), data);
       return { data, meta: { source: 'remote' } };
     } catch (error) {
       if (!isCurrentSession(requestSession))
         throw new CompanionError('AUTH_SUPERSEDED', '认证状态已变更，请重试请求', 409);
       if (error instanceof CompanionError && error.code === 'OFFLINE') {
-        if (method === 'GET') {
+        if (method === 'GET' && !remoteHealthRead) {
           const cached = store.cacheGet<unknown>(cacheKey(path));
           if (cached !== undefined)
             return { data: cached, meta: { source: 'cache', offline: true } };
@@ -1181,6 +1217,9 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
       liveStreams.forEach((close) => close());
       try {
         await runners.shutdown();
+        // Reports already queued before closing must finish their local writes;
+        // late network responses may not mutate this retired store afterwards.
+        await store.save();
         await adapter?.dispose();
       } finally {
         await app.close();
@@ -1217,7 +1256,9 @@ if (
     .then((runtime) => {
       if (process.env.TASKBOARD_RUNTIME_COMPANION === '1') {
         watchDesktopParent(process.env.TASKBOARD_DESKTOP_PARENT_PID, () => {
-          const deadline = setTimeout(() => process.exit(1), 5000);
+          // The owned-run supervisor has a 35s total cleanup budget. Do not
+          // terminate it before it can observe its own CLI process-tree exit.
+          const deadline = setTimeout(() => process.exit(1), 40000);
           deadline.unref();
           void runtime.stop().then(
             () => process.exit(0),

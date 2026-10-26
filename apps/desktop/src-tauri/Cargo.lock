@@ -473,7 +473,7 @@ dependencies = [
 
 [[package]]
 name = "codex-taskboard-desktop"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "rand 0.8.8",
  "serde_json",

@@ -4,12 +4,204 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createCompanion } from '../apps/companion/src/main.ts';
 import { SecretStore } from '../apps/companion/src/secret.ts';
+import { compatibleServerHealth } from './server-compatibility-fixture.ts';
 
 describe('companion loopback boundary', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+  });
+  it('proxies only fresh authenticated health reads on both capability surfaces', async () => {
+    const calls: Request[] = [];
+    let offline = false;
+    vi.spyOn(SecretStore.prototype, 'read').mockResolvedValue(undefined);
+    let cliKey = '';
+    vi.spyOn(SecretStore.prototype, 'write').mockImplementation(async (value) => {
+      if (!cliKey) cliKey = value;
+    });
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      calls.push(request);
+      if (offline) throw new TypeError('synthetic offline');
+      return new Response(
+        JSON.stringify({
+          data: request.url.endsWith('/auth/login')
+            ? {
+                user: { id: '00000000-0000-4000-8000-000000000001' },
+                deviceToken: 'synthetic-agent-token',
+              }
+            : compatibleServerHealth,
+        }),
+        {
+          headers: {
+            'content-type': 'application/json',
+            'set-cookie': 'tb_session=synthetic-browser; Path=/; HttpOnly',
+          },
+        },
+      );
+    });
+    const runtime = await createCompanion({
+      dataDirectory: await mkdtemp(join(tmpdir(), 'taskboard-health-test-')),
+      upstream: 'http://127.0.0.1:59990',
+      port: 0,
+      allowedOrigins: new Set(['http://trusted.test']),
+    });
+    try {
+      expect(cliKey).not.toBe(runtime.clientKey);
+      for (const [prefix, key, login] of [
+        ['/v1/api', cliKey, '/v1/login'],
+        ['/api/v1', runtime.clientKey, '/v1/browser/login'],
+      ]) {
+        const headers = { 'x-taskboard-companion-key': key };
+        expect(
+          (await runtime.app.inject({ method: 'GET', url: `${prefix}/health` })).statusCode,
+        ).toBe(401);
+        expect(
+          (
+            await runtime.app.inject({
+              method: 'GET',
+              url: `${prefix}/health`,
+              headers: { ...headers, origin: 'http://untrusted.test' },
+            })
+          ).statusCode,
+        ).toBe(403);
+        expect(
+          (await runtime.app.inject({ method: 'GET', url: `${prefix}/health`, headers }))
+            .statusCode,
+        ).toBe(401);
+        expect(
+          (
+            await runtime.app.inject({
+              method: 'POST',
+              url: login,
+              headers,
+              payload: {
+                email: 'synthetic@example.test',
+                password: 'synthetic-long-password',
+                deviceName: 'health-test',
+              },
+            })
+          ).statusCode,
+        ).toBe(200);
+        const health = await runtime.app.inject({
+          method: 'GET',
+          url: `${prefix}/health`,
+          headers,
+        });
+        expect(health.statusCode).toBe(200);
+        expect(health.headers['cache-control']).toBe('no-store');
+        expect(health.json()).toEqual({ data: compatibleServerHealth, meta: { source: 'remote' } });
+        expect(calls.at(-1)?.url).toBe('http://127.0.0.1:59990/api/v1/health');
+        expect(calls.at(-1)?.headers.get(prefix === '/v1/api' ? 'authorization' : 'cookie')).toBe(
+          prefix === '/v1/api' ? 'Bearer synthetic-agent-token' : 'tb_session=synthetic-browser',
+        );
+        const beforeDenied = calls.length;
+        for (const method of ['POST', 'PATCH', 'DELETE'] as const)
+          expect(
+            (await runtime.app.inject({ method, url: `${prefix}/health`, headers, payload: {} }))
+              .statusCode,
+          ).toBe(403);
+        for (const path of [
+          '/health/child',
+          '/health?extra=1',
+          '/admin',
+          '/me/notification-events',
+        ])
+          expect(
+            (await runtime.app.inject({ method: 'GET', url: `${prefix}${path}`, headers }))
+              .statusCode,
+          ).toBe(403);
+        expect(calls).toHaveLength(beforeDenied);
+      }
+      expect(
+        (
+          await runtime.app.inject({
+            method: 'GET',
+            url: '/api/v1/health',
+            headers: { 'x-taskboard-companion-key': cliKey },
+          })
+        ).statusCode,
+      ).toBe(403);
+      const personalHeaders = {
+        'x-taskboard-companion-key': runtime.clientKey,
+        'idempotency-key': 'synthetic-personal-write',
+        'if-match': '1',
+      };
+      const id = '00000000-0000-4000-8000-000000000001';
+      for (const [method, path] of [
+        ['GET', '/me/tasks?relation=responsible'],
+        ['GET', '/me/notifications?unread=true'],
+        ['GET', '/me/saved-filters'],
+        ['POST', '/me/saved-filters'],
+        ['PATCH', `/me/saved-filters/${id}`],
+        ['DELETE', `/me/saved-filters/${id}`],
+        ...['read', 'handle', 'snooze', 'delivery', 'delivered'].map((action) => [
+          'POST',
+          `/me/notifications/${id}/${action}`,
+        ]),
+        ['GET', '/me/notification-preferences'],
+        ['PUT', `/me/notification-preferences/${id}`],
+      ] as ['GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT', string][]) {
+        const response = await runtime.app.inject({
+          method,
+          url: `/api/v1${path}`,
+          headers: personalHeaders,
+        });
+        expect(response.statusCode, `${method} ${path}`).toBe(200);
+        expect(calls.at(-1)?.headers.get('cookie')).toBe('tb_session=synthetic-browser');
+      }
+      const beforePersonalDenied = calls.length;
+      for (const path of [
+        '/me/tasks',
+        '/me/saved-filters',
+        '/me/notifications',
+        '/me/notification-preferences',
+      ]) {
+        expect(
+          (
+            await runtime.app.inject({
+              method: 'GET',
+              url: `/v1/api${path}`,
+              headers: { 'x-taskboard-companion-key': cliKey },
+            })
+          ).statusCode,
+        ).toBe(403);
+      }
+      for (const [method, path] of [
+        ['POST', '/me/tasks'],
+        ['DELETE', '/me/notifications'],
+        ['GET', `/me/saved-filters/${id}`],
+        ['GET', '/me/saved-filters?extra=1'],
+        ['GET', '/me/notification-preferences?extra=1'],
+        ['PUT', '/me/notification-preferences/not-a-uuid'],
+        ['POST', `/me/notifications/${id}/read?extra=1`],
+        ['GET', '/me/notification-events'],
+        ['GET', '/me/unknown'],
+      ] as ['GET' | 'POST' | 'DELETE' | 'PUT', string][]) {
+        expect(
+          (await runtime.app.inject({ method, url: `/api/v1${path}`, headers: personalHeaders }))
+            .statusCode,
+          `${method} ${path}`,
+        ).toBe(403);
+      }
+      expect(calls).toHaveLength(beforePersonalDenied);
+      offline = true;
+      for (const [prefix, key] of [
+        ['/v1/api', cliKey],
+        ['/api/v1', runtime.clientKey],
+      ]) {
+        const response = await runtime.app.inject({
+          method: 'GET',
+          url: `${prefix}/health`,
+          headers: { 'x-taskboard-companion-key': key },
+        });
+        expect(response.json()).toMatchObject({ error: { code: 'OFFLINE' } });
+        expect(response.statusCode).not.toBe(200);
+      }
+    } finally {
+      await runtime.stop();
+    }
   });
   it('serves the embedded demo URL with its query string', async () => {
     const embeddedWebRoot = await mkdtemp(join(tmpdir(), 'taskboard-embedded-web-'));
@@ -26,62 +218,77 @@ describe('companion loopback boundary', () => {
       const demo = await runtime.app.inject({ method: 'GET', url: `${path}?demo=1` });
       expect(demo.statusCode).toBe(200);
       expect(demo.headers['content-type']).toContain('text/html');
-    } finally { await runtime.stop(); }
-  });
-  it('does not enable Codex injection from an environment flag alone', { timeout: 60000 }, async () => {
-    vi.stubEnv('TASKBOARD_MANAGED_CODEX', 'true');
-    vi.stubEnv('TASKBOARD_CODEX_VERSION', '26.901.5280.0');
-    const runtime = await createCompanion({
-      dataDirectory: await mkdtemp(join(tmpdir(), 'taskboard-')),
-      port: 0,
-    });
-    try {
-      const headers = { 'x-taskboard-companion-key': runtime.clientKey };
-      const probe = await runtime.app.inject({ method: 'GET', url: '/v1/codex/probe', headers });
-      expect(probe.json().data).toMatchObject({
-        embedded: false,
-        reason: '尚未连接 Codex；请在连接与设备中选择“接入日常 Codex”。已打开且未启用连接的窗口需先正常退出一次。',
-      });
-      const install = await runtime.app.inject({ method: 'POST', url: '/v1/codex/install', headers });
-      expect(install.statusCode).toBe(409);
     } finally {
       await runtime.stop();
     }
   });
-  it('requires the local bridge key and rejects untrusted origins', { timeout: 60000 }, async () => {
-    const runtime = await createCompanion({
-      dataDirectory: await mkdtemp(join(tmpdir(), 'taskboard-')),
-      port: 0,
-      allowedOrigins: new Set(['http://trusted.test']),
-    });
-    try {
-      await expect(runtime.app.inject({ method: 'GET', url: '/health' })).resolves.toMatchObject({
-        statusCode: 401,
+  it(
+    'does not enable Codex injection from an environment flag alone',
+    { timeout: 60000 },
+    async () => {
+      vi.stubEnv('TASKBOARD_MANAGED_CODEX', 'true');
+      vi.stubEnv('TASKBOARD_CODEX_VERSION', '26.901.5280.0');
+      const runtime = await createCompanion({
+        dataDirectory: await mkdtemp(join(tmpdir(), 'taskboard-')),
+        port: 0,
       });
-      await expect(
-        runtime.app.inject({
-          method: 'GET',
-          url: '/health',
-          headers: {
-            origin: 'http://untrusted.test',
-            'x-taskboard-companion-key': runtime.clientKey,
-          },
-        }),
-      ).resolves.toMatchObject({ statusCode: 403 });
-      await expect(
-        runtime.app.inject({
-          method: 'GET',
-          url: '/health',
-          headers: {
-            origin: 'http://trusted.test',
-            'x-taskboard-companion-key': runtime.clientKey,
-          },
-        }),
-      ).resolves.toMatchObject({ statusCode: 200 });
-    } finally {
-      await runtime.stop();
-    }
-  });
+      try {
+        const headers = { 'x-taskboard-companion-key': runtime.clientKey };
+        const probe = await runtime.app.inject({ method: 'GET', url: '/v1/codex/probe', headers });
+        expect(probe.json().data).toMatchObject({
+          embedded: false,
+          reason:
+            '尚未连接 Codex；请在连接与设备中选择“接入日常 Codex”。已打开且未启用连接的窗口需先正常退出一次。',
+        });
+        const install = await runtime.app.inject({
+          method: 'POST',
+          url: '/v1/codex/install',
+          headers,
+        });
+        expect(install.statusCode).toBe(409);
+      } finally {
+        await runtime.stop();
+      }
+    },
+  );
+  it(
+    'requires the local bridge key and rejects untrusted origins',
+    { timeout: 60000 },
+    async () => {
+      const runtime = await createCompanion({
+        dataDirectory: await mkdtemp(join(tmpdir(), 'taskboard-')),
+        port: 0,
+        allowedOrigins: new Set(['http://trusted.test']),
+      });
+      try {
+        await expect(runtime.app.inject({ method: 'GET', url: '/health' })).resolves.toMatchObject({
+          statusCode: 401,
+        });
+        await expect(
+          runtime.app.inject({
+            method: 'GET',
+            url: '/health',
+            headers: {
+              origin: 'http://untrusted.test',
+              'x-taskboard-companion-key': runtime.clientKey,
+            },
+          }),
+        ).resolves.toMatchObject({ statusCode: 403 });
+        await expect(
+          runtime.app.inject({
+            method: 'GET',
+            url: '/health',
+            headers: {
+              origin: 'http://trusted.test',
+              'x-taskboard-companion-key': runtime.clientKey,
+            },
+          }),
+        ).resolves.toMatchObject({ statusCode: 200 });
+      } finally {
+        await runtime.stop();
+      }
+    },
+  );
   it(
     'proxies the UI API without returning its remote device credential',
     { timeout: 90000 },
@@ -127,12 +334,28 @@ describe('companion loopback boundary', () => {
         });
         expect(login.statusCode).toBe(200);
         expect(login.json()).not.toHaveProperty('data.deviceToken');
-        const identity = await runtime.app.inject({ method: 'GET', url: '/v1/browser/identity', headers });
+        const identity = await runtime.app.inject({
+          method: 'GET',
+          url: '/v1/browser/identity',
+          headers,
+        });
         expect(identity.statusCode).toBe(200);
-        expect(identity.json().data).toMatchObject({ accountId: '00000000-0000-4000-8000-000000000001' });
+        expect(identity.json().data).toMatchObject({
+          accountId: '00000000-0000-4000-8000-000000000001',
+        });
         expect(JSON.stringify(identity.json())).not.toMatch(/browser-session|deviceToken|password/);
-        expect((await runtime.app.inject({ method: 'GET', url: '/v1/browser/identity' })).statusCode).toBe(401);
-        expect((await runtime.app.inject({ method: 'GET', url: '/v1/browser/identity', headers: { ...headers, origin: 'https://untrusted.test' } })).statusCode).toBe(403);
+        expect(
+          (await runtime.app.inject({ method: 'GET', url: '/v1/browser/identity' })).statusCode,
+        ).toBe(401);
+        expect(
+          (
+            await runtime.app.inject({
+              method: 'GET',
+              url: '/v1/browser/identity',
+              headers: { ...headers, origin: 'https://untrusted.test' },
+            })
+          ).statusCode,
+        ).toBe(403);
         const proxy = await runtime.app.inject({
           method: 'GET',
           url: '/api/v1/spaces/00000000-0000-4000-8000-000000000001/tasks?query=ship&priority=2',
@@ -142,7 +365,8 @@ describe('companion loopback boundary', () => {
         expect(calls.at(-1)?.headers.get('cookie')).toBe('tb_session=browser-session');
         expect(calls.at(-1)?.url).toContain('query=ship&priority=2');
         const appearance = await runtime.app.inject({
-          method: 'PUT', url: '/api/v1/me/appearance',
+          method: 'PUT',
+          url: '/api/v1/me/appearance',
           headers: { ...headers, 'if-match': '2', 'idempotency-key': 'appearance-save' },
           payload: { themeId: 'island', mode: 'dark', layout: 'auto' },
         });
@@ -150,13 +374,31 @@ describe('companion loopback boundary', () => {
         expect(calls.at(-1)?.method).toBe('PUT');
         expect(calls.at(-1)?.headers.get('cookie')).toBe('tb_session=browser-session');
         expect(calls.at(-1)?.headers.get('if-match')).toBe('2');
-        const preflight = await runtime.app.inject({ method: 'OPTIONS', url: '/api/v1/me/appearance', headers: { origin: 'http://127.0.0.1:4173', 'access-control-request-method': 'PUT' } });
+        const preflight = await runtime.app.inject({
+          method: 'OPTIONS',
+          url: '/api/v1/me/appearance',
+          headers: { origin: 'http://127.0.0.1:4173', 'access-control-request-method': 'PUT' },
+        });
         expect(preflight.headers['access-control-allow-methods']).toContain('PUT');
-        expect((await runtime.app.inject({ method: 'GET', url: '/v1/api/me/themes', headers })).statusCode).toBe(403);
+        expect(
+          (await runtime.app.inject({ method: 'GET', url: '/v1/api/me/themes', headers }))
+            .statusCode,
+        ).toBe(403);
 
         const cliKey = await new SecretStore(join(directory, 'cli-key.dpapi')).read();
-        expect((await runtime.app.inject({ method: 'GET', url: '/v1/browser/identity', headers: { 'x-taskboard-companion-key': cliKey! } })).statusCode).toBe(403);
-        expect((await runtime.app.inject({ method: 'GET', url: '/v1/browser/upstream', headers })).statusCode).toBe(403);
+        expect(
+          (
+            await runtime.app.inject({
+              method: 'GET',
+              url: '/v1/browser/identity',
+              headers: { 'x-taskboard-companion-key': cliKey! },
+            })
+          ).statusCode,
+        ).toBe(403);
+        expect(
+          (await runtime.app.inject({ method: 'GET', url: '/v1/browser/upstream', headers }))
+            .statusCode,
+        ).toBe(403);
         const denied = await runtime.app.inject({
           method: 'POST',
           url: '/api/v1/tasks/00000000-0000-4000-8000-000000000001/accept',

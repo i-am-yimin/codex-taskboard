@@ -3,6 +3,7 @@ export * from './runner.ts';
 export * from './themes.ts';
 export * from './collaboration.ts';
 export * from './workflow.ts';
+export * from './server-contract.ts';
 import {
   collaborationTaskFields,
   type TaskParticipant,

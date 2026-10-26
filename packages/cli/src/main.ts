@@ -5,7 +5,13 @@ import { basename, join } from 'node:path';
 import { SecretStore } from '@taskboard/companion/secret';
 import { defaultDataDirectory } from '@taskboard/companion/store';
 import { configureRunner } from '@taskboard/companion/runners';
-import { runnerKindSchema, type Task } from '@taskboard/core';
+import {
+  runnerKindSchema,
+  assessServerCompatibility,
+  requiresCollaborationContract,
+  MINIMUM_COLLABORATION_SERVER,
+  type Task,
+} from '@taskboard/core';
 
 export const EXIT_CODES = {
   AUTH_REQUIRED: 20,
@@ -89,6 +95,27 @@ export class CompanionClient {
     return key;
   }
   async request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+    if (
+      (path.startsWith('/v1/api/') &&
+        requiresCollaborationContract(path.slice('/v1/api'.length), method)) ||
+      path === '/v1/runners/start' ||
+      /^\/v1\/runners\/[^/]+\/[^/]+\/sync$/.test(path)
+    ) {
+      let health: unknown;
+      try {
+        health = await this.request<unknown>('/v1/api/health');
+      } catch (error) {
+        if (error instanceof CliError && error.code === 'NOT_FOUND') health = {};
+        else throw error;
+      }
+      const compatibility = assessServerCompatibility(health);
+      if (compatibility.status !== 'compatible')
+        throw new CliError(
+          'SERVER_UPGRADE_REQUIRED',
+          `服务器需要升级：${compatibility.reason}需要 ${MINIMUM_COLLABORATION_SERVER} 或相同协作协议、0005—0009迁移。未发送本次共享写入或启动请求。`,
+          compatibility,
+        );
+    }
     const key = await this.bridgeKey();
     const response = await this.fetcher(new URL(path, this.base), {
       method,
@@ -98,7 +125,12 @@ export class CompanionClient {
     }).catch(() => {
       throw new CliError('OFFLINE', '本机伴随服务不可用，请先查询原操作状态后重试');
     });
-    const payload = (await response.json().catch(() => ({}))) as { data?: T } & ApiError;
+    const payload = (await response.json().catch(() => ({}))) as {
+      data?: T;
+      meta?: { source?: string; offline?: boolean };
+    } & ApiError;
+    if (path === '/v1/api/health' && payload.meta?.offline === true)
+      throw new CliError('OFFLINE', '服务器当前离线；缓存能力不能授权共享写入');
     if (!response.ok)
       throw new CliError(
         payload.error?.code ?? 'REMOTE_ERROR',

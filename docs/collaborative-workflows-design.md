@@ -109,7 +109,7 @@ worker 有界轮询，以 FOR UPDATE SKIP LOCKED 抢到期规则，occurrence �
 
 在既有 0004_user_themes 后追加迁移，不改旧 SQL。先增 nullable/default 字段与表/索引；新建未指定负责人默认创建者；旧 assignee 回填 participant（职责负责实施，不造进度）；旧 running execution 回填 claim，标 legacy 业务记录，不造 run。旧 done 保留且 reviewer 显示历史未记录；旧 in_review 缺 reviewer 必须人工补派。升级前后核对任务/评论/活动/执行内容和数量，重复迁移无副作用。
 
-先备份并用独立副本验证，再服务端后客户端。当前没有额外的远程协作协议协商端点；本机 runner probe 单独声明实际支持能力。旧只读可用，危险旧 PATCH 返回语义转换拒绝，提交缺少新必填修订会报校验错误，客户端需同步升级。应用回退不删新表；数据库还原需停写、处理活动 claim/run、备份导出新责任材料、再恢复备份，禁止在线 drop 当回滚。
+先备份并用独立副本验证，再服务端后客户端。客户端 0.1.8 与服务器 0.1.4-preview.1 为本地配套候选，非发布声明。新增公开 health 能力契约：独立 serverVersion、apiVersion、capabilities.collaborativeWorkflows、migrationRequired；仅 0005—0009 齐全时声明协议 1。旧 health 无能力/迁移不全时界面提示升级，保留基础只读和草稿；网络失败显示未验证，不当成版本错。web 与 taskctl 每次新共享写入/启动前重新探测，不能使用缓存能力授权；真实任务 404 保持原语义。登录/退出/本机配置和原有查询/取消不额外增加兼容门禁，既有安全复核不变。本机 runner probe 仍单独声明真实运行能力。危险旧 PATCH 返回语义转换拒绝，提交缺少新必填修订会报校验错误，客户端需同步升级。应用回退不删新表；数据库还原需停写、处理活动 claim/run、备份导出新责任材料、再恢复备份，禁止在线 drop 当回滚。
 
 | 波次 | 文件/责任 |
 | --- | --- |

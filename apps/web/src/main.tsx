@@ -1,15 +1,15 @@
-import { StrictMode, useEffect, useMemo, useRef, useState } from 'react';
+import { StrictMode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   DndContext,
   DragOverlay,
+  defaultDropAnimationSideEffects,
   useDroppable,
   useSensor,
   useSensors,
   PointerSensor,
-  KeyboardSensor,
   closestCenter,
   type DragEndEvent,
 } from '@dnd-kit/core';
@@ -46,12 +46,15 @@ import {
   Wifi,
   X,
 } from 'lucide-react';
+import { ServerCompatibilityNotice } from './ServerCompatibilityNotice';
 import { ConnectionSettings } from './ConnectionSettings';
 import { CodexConnectionAction, CodexConnectionNotice } from './CodexConnectionAction';
 import { DesktopServerSetup } from './DesktopServerSetup';
 import { ServerAdministration, ServerSetupGate } from './ServerAdministration';
 import {
   api,
+  checkServerCompatibility,
+  resetServerCompatibility,
   ApiError,
   cacheBoard,
   clearAccountCache,
@@ -69,7 +72,11 @@ import { NotificationCenter } from './NotificationCenter';
 import { useNotificationInbox } from './useNotificationInbox';
 import { AutomationPanel } from './AutomationPanel';
 import { MyTaskViews } from './MyTaskViews';
-import { subscribeDesktopBoardEvents } from './realtime';
+import {
+  connectBoardEvents,
+  subscribeBrowserBoardEvents,
+  subscribeDesktopBoardEvents,
+} from './realtime';
 import { SpaceActions } from './SpaceActions';
 import { demoUser, makeDemoBoard } from './demo';
 import { useEmbeddedReadyResponder } from './embeddedReady';
@@ -78,6 +85,8 @@ import './styles.css';
 import { TaskboardBrand } from './brand/TaskboardBrand';
 import { useBoardReflow, boardMotion, prefersReducedMotion } from './motion/boardMotion';
 import './motion/boardMotion.css';
+import { BufferedKeyboardSensor, KeyboardSensorScope } from './motion/BufferedKeyboardSensor';
+import { useKeyboardDropFocus } from './motion/useKeyboardDropFocus';
 import './collaboration.css';
 import './workflow.css';
 import './glass.css';
@@ -145,6 +154,15 @@ function App() {
   const [drawer, setDrawer] = useState<string | null>(
     new URLSearchParams(location.search).get('task'),
   );
+  const [drawerSpaceId, setDrawerSpaceId] = useState<string | null>(
+    new URLSearchParams(location.search).get('space'),
+  );
+  const [drawerEpoch, setDrawerEpoch] = useState(0);
+  const openTaskDrawer = (id: string, targetSpaceId = spaceId) => {
+    setDrawerSpaceId(targetSpaceId);
+    setDrawerEpoch((epoch) => epoch + 1);
+    setDrawer(id);
+  };
   const [drawerIntent, setDrawerIntent] = useState<
     'submit' | 'accept' | 'return' | 'cancel' | 'reopen' | null
   >(null);
@@ -181,6 +199,28 @@ function App() {
     },
   });
   const user = userQuery.data;
+  const compatibilityQuery = useQuery({
+    queryKey: ['server-compatibility', user?.id],
+    enabled: !!user && !isDemo,
+    networkMode: 'always',
+    queryFn: checkServerCompatibility,
+    retry: false,
+    refetchInterval: 30000,
+    refetchOnWindowFocus: true,
+  });
+  const compatible =
+    isDemo || (compatibilityQuery.data?.status === 'compatible' && !compatibilityQuery.error);
+  const compatibilityNotice = !isDemo ? (
+    <ServerCompatibilityNotice
+      compatibility={compatibilityQuery.data}
+      error={compatibilityQuery.error}
+      checking={compatibilityQuery.isFetching}
+      onRetry={() => {
+        resetServerCompatibility();
+        void compatibilityQuery.refetch();
+      }}
+    />
+  ) : null;
   const appearance = useAppearance(user?.id, isDemo);
   const spacesQuery = useQuery({
     queryKey: ['spaces', user?.id],
@@ -212,6 +252,18 @@ function App() {
   const [spaceId, setSpaceId] = useState(
     isDemo ? 'space-work' : (new URLSearchParams(location.search).get('space') ?? ''),
   );
+  useLayoutEffect(() => {
+    if (!drawer) return;
+    if (drawerSpaceId === null) {
+      if (spaceId) setDrawerSpaceId(spaceId);
+    } else if (drawerSpaceId !== spaceId) {
+      // Navigation retires the old drawer immediately, including a still-running exit.
+      // Explicit cross-space task opens set their target scope in the same update.
+      setDrawer(null);
+      setDrawerIntent(null);
+      setDrawerSpaceId(null);
+    }
+  }, [drawer, drawerSpaceId, spaceId]);
   useEffect(() => {
     if (!spaceId && spacesQuery.data?.[0]) setSpaceId(spacesQuery.data[0].id);
   }, [spaceId, spacesQuery.data]);
@@ -294,7 +346,7 @@ function App() {
       setOfflineSession(null);
     }
   }, [offlineSession, user, userQuery.error]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!user || !spaceId || isDemo) return;
     setSync('connecting');
     const refresh = () => {
@@ -344,65 +396,47 @@ function App() {
       // replace the live UI with login as well as clearing persisted caches.
       void client.invalidateQueries({ queryKey: ['me'] });
     };
-    if (hasLocalCompanion()) {
-      let stopped = false;
-      let retry = 0;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      let unsubscribe: () => void = () => undefined;
-      const connect = () => {
-        unsubscribe = subscribeDesktopBoardEvents(spaceId, {
-          ready: () => {
-            retry = 0;
-            setSync('synced');
-            setOffline(false);
-            refresh();
-          },
-          board: () => {
-            setSync('synced');
-            setOffline(false);
-            refresh();
-          },
-          revoked: () => {
-            stopped = true;
-            revoke();
-          },
-          error: () => {
-            if (stopped) return;
-            setSync('offline');
-            timer = setTimeout(connect, Math.min(2000, 250 * 2 ** retry++));
-          },
-        });
-      };
-      connect();
-      return () => {
-        stopped = true;
-        if (timer) clearTimeout(timer);
-        unsubscribe();
-      };
-    }
-    const events = new EventSource(
-      `${import.meta.env.VITE_API_BASE ?? '/api/v1'}/spaces/${spaceId}/events`,
-      { withCredentials: true },
-    );
-    events.addEventListener('ready', () => {
-      setSync('synced');
-      setOffline(false);
-      refresh();
+    return connectBoardEvents({
+      network: window,
+      online: () => navigator.onLine,
+      subscribe: (handlers) =>
+        hasLocalCompanion()
+          ? subscribeDesktopBoardEvents(spaceId, handlers)
+          : subscribeBrowserBoardEvents(
+              spaceId,
+              handlers,
+              import.meta.env.VITE_API_BASE ?? '/api/v1',
+            ),
+      handlers: {
+        connecting: () => {
+          setSync('connecting');
+          setOffline(false);
+        },
+        offline: () => {
+          setSync('offline');
+          setOffline(true);
+        },
+        ready: () => {
+          setSync('synced');
+          setOffline(false);
+          refresh();
+        },
+        board: () => {
+          setSync('synced');
+          setOffline(false);
+          refresh();
+        },
+        revoked: revoke,
+        error: () => setSync('offline'),
+      },
     });
-    events.addEventListener('board', () => {
-      setSync('synced');
-      setOffline(false);
-      refresh();
-    });
-    events.addEventListener('revoked', revoke);
-    events.onerror = () => setSync('offline');
-    return () => events.close();
   }, [client, spaceId, user]);
   useEffect(() => {
     const change = () => {
       setOffline(!navigator.onLine);
-      setSync(navigator.onLine ? 'connecting' : 'offline');
       if (navigator.onLine) {
+        resetServerCompatibility();
+        client.invalidateQueries({ queryKey: ['server-compatibility'] });
         client.invalidateQueries({ queryKey: ['me'] });
         client.invalidateQueries({ queryKey: ['spaces', user?.id] });
         client.invalidateQueries({ queryKey: ['board', user?.id, spaceId] });
@@ -437,15 +471,16 @@ function App() {
   );
   const editor = board?.space.role !== 'viewer' && !board?.space.archived;
   const readOnlyCached = offline || showingCached || (!isDemo && sync !== 'synced');
+  const taskReadOnly = readOnlyCached || !compatible;
 
   const inbox = useNotificationInbox({
     userId: user?.id,
     enabled: !!user && !isDemo,
-    offline: readOnlyCached,
+    offline: taskReadOnly,
     onOpen: (taskId, targetSpace) => {
       setSpaceId(targetSpace);
       setDrawerIntent(null);
-      setDrawer(taskId);
+      openTaskDrawer(taskId, targetSpace);
     },
   });
   const unreadNotifications = inbox.items.filter((item) => !item.readAt).length;
@@ -453,7 +488,12 @@ function App() {
   const refresh = () => client.invalidateQueries({ queryKey: ['board', user?.id, spaceId] });
   const move = async (task: Task, statusId: string, position?: number) => {
     if (!board) return;
-    if (readOnlyCached) return setNotice('离线缓存仅供浏览；恢复连接后才能更新任务。');
+    if (taskReadOnly)
+      return setNotice(
+        !compatible
+          ? '服务器兼容性尚未确认，请先完成升级或重新检查。'
+          : '离线缓存仅供浏览；恢复连接后才能更新任务。',
+      );
     if (!editor) return setNotice('你只有查看权限，无法移动任务。');
     const changes = {
       statusId,
@@ -482,7 +522,7 @@ function App() {
         if ((from === 'todo' || from === 'in_progress') && to === 'in_progress') {
           await api.claim(task.id, task.version);
           setNotice('任务已领取；领取不代表 Agent 已启动。');
-          refresh();
+          await refresh();
           return;
         }
         const intent =
@@ -502,12 +542,12 @@ function App() {
           return;
         }
         setDrawerIntent(intent);
-        setDrawer(task.id);
+        openTaskDrawer(task.id);
         setNotice('请补充操作材料并确认；状态尚未更改。');
         return;
       }
       await api.patchTask(task.id, changes, task.version);
-      refresh();
+      await refresh();
     } catch (e) {
       if (e instanceof ApiError && e.code === 'VERSION_CONFLICT') setConflict({ task, changes });
       else setNotice(e instanceof Error ? e.message : '更新失败');
@@ -574,6 +614,7 @@ function App() {
             服务器管理
           </button>
         )}
+        {compatibilityNotice}
         <EmptySpace
           onCreated={(id) => {
             setSpaceId(id);
@@ -671,7 +712,7 @@ function App() {
                 ))}
                 <hr />
                 <button
-                  disabled={readOnlyCached}
+                  disabled={taskReadOnly}
                   onClick={() => {
                     setNewSpace(true);
                     setSpaceMenu(false);
@@ -746,7 +787,7 @@ function App() {
             <button
               className="button primary"
               onClick={() => setNewTask(true)}
-              disabled={!editor || readOnlyCached}
+              disabled={!editor || taskReadOnly}
             >
               <Plus size={17} />
               新建任务
@@ -807,7 +848,7 @@ function App() {
         <MyTaskViews
           userId={user!.id}
           spaceId={board.space.id}
-          offline={readOnlyCached}
+          offline={taskReadOnly}
           demo={isDemo}
           filters={{ search, priority, assigneeId: assigneeFilter, label: labelFilter, relation }}
           onTasks={setPersonalTasks}
@@ -819,6 +860,7 @@ function App() {
             setRelation(filter.relation ?? '');
           }}
         />
+        {compatibilityNotice}
         {readOnlyCached && sync === 'connecting' && !showingCached && !offline ? (
           <div className="banner">正在确认实时连接；所有写入已暂停。</div>
         ) : (
@@ -843,15 +885,15 @@ function App() {
           <BoardView
             board={board}
             tasks={visible}
-            onOpen={(id) => (id === '__new__' ? setNewTask(true) : setDrawer(id))}
+            onOpen={(id) => (id === '__new__' ? setNewTask(true) : openTaskDrawer(id))}
             onMove={move}
-            editable={!!editor && !readOnlyCached}
+            editable={!!editor && !taskReadOnly}
           />
         ) : (
           <ListView
             board={board}
             tasks={visible}
-            onOpen={(id) => (id === '__new__' ? setNewTask(true) : setDrawer(id))}
+            onOpen={(id) => (id === '__new__' ? setNewTask(true) : openTaskDrawer(id))}
           />
         )}
       </section>
@@ -862,11 +904,11 @@ function App() {
         inbox={inbox}
         spaces={spacesQuery.data ?? []}
         spaceId={board.space.id}
-        offline={readOnlyCached || isDemo}
+        offline={taskReadOnly || isDemo}
         onOpen={(taskId, targetSpace) => {
           setSpaceId(targetSpace);
           setDrawerIntent(null);
-          setDrawer(taskId);
+          openTaskDrawer(taskId, targetSpace);
         }}
       />
       <AutomationPanel
@@ -875,37 +917,40 @@ function App() {
         open={automationOpen}
         onClose={() => setAutomationOpen(false)}
         board={board}
-        offline={readOnlyCached}
+        offline={taskReadOnly}
         demo={isDemo}
         onChanged={refresh}
       />
-      {drawer && (
-        <TaskDrawer
-          key={drawer}
-          taskId={drawer}
-          initialIntent={drawerIntent}
-          onOpenTask={(id) => {
-            setDrawerIntent(null);
-            setDrawer(id);
-          }}
-          userId={user!.id}
-          editable={!!editor && !readOnlyCached}
-          board={board}
-          demo={isDemo}
-          offline={readOnlyCached}
-          onClose={() => {
-            setDrawer(null);
-            setDrawerIntent(null);
-          }}
-          onRefresh={refresh}
-          onNotice={setNotice}
-        />
-      )}
+      {drawer &&
+        (drawerSpaceId === null || drawerSpaceId === spaceId) &&
+        board.space.id === spaceId && (
+          <TaskDrawer
+            key={`${user!.id}:${drawer}:${drawerEpoch}`}
+            taskId={drawer}
+            initialIntent={drawerIntent}
+            onOpenTask={(id) => {
+              setDrawerIntent(null);
+              openTaskDrawer(id);
+            }}
+            userId={user!.id}
+            editable={!!editor && !taskReadOnly}
+            canControlExistingRuns={!!editor && !readOnlyCached && !isDemo}
+            board={board}
+            demo={isDemo}
+            offline={taskReadOnly}
+            onClose={() => {
+              setDrawer(null);
+              setDrawerIntent(null);
+            }}
+            onRefresh={refresh}
+            onNotice={setNotice}
+          />
+        )}
       {newTask && (
         <NewTask
           board={board}
           demo={isDemo}
-          offline={readOnlyCached}
+          offline={taskReadOnly}
           onClose={() => setNewTask(false)}
           onRefresh={refresh}
           onNotice={setNotice}
@@ -932,7 +977,7 @@ function App() {
           }
           board={board}
           demo={isDemo}
-          offline={readOnlyCached}
+          offline={taskReadOnly}
           appearance={appearance}
           onClose={() => {
             appearance.cancel();
@@ -1087,50 +1132,78 @@ function BoardView({
   board: Board;
   tasks: Task[];
   onOpen: (id: string) => void;
-  onMove: (task: Task, statusId: string, position?: number) => void;
+  onMove: (task: Task, statusId: string, position?: number) => Promise<void>;
   editable: boolean;
 }) {
   const boardRef = useRef<HTMLDivElement>(null);
+  const keyboardFocus = useKeyboardDropFocus(boardRef);
+  const keyboardScope = useMemo(() => new KeyboardSensorScope(), []);
+  useEffect(() => () => keyboardScope.dispose(), [keyboardScope]);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [targetStatus, setTargetStatus] = useState<string | null>(null);
   useBoardReflow(
     boardRef,
     tasks.map((task) => [task.id, task.statusId, task.position, task.version].join(':')).join('|'),
+    draggedId !== null,
   );
   const draggedTask = tasks.find((task) => task.id === draggedId);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(BufferedKeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+      scope: keyboardScope,
+    }),
   );
-  const drop = (event: DragEndEvent) => {
-    setDraggedId(null);
-    const task = tasks.find((t) => t.id === event.active.id);
-    const overId = event.over?.id.toString();
-    if (!task || !overId || overId === task.id) return;
-    const overTask = tasks.find((item) => item.id === overId);
-    const statusId = overTask?.statusId ?? overId;
-    if (!board.statuses.some((status) => status.id === statusId)) return;
-    const remaining = tasks
-      .filter((item) => item.statusId === statusId && item.id !== task.id)
-      .sort((a, b) => a.position - b.position);
-    if (!overTask) return onMove(task, statusId);
-    let index = remaining.findIndex((item) => item.id === overId);
-    if (task.statusId === statusId && task.position < overTask.position) index++;
-    const previous = remaining[index - 1]?.position ?? 0;
-    const next = remaining[index]?.position ?? previous + 2048;
-    onMove(task, statusId, (previous + next) / 2);
+  const drop = async (event: DragEndEvent) => {
+    const restoreFocus = keyboardFocus.begin(event);
+    try {
+      setDraggedId(null);
+      setTargetStatus(null);
+      const task = tasks.find((t) => t.id === event.active.id);
+      const overId = event.over?.id.toString();
+      if (!task || !overId || overId === task.id) return;
+      const overTask = tasks.find((item) => item.id === overId);
+      const statusId = overTask?.statusId ?? overId;
+      if (!board.statuses.some((status) => status.id === statusId)) return;
+      const remaining = tasks
+        .filter((item) => item.statusId === statusId && item.id !== task.id)
+        .sort((a, b) => a.position - b.position);
+      if (!overTask) return await onMove(task, statusId);
+      let index = remaining.findIndex((item) => item.id === overId);
+      if (task.statusId === statusId && task.position < overTask.position) index++;
+      const previous = remaining[index - 1]?.position ?? 0;
+      const next = remaining[index]?.position ?? previous + 2048;
+      await onMove(task, statusId, (previous + next) / 2);
+    } finally {
+      restoreFocus();
+    }
   };
   return (
     <DndContext
       sensors={sensors}
+      accessibility={{ restoreFocus: false }}
       collisionDetection={closestCenter}
-      onDragStart={(event) => setDraggedId(String(event.active.id))}
-      onDragCancel={() => setDraggedId(null)}
+      onDragStart={(event) => {
+        keyboardFocus.cancel();
+        setDraggedId(String(event.active.id));
+      }}
+      onDragOver={(event) => {
+        const id = event.over?.id.toString();
+        setTargetStatus(tasks.find((task) => task.id === id)?.statusId ?? id ?? null);
+      }}
+      onDragCancel={(event) => {
+        const restoreFocus = keyboardFocus.begin(event);
+        setDraggedId(null);
+        setTargetStatus(null);
+        restoreFocus();
+      }}
       onDragEnd={drop}
     >
       <div className="board" ref={boardRef}>
         {board.statuses.map((status) => (
           <BoardColumn
             status={status}
+            destination={targetStatus === status.id}
             key={status.id}
             tasks={tasks.filter((t) => t.statusId === status.id)}
             members={board.members}
@@ -1139,11 +1212,21 @@ function BoardView({
           />
         ))}
       </div>
-      <DragOverlay dropAnimation={prefersReducedMotion() ? null : boardMotion.drop}>
+      <DragOverlay
+        dropAnimation={
+          prefersReducedMotion()
+            ? null
+            : {
+                ...boardMotion.drop,
+                sideEffects: defaultDropAnimationSideEffects({
+                  styles: { active: { opacity: '0' } },
+                }),
+              }
+        }
+      >
         {draggedTask ? (
           <div className="task-card task-drag-overlay">
-            <span className="task-title">{draggedTask.title}</span>
-            <span className="task-id">TB-{draggedTask.number}</span>
+            <TaskCardContent task={draggedTask} members={board.members} />
           </div>
         ) : null}
       </DragOverlay>
@@ -1152,12 +1235,14 @@ function BoardView({
 }
 function BoardColumn({
   status,
+  destination,
   tasks,
   members,
   onOpen,
   editable,
 }: {
   status: Status;
+  destination: boolean;
   tasks: Task[];
   members: Member[];
   onOpen: (id: string) => void;
@@ -1165,7 +1250,11 @@ function BoardColumn({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status.id, disabled: !editable });
   return (
-    <section className={`column${isOver ? ' is-over' : ''}`} ref={setNodeRef}>
+    <section
+      className={`column${isOver ? ' is-over' : ''}`}
+      data-drop-target={destination}
+      ref={setNodeRef}
+    >
       <header className="column-head">
         <span className="status-dot" style={{ background: status.color }} />
         <b>{status.name}</b>
@@ -1205,8 +1294,6 @@ function TaskCard({
   onOpen: (id: string) => void;
   disabled: boolean;
 }) {
-  const assignee = members.find((m) => m.id === task.assigneeId);
-  const reviewer = members.find((member) => member.id === task.reviewerId);
   const priorVersion = useRef(task.version);
   const [updated, setUpdated] = useState(false);
   useEffect(() => {
@@ -1238,6 +1325,18 @@ function TaskCard({
       {...sortableAttributes}
       {...(disabled ? {} : listeners)}
     >
+      <TaskCardContent task={task} members={members} />
+      <span className="card-update-announcement" role="status">
+        {updated ? '任务已更新' : ''}
+      </span>
+    </button>
+  );
+}
+function TaskCardContent({ task, members }: { task: Task; members: Member[] }) {
+  const assignee = members.find((member) => member.id === task.assigneeId);
+  const reviewer = members.find((member) => member.id === task.reviewerId);
+  return (
+    <>
       <span className="task-title">
         <GripVertical size={14} />
         <span>{task.title}</span>
@@ -1250,11 +1349,6 @@ function TaskCard({
           </span>
         ))}
       </span>
-      {updated && (
-        <span className="card-update-announcement" role="status" key={task.version}>
-          任务已更新
-        </span>
-      )}
       <span className="card-collaboration">
         <span>{assignee ? `负责 ${assignee.name}` : '未派负责人'}</span>
         <span>{reviewer ? `验收 ${reviewer.name}` : '待派验收人'}</span>
@@ -1267,7 +1361,7 @@ function TaskCard({
         <span className="task-no">TB-{task.number}</span>
         {assignee && <span className="avatar small">{initials(assignee.name)}</span>}
       </span>
-    </button>
+    </>
   );
 }
 function ListView({

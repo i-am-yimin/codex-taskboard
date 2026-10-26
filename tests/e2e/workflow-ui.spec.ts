@@ -1,3 +1,4 @@
+import { compatibleServerHealth } from '../server-compatibility-fixture.ts';
 import { test, expect, type Page } from '@playwright/test';
 import type {
   AutomationRule,
@@ -10,7 +11,10 @@ import { demoUser, makeDemoBoard, makeDemoDetail } from '../../apps/web/src/demo
 async function workflowFixture(page: Page, viewer = false) {
   const board = makeDemoBoard();
   const reviewerId = '22222222-2222-4222-8222-222222222222';
-  board.members = board.members.map((member) => ({ ...member, id: member.name === '林舟' ? reviewerId : member.id }));
+  board.members = board.members.map((member) => ({
+    ...member,
+    id: member.name === '林舟' ? reviewerId : member.id,
+  }));
   if (viewer) board.space.role = 'viewer';
   const now = Date.now();
   const notices: TaskNotification[] = [0, 1].map((index) => ({
@@ -86,7 +90,8 @@ async function workflowFixture(page: Page, viewer = false) {
     const method = req.method();
     let data: unknown = {};
     if (method !== 'GET') writes.push({ path, body: req.postDataJSON() ?? {} });
-    if (path === '/setup') data = { required: false };
+    if (path === '/health') data = compatibleServerHealth;
+    else if (path === '/setup') data = { required: false };
     else if (path === '/me') data = demoUser;
     else if (path === '/spaces') data = [board.space];
     else if (path.endsWith('/board')) data = board;

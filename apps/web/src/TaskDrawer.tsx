@@ -7,6 +7,8 @@ import { Archive, X, Plus, Command } from 'lucide-react';
 import { api, ApiError, openCodexDraft, idempotencyKey } from './api';
 import { CollaborationPanel } from './CollaborationPanel';
 import AgentRunPanel from './AgentRunPanel';
+import { useDrawerPresence } from './motion/useDrawerPresence';
+import { RequestFeedback } from './motion/RequestFeedback';
 import { collaborationApi } from './collaborationApi';
 import { makeDemoDetail } from './demo';
 import type { Board, Task, TaskDetail } from './types';
@@ -23,6 +25,7 @@ type Props = {
   taskId: string;
   userId: string;
   editable: boolean;
+  canControlExistingRuns?: boolean;
   board: Board;
   demo: boolean;
   offline: boolean;
@@ -67,6 +70,7 @@ export function TaskDrawer({
   taskId,
   userId,
   editable,
+  canControlExistingRuns,
   board,
   demo,
   offline,
@@ -108,13 +112,8 @@ export function TaskDrawer({
   const [prUrl, setPrUrl] = useState('');
   const [commitSha, setCommitSha] = useState('');
   const [resultRequirementsVersion, setResultRequirementsVersion] = useState<number | null>(null);
-  const [closing, setClosing] = useState(false);
   const drawerRef = useRef<HTMLElement>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleClose = () => {
-    setClosing(true);
-    closeTimer.current = setTimeout(onClose, 160);
-  };
+  const { closing, close: handleClose, onAnimationEnd } = useDrawerPresence(onClose, drawerRef);
   const submitAttempt = useRef<{ key: string; version: number; signature: string } | null>(null);
   const [handoffSummary, setHandoffSummary] = useState('');
   const [limitations, setLimitations] = useState('');
@@ -129,18 +128,13 @@ export function TaskDrawer({
   const key = `tb:draft:${userId}:${taskId}`;
   const resultKey = `tb:result:${userId}:${taskId}`;
   const detail = query.data;
+  const draftSpaceId = detail?.task.spaceId;
   const closeCallback = useRef(handleClose);
   closeCallback.current = handleClose;
   useEffect(() => {
     if (detail && resultRequirementsVersion === null)
       setResultRequirementsVersion(detail.task.requirementsVersion ?? 1);
   }, [detail, resultRequirementsVersion]);
-  useEffect(
-    () => () => {
-      if (closeTimer.current) clearTimeout(closeTimer.current);
-    },
-    [],
-  );
   useEffect(() => {
     const trigger = document.activeElement;
     const timer = setTimeout(
@@ -201,9 +195,9 @@ export function TaskDrawer({
     setBaseVersion(detail.task.version);
   }, [detail, dirty, key]);
   useEffect(() => {
-    if (dirty && draft && baseVersion)
-      localStorage.setItem(key, JSON.stringify({ draft, baseVersion, spaceId: board.space.id }));
-  }, [key, draft, dirty, baseVersion, board.space.id]);
+    if (draftSpaceId && dirty && draft && baseVersion)
+      localStorage.setItem(key, JSON.stringify({ draft, baseVersion, spaceId: draftSpaceId }));
+  }, [key, draft, dirty, baseVersion, draftSpaceId]);
   useEffect(() => {
     try {
       const cached = JSON.parse(localStorage.getItem(resultKey) ?? 'null');
@@ -232,11 +226,14 @@ export function TaskDrawer({
     }
   }, [resultKey]);
   useEffect(() => {
-    if (summary || verification || handoffSummary || limitations || blockers || nextStep)
+    if (
+      draftSpaceId &&
+      (summary || verification || handoffSummary || limitations || blockers || nextStep)
+    )
       localStorage.setItem(
         resultKey,
         JSON.stringify({
-          spaceId: board.space.id,
+          spaceId: draftSpaceId,
           summary,
           verification,
           handoffSummary,
@@ -262,7 +259,7 @@ export function TaskDrawer({
     prUrl,
     commitSha,
     resultRequirementsVersion,
-    board.space.id,
+    draftSpaceId,
   ]);
   useEffect(() => {
     const cached = localStorage.getItem(commentKey);
@@ -281,12 +278,12 @@ export function TaskDrawer({
     setComment(cached);
   }, [commentKey]);
   useEffect(() => {
-    if (comment || mentionIds.length)
+    if (draftSpaceId && (comment || mentionIds.length))
       localStorage.setItem(
         commentKey,
-        JSON.stringify({ body: comment, mentionIds, spaceId: board.space.id }),
+        JSON.stringify({ body: comment, mentionIds, spaceId: draftSpaceId }),
       );
-  }, [commentKey, comment, mentionIds, board.space.id]);
+  }, [commentKey, comment, mentionIds, draftSpaceId]);
   const refresh = async () => {
     await query.refetch();
     onRefresh();
@@ -401,6 +398,7 @@ export function TaskDrawer({
     <aside
       className="drawer motion-drawer"
       data-state={closing ? 'closed' : 'open'}
+      onAnimationEnd={onAnimationEnd}
       ref={drawerRef}
       role="dialog"
       aria-modal="true"
@@ -798,15 +796,7 @@ export function TaskDrawer({
             })
           }
         />
-        {requestState && (
-          <p className="motion-feedback" data-request-state={requestState} role="status">
-            {requestState === 'pending'
-              ? '正在保存，请稍候…'
-              : requestState === 'success'
-                ? '操作已完成'
-                : '操作未完成，请根据错误重试。'}
-          </p>
-        )}
+        <RequestFeedback state={requestState} />
         <section className="detail-section execution">
           <h3>执行与交接</h3>
           {offline && detail.runs === undefined ? (
@@ -817,6 +807,7 @@ export function TaskDrawer({
               claims={detail.claims ?? []}
               runs={detail.runs ?? []}
               canWrite={editable && !offline && !demo}
+              canControlExistingRuns={canControlExistingRuns ?? (editable && !offline && !demo)}
               userId={userId}
               onChanged={() => {
                 void refresh();
@@ -1162,7 +1153,7 @@ export function TaskDrawer({
                       resultKey,
                       JSON.stringify({
                         ...body,
-                        spaceId: board.space.id,
+                        spaceId: task.spaceId,
                         attempt: submitAttempt.current,
                       }),
                     );
