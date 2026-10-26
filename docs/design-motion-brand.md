@@ -80,4 +80,6 @@
 
 首次标准0.1.8候选已实际生成原生程序与NSIS安装器，尚未执行安装。直接提取新产物图标确认：桌面程序为原创接力标识，安装器仍为NSIS默认圆形安装图标。生成的安装脚本中INSTALLERICON与UNINSTALLERICON均为空，Modern UI因此回退默认图标；早前从bundle.icon推断安装器也已接入的说法不成立。
 
-窄修只在既有NSIS对象补installerIcon与uninstallerIcon，均指向现有icons/icon.ico，不生成新资源，不改变安装身份、权限、CSP、端口或安装模式。静态配置核对后重新固定来源构建标准安装器；原产物和失败图标证据保留。新安装/卸载图标的实际提取、安装窗口与托盘仍须以新产物验收，不用配置存在代替通过。
+窄修只在既有NSIS对象补installerIcon与uninstallerIcon，均指向现有icons/icon.ico，不生成新资源，不改变安装身份、权限、CSP、端口或安装模式。本地schema、ICO与独立只读审查通过后，以固定提交 `5c59901cd23f0b2003bdc30540874dbd47ba209d` 重新构建标准0.1.8安装器，构建退出0。原产物和失败图标证据保留。
+
+新产物的实际setup、独立解包desktop、另行提取uninstaller均已目视为接力图标，三者的32px图标与源ICO逐像素比较均为0差异，全程没有执行安装器或程序。安装器SHA256为 `1e85b06d8c5fdafcaffc564e7136e64aa15b35773980d48490ad49eda6d940ec`，状态为本地未签名候选；17个payload文件已按stage与Tauri精确NSIS转换验证。该结论证明文件中的图标，实际安装窗口、任务栏/托盘运行及缓存刷新仍待维护窗口内验收，详见[0.1.8候选验收](acceptance-0.1.8.md)。
