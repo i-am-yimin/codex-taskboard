@@ -7,7 +7,7 @@
 - React：`apps/web/src/brand/TaskboardBrand.tsx` 导出 `TaskboardMark` 与 `TaskboardBrand`。前者默认装饰，交互入口应由外层提供可访问名称；后者保留完整产品名，compact 仅收紧尺寸。
 - 网页静态标识：`apps/web/public/brand/relay-light.svg`、`relay-dark.svg`、`relay-mono.svg`。单色资源继承 currentColor，明暗资源为实色，不依赖滤镜。
 - 桌面母版：`apps/desktop/src-tauri/icons/taskboard.svg`。执行 `node scripts/generate-brand-icons.mjs` 从母版生成 `icon.png` 与含 16/20/24/32/48/64/128/256 像素图层的 `icon.ico`。需要已安装的 Playwright Chromium，不访问用户浏览器。
-- Tauri 配置已引用 `icons/icon.ico` 与 `icons/icon.png`，托盘复用 default_window_icon，故安装器、窗口与托盘共用母版。最终安装包仍须实机核验，源码替换不能证明安装器缓存或任务栏刷新已完成。
+- Tauri 的 `bundle.icon` 引用 `icons/icon.ico` 与 `icons/icon.png`，桌面程序和复用 default_window_icon 的托盘使用该母版。NSIS 的 `installerIcon` 与 `uninstallerIcon` 另外显式引用同一 `icons/icon.ico`；`bundle.icon` 本身不会替代这两个安装器配置。最终产物和实机仍须分别核验，源码替换不能证明安装器缓存或任务栏刷新已完成。
 
 ## 动效语法
 
@@ -75,3 +75,9 @@
 - 截图与合成浏览器 WebM 保存于忽略目录 `.artifacts/motion/`。这些证据不证明真实宿主、读屏、物理设备帧率或最终安装包。
 
 本轮最终仅执行一次 Impeccable detect，范围为 `main.tsx`、`TaskDrawer.tsx`、`motion/` 与 `collaboration.css`；退出0且无输出，未报告检测项。它是静态机械检查，不替代上述浏览器证据与最终实机验收。
+
+## 标准安装器图标补验（2026-10-26）
+
+首次标准0.1.8候选已实际生成原生程序与NSIS安装器，尚未执行安装。直接提取新产物图标确认：桌面程序为原创接力标识，安装器仍为NSIS默认圆形安装图标。生成的安装脚本中INSTALLERICON与UNINSTALLERICON均为空，Modern UI因此回退默认图标；早前从bundle.icon推断安装器也已接入的说法不成立。
+
+窄修只在既有NSIS对象补installerIcon与uninstallerIcon，均指向现有icons/icon.ico，不生成新资源，不改变安装身份、权限、CSP、端口或安装模式。静态配置核对后重新固定来源构建标准安装器；原产物和失败图标证据保留。新安装/卸载图标的实际提取、安装窗口与托盘仍须以新产物验收，不用配置存在代替通过。

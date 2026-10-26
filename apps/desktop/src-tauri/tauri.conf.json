@@ -26,6 +26,6 @@
     "targets": ["nsis"],
     "icon": ["icons/icon.ico", "icons/icon.png"],
     "resources": { "../runtime/": "runtime/" },
-    "windows": { "nsis": { "installMode": "currentUser", "displayLanguageSelector": true } }
+    "windows": { "nsis": { "installMode": "currentUser", "displayLanguageSelector": true, "installerIcon": "icons/icon.ico", "uninstallerIcon": "icons/icon.ico" } }
   }
 }
