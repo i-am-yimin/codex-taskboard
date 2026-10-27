@@ -567,29 +567,43 @@ describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () =>
     expect(await page.locator('#codex-composer').count()).toBe(1);
   });
 
-  it('waits for the initial workspace to mount before enabling CSP bypass', async () => {
+  it.each(['while-waiting', 'before-diagnosis'] as const)('rechecks initial workspace mounting: %s', async (mountTiming) => {
     const target = await boundPage();
     const before = await documentOrigin();
-    await page.evaluate(() => {
+    const markup = await page.evaluate(() => {
       const shell = document.querySelector('#codex-shell')!;
       const markup = shell.outerHTML;
       shell.remove();
-      setTimeout(() => document.body.insertAdjacentHTML('beforeend', markup), 350);
+      return markup;
     });
+    if (mountTiming === 'while-waiting')
+      await page.evaluate((html) => {
+        setTimeout(() => document.body.insertAdjacentHTML('beforeend', html), 350);
+      }, markup);
     const mountChecks: number[] = [];
+    let mounted = false;
     const connector: CdpConnector = async (webSocketDebuggerUrl) => {
       const connection = await connectCdp(webSocketDebuggerUrl, 5_000);
       return {
         send: async <T = unknown>(method: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<T> => {
           if (method === 'Page.setBypassCSP' && params?.enabled === true)
             mountChecks.push(await page.locator('#codex-shell #codex-composer').count());
-          return connection.send<T>(method, params, timeoutMs);
+          const result = await connection.send<T>(method, params, timeoutMs);
+          if (mountTiming === 'before-diagnosis' && method === 'Runtime.evaluate' && !mounted &&
+              typeof params?.expression === 'string' &&
+              params.expression.includes('&& !document.querySelector(')) {
+            // Commit the initial mount after the safety sample and before its diagnostic sample.
+            await page.evaluate((html) => document.body.insertAdjacentHTML('beforeend', html), markup);
+            mounted = true;
+          }
+          return result;
         },
         onEvent: connection.onEvent?.bind(connection),
         close: () => connection.close(),
       } satisfies CdpConnection;
     };
     await adapter(target, connector).install();
+    if (mountTiming === 'before-diagnosis') expect(mounted).toBe(true);
     expect(mountChecks).toEqual([1]);
     expect(await documentOrigin()).not.toBe(before);
     expect(await page.locator('[data-taskboard-owned]').count()).toBe(1);

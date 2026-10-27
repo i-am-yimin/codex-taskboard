@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RunnerKind, RunnerProbe, Task, TaskClaim, TaskRun } from '@taskboard/core';
+import { LOCAL_RUNNER_SETUP_TIMEOUT_MS } from '@taskboard/core';
 import {
   companionKey,
   companionOrigin,
@@ -40,7 +41,12 @@ export async function requestLocalRunner<T>(
     method: payloadBody === undefined ? 'GET' : 'POST',
     headers: { 'content-type': 'application/json', 'x-taskboard-companion-key': key },
     body: payloadBody === undefined ? undefined : JSON.stringify(payloadBody),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(
+      (path === '/start' && payloadBody !== undefined) ||
+        (path === '/probe' && payloadBody === undefined)
+        ? LOCAL_RUNNER_SETUP_TIMEOUT_MS
+        : 15000,
+    ),
   });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error?.message ?? '本机运行请求失败');

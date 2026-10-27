@@ -87,6 +87,7 @@ import { useBoardReflow, boardMotion, prefersReducedMotion } from './motion/boar
 import './motion/boardMotion.css';
 import { BufferedKeyboardSensor, KeyboardSensorScope } from './motion/BufferedKeyboardSensor';
 import { useKeyboardDropFocus } from './motion/useKeyboardDropFocus';
+import { useBoardKeyboardInput } from './motion/useBoardKeyboardInput';
 import './collaboration.css';
 import './workflow.css';
 import './glass.css';
@@ -1136,6 +1137,7 @@ function BoardView({
   editable: boolean;
 }) {
   const boardRef = useRef<HTMLDivElement>(null);
+  useBoardKeyboardInput(boardRef, editable);
   const keyboardFocus = useKeyboardDropFocus(boardRef);
   const keyboardScope = useMemo(() => new KeyboardSensorScope(), []);
   useEffect(() => () => keyboardScope.dispose(), [keyboardScope]);
@@ -1152,6 +1154,11 @@ function BoardView({
     useSensor(BufferedKeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
       scope: keyboardScope,
+      keyboardCodes: {
+        start: ['Space'],
+        end: ['Space', 'Enter', 'Tab'],
+        cancel: ['Escape'],
+      },
     }),
   );
   const drop = async (event: DragEndEvent) => {
@@ -1181,7 +1188,13 @@ function BoardView({
   return (
     <DndContext
       sensors={sensors}
-      accessibility={{ restoreFocus: false }}
+      accessibility={{
+        restoreFocus: false,
+        screenReaderInstructions: {
+          draggable:
+            '按 Enter 打开任务详情。按空格拾取任务；拾取后使用方向键移动，空格、Enter 或 Tab 放下，Esc 取消。',
+        },
+      }}
       collisionDetection={closestCenter}
       onDragStart={(event) => {
         keyboardFocus.cancel();

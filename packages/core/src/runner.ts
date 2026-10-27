@@ -3,6 +3,8 @@ import type { TaskRun } from './collaboration.ts';
 
 export const runnerKindSchema = z.enum(['codex-cli', 'claude-code']);
 export type RunnerKind = z.infer<typeof runnerKindSchema>;
+/** Cold setup combines CLI version/auth probes and Windows process-ownership observation. */
+export const LOCAL_RUNNER_SETUP_TIMEOUT_MS = 45_000;
 export interface RunnerCapability {
   supported: boolean;
   reason: string;

@@ -105,7 +105,10 @@ async function fixture(page: Page, configure?: (detail: TaskDetail) => void, str
           });
         detail.task = { ...detail.task, ...body, version: detail.task.version + 1 };
         data = detail.task;
-        board.tasks = board.tasks.map((task) => (task.id === detail.task.id ? detail.task : task));
+        // Match the server board query's ORDER BY position after a task moves.
+        board.tasks = board.tasks
+          .map((task) => (task.id === detail.task.id ? detail.task : task))
+          .sort((a, b) => a.position - b.position);
       }
     }
     return route.fulfill({ json: { data } });
@@ -213,6 +216,111 @@ test('narrow and 200 percent surfaces retain usable drawers', async ({ page }) =
   await page.screenshot({ path: '.artifacts/motion/drawer-zoom-equivalent-640.png' });
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
+});
+
+test('Enter opens a focused task without picking it up', async ({ page }) => {
+  await fixture(page);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: '任务详情' })).toHaveCount(0);
+  const card = page.locator('[data-motion-id="t-27"]');
+  await card.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog', { name: '任务详情' })).toBeVisible();
+  await expect(page.locator('.task-drag-overlay')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(card).toBeFocused();
+});
+
+for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+  test(`code-less keyboard input can cancel and reorder a task (${reducedMotion})`, async ({
+    page,
+  }) => {
+    // Keep the next card visible: the stock sensor first scrolls clipped destinations into view.
+    await page.setViewportSize({ width: 1280, height: 1200 });
+    await page.emulateMedia({ reducedMotion });
+    const server = await fixture(page, (detail) => {
+      detail.task.statusId = 's-todo';
+      detail.task.position = 500;
+    });
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: '任务详情' })).toHaveCount(0);
+    const card = page.locator('[data-motion-id="t-27"]');
+    const overlay = page.locator('.task-drag-overlay');
+    await card.focus();
+    await card.dispatchEvent('keydown', { key: ' ', code: '' });
+    await expect(overlay).toBeVisible();
+    await card.dispatchEvent('keydown', { key: 'ArrowRight', code: 'Unidentified' });
+    await expect(page.locator('.column[data-drop-target="true"] .column-head b')).toHaveText(
+      '进行中',
+    );
+    await card.dispatchEvent('keydown', { key: 'Escape', code: 'Unidentified' });
+    await expect(overlay).toHaveCount(0);
+    await expect(card).toBeFocused();
+    expect(server.writes).toHaveLength(0);
+
+    const column = card.locator('..');
+    const order = () =>
+      column
+        .locator('[data-motion-id]')
+        .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-motion-id')));
+    const before = await order();
+    expect(before).toEqual(['t-27', 't-25', 't-24']);
+    await card.dispatchEvent('keydown', { key: ' ', code: 'Unidentified' });
+    await expect(overlay).toBeVisible();
+    await card.dispatchEvent('keydown', { key: 'ArrowDown', code: '' });
+    await card.dispatchEvent('keydown', { key: ' ', code: '' });
+    await expect(overlay).toHaveCount(0);
+    await expect.poll(() => server.writes.length).toBe(1);
+    expect(server.writes[0].body.statusId).toBe('s-todo');
+    await expect.poll(order).toEqual(['t-25', 't-27', 't-24']);
+    await expect(card).toBeFocused();
+  });
+}
+
+test('code-less fallback leaves form input, composition, modifiers and other keys alone', async ({
+  page,
+}) => {
+  await fixture(page);
+  const comment = page.getByRole('textbox', { name: '评论', exact: true });
+  const fieldEvent = await comment.evaluate((element) => {
+    const event = new KeyboardEvent('keydown', {
+      key: ' ',
+      code: '',
+      bubbles: true,
+      cancelable: true,
+    });
+    element.dispatchEvent(event);
+    return { code: event.code, prevented: event.defaultPrevented };
+  });
+  expect(fieldEvent).toEqual({ code: '', prevented: false });
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: '任务详情' })).toHaveCount(0);
+  const card = page.locator('[data-motion-id="t-27"]');
+  const ignored = await card.evaluate((element) => {
+    return [
+      { key: 'a', code: '' },
+      { key: ' ', code: 'KeyA' },
+      { key: ' ', code: '', isComposing: true },
+      { key: ' ', code: '', ctrlKey: true },
+      { key: ' ', code: '', altKey: true },
+      { key: ' ', code: '', metaKey: true },
+      { key: ' ', code: '', shiftKey: true },
+    ].map((init) => {
+      const event = new KeyboardEvent('keydown', { ...init, bubbles: true, cancelable: true });
+      element.dispatchEvent(event);
+      return { code: event.code, prevented: event.defaultPrevented };
+    });
+  });
+  expect(ignored).toEqual([
+    { code: '', prevented: false },
+    { code: 'KeyA', prevented: false },
+    { code: '', prevented: false },
+    { code: '', prevented: false },
+    { code: '', prevented: false },
+    { code: '', prevented: false },
+    { code: '', prevented: false },
+  ]);
+  await expect(page.locator('.task-drag-overlay')).toHaveCount(0);
 });
 
 test('rapid filtered reflow and scrolling leave no residual transforms', async ({ page }) => {
@@ -447,6 +555,7 @@ test('keyboard adapter isolates late cleanup, unmount, bounded buffering and ter
     cancel: 0,
   });
   await page.evaluate(`window.sensorScenario.key('Space')`);
+  await page.clock.runFor(20);
   expect(await page.evaluate('window.sensorScenario.counts.unmounted')).toEqual({
     start: 1,
     move: 0,
@@ -523,6 +632,41 @@ test('buffered keyboard movement followed by Space commits the selected position
   await expect.poll(() => server.writes.length).toBe(1);
   expect(server.writes[0].body.position).toBeGreaterThan(0);
   expect(server.writes[0].body.statusId).toBe(todo.id);
+  await expect(card).toBeFocused();
+});
+
+test('active keyboard movement and immediate drop commit after the registration gap', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 1200 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const server = await fixture(page, (detail) => {
+    detail.task.statusId = 's-todo';
+    detail.task.position = 500;
+  });
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: '任务详情' })).toHaveCount(0);
+  await page.clock.install({ time: new Date('2026-10-27T00:00:00Z') });
+  await page.clock.pauseAt(new Date('2026-10-27T00:00:01Z'));
+  const card = page.locator('[data-motion-id="t-27"]');
+  await card.focus();
+  await page.keyboard.press('Space');
+  await page.clock.runFor(20);
+  await expect(page.locator('.task-drag-overlay')).toBeVisible();
+  await card.evaluate((element) => {
+    for (const [key, code] of [
+      ['ArrowDown', 'ArrowDown'],
+      [' ', 'Space'],
+    ])
+      element.dispatchEvent(
+        new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true }),
+      );
+  });
+  await page.clock.runFor(350);
+  await page.clock.resume();
+  await expect(page.locator('.task-drag-overlay')).toHaveCount(0);
+  await expect.poll(() => server.writes.length).toBe(1);
+  expect(server.writes[0].body.position).toBe(1500);
   await expect(card).toBeFocused();
 });
 

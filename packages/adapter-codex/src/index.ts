@@ -878,6 +878,11 @@ export class CodexDesktopAdapter implements AgentAdapter {
       if (state.modal) throw new Error('CSP reload refused: a Codex dialog is open');
       if (state.hasText) throw new Error('CSP reload refused: the Codex editor contains an unsent draft');
       if (state.login) throw new Error('CSP reload refused: Codex workspace is not ready; sign in and open a project first');
+      if (waitForWorkspace && state.shell === 1 && state.editors === 1 && Date.now() < deadline) {
+        // The initial mount may finish between the safety and diagnostic samples.
+        // Retry the full owner/page/empty-editor check; diagnostics never authorize reload.
+        continue;
+      }
       if ((state.shell === 0 || state.shell === 1) &&
           (state.editors === 0 || state.editors === 1) &&
           (state.shell === 0 || state.editors === 0)) {

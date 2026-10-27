@@ -10,6 +10,7 @@ import {
   assessServerCompatibility,
   requiresCollaborationContract,
   MINIMUM_COLLABORATION_SERVER,
+  LOCAL_RUNNER_SETUP_TIMEOUT_MS,
   type Task,
 } from '@taskboard/core';
 
@@ -121,7 +122,12 @@ export class CompanionClient {
       method,
       headers: { 'content-type': 'application/json', 'x-taskboard-companion-key': key },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(
+        (path === '/v1/runners/start' && method === 'POST') ||
+          (path === '/v1/runners/probe' && method === 'GET')
+          ? LOCAL_RUNNER_SETUP_TIMEOUT_MS
+          : 12000,
+      ),
     }).catch(() => {
       throw new CliError('OFFLINE', '本机伴随服务不可用，请先查询原操作状态后重试');
     });

@@ -23,7 +23,7 @@ const standardCodes = {
   cancel: ['Escape'],
 };
 
-/** Buffer only the gap between activation and the installed keyboard sensor's listener. */
+/** Serialize keyboard input so each move commits before a following move or drop reads it. */
 export class BufferedKeyboardSensor {
   static activators = KeyboardSensor.activators;
   readonly autoScrollEnabled: boolean;
@@ -43,7 +43,7 @@ export class BufferedKeyboardSensor {
     ]);
     const queue: KeyboardEventInit[] = [];
     const replayed = new WeakSet<KeyboardEvent>();
-    let buffering = true;
+    let draining = false;
     let attached = false;
     let completed = false;
     let overflowed = false;
@@ -69,17 +69,21 @@ export class BufferedKeyboardSensor {
       release();
       callback();
     };
+    const replay = (init: KeyboardEventInit) => {
+      const event = new KeyboardEvent('keydown', init);
+      replayed.add(event);
+      flushSync(() => doc.dispatchEvent(event));
+    };
     const capture = (event: KeyboardEvent) => {
-      if (
-        event === props.event ||
-        replayed.has(event) ||
-        completed ||
-        !buffering ||
-        !supported.has(event.code)
-      )
+      if (event === props.event || replayed.has(event) || completed || !supported.has(event.code))
         return;
       event.preventDefault();
       event.stopImmediatePropagation();
+      // Cancellation has no destination to commit and must remain immediate once attached.
+      if (attached && codes.cancel.includes(event.code)) {
+        replay({ key: event.key, code: event.code, bubbles: true, cancelable: true });
+        return;
+      }
       if (overflowed) return;
       if (queue.length >= 64) {
         // A stalled registration must not retain unbounded repeated keys or replay stale intent.
@@ -100,6 +104,10 @@ export class BufferedKeyboardSensor {
         bubbles: true,
         cancelable: true,
       });
+      if (attached && !draining) {
+        draining = true;
+        setTimeout(replayNext, 0);
+      }
     };
     unregister = props.options.scope.register(() => {
       if (completed) return;
@@ -126,16 +134,12 @@ export class BufferedKeyboardSensor {
       if (completed) return;
       const init = queue.shift();
       if (!init) {
-        buffering = false;
-        stopCapture();
+        draining = false;
         return;
       }
-      const event = new KeyboardEvent('keydown', init);
-      replayed.add(event);
-      flushSync(() => doc.dispatchEvent(event));
-      // Each physical key is a separate event task. Let dnd-kit commit its collision/over
-      // effects before the next buffered end key reads that destination. Keep capture until
-      // the queue is empty so newly arriving physical keys cannot overtake buffered ones.
+      replay(init);
+      // Let dnd-kit commit collision/over effects before the next key reads the destination.
+      // Keep capture for the whole drag: fast keys after registration need the same ordering.
       if (!completed) setTimeout(replayNext, 0);
     };
     setTimeout(() => {
@@ -144,6 +148,7 @@ export class BufferedKeyboardSensor {
         cleanupBase();
         return;
       }
+      draining = true;
       replayNext();
     }, 0);
   }
