@@ -532,6 +532,96 @@ describe('companion loopback boundary', () => {
       await runtime.stop();
     }
   });
+  it.each(['client disconnect', 'companion shutdown', 'late response after disconnect'] as const)(
+    'cancels the owned upstream SSE body on %s',
+    async (cleanup) => {
+      vi.spyOn(SecretStore.prototype, 'read').mockResolvedValue(undefined);
+      vi.spyOn(SecretStore.prototype, 'write').mockResolvedValue(undefined);
+      const cancelUpstream = vi.fn();
+      let upstreamSignal: AbortSignal | undefined;
+      let releaseUpstream: (() => void) | undefined;
+      let signalUpstreamStarted!: () => void;
+      const upstreamStarted = new Promise<void>((resolve) => {
+        signalUpstreamStarted = resolve;
+      });
+      const nativeFetch = globalThis.fetch;
+      vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init);
+        if (request.url.startsWith('http://127.0.0.1:') && !request.url.includes(':47830/'))
+          return nativeFetch(input, init);
+        if (request.url.endsWith('/auth/login'))
+          return new Response(
+            JSON.stringify({ data: { user: { id: '00000000-0000-4000-8000-000000000001' } } }),
+            {
+              headers: {
+                'content-type': 'application/json',
+                'set-cookie': 'tb_session=synthetic-browser; Path=/; HttpOnly',
+              },
+            },
+          );
+        upstreamSignal = init?.signal ?? undefined;
+        const response = new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('event: ready\ndata: {}\n\n'));
+            },
+            // Keep the pending read alive until its owner releases the body;
+            // merely notifying an AbortSignal must not be the cleanup proof.
+            cancel: cancelUpstream,
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        );
+        if (cleanup === 'late response after disconnect')
+          return new Promise<Response>((resolve) => {
+            releaseUpstream = () => resolve(response);
+            signalUpstreamStarted();
+          });
+        return response;
+      });
+      const runtime = await createCompanion({
+        dataDirectory: await mkdtemp(join(tmpdir(), 'taskboard-sse-close-')),
+        port: 0,
+      });
+      const localController = new AbortController();
+      try {
+        const headers = { 'x-taskboard-companion-key': runtime.clientKey };
+        const login = await runtime.app.inject({
+          method: 'POST',
+          url: '/v1/browser/login',
+          headers,
+          payload: {
+            email: 'synthetic@example.test',
+            password: 'synthetic-long-password',
+            deviceName: 'sse-close-test',
+          },
+        });
+        expect(login.statusCode).toBe(200);
+        const pendingStream = nativeFetch(
+          `http://127.0.0.1:${runtime.port}/api/v1/spaces/00000000-0000-4000-8000-000000000010/events`,
+          { headers, signal: localController.signal },
+        );
+        if (cleanup === 'late response after disconnect') {
+          await upstreamStarted;
+          localController.abort();
+          await expect(pendingStream).rejects.toThrow();
+          releaseUpstream!();
+        } else {
+          const stream = await pendingStream;
+          expect(stream.status).toBe(200);
+          const first = await stream.body!.getReader().read();
+          expect(new TextDecoder().decode(first.value)).toContain('event: ready');
+          if (cleanup === 'client disconnect') localController.abort();
+          else await runtime.stop();
+        }
+        await vi.waitFor(() => expect(upstreamSignal?.aborted).toBe(true));
+        await vi.waitFor(() => expect(cancelUpstream).toHaveBeenCalledTimes(1));
+      } finally {
+        localController.abort();
+        releaseUpstream?.();
+        await runtime.stop();
+      }
+    },
+  );
   it('does not erase a newer browser session when a late request from the prior account is rejected', async () => {
     let loginCount = 0;
     let resolveOldRequest!: (response: Response) => void;

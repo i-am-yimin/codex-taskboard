@@ -887,18 +887,28 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
       throw new CompanionError('AUTH_REQUIRED', '请先在伴随服务中登录', 401);
     const controller = new AbortController();
     let upstreamResponse: Response | undefined;
+    let upstreamReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    let upstreamCancellation: Promise<void> | undefined;
     let ended = false;
-    const close = () => {
-      if (ended) return;
-      ended = true;
+    const cancelUpstream = () => {
       controller.abort();
-      if (!reply.raw.writableEnded) reply.raw.end();
+      // Abort retires the request; release the already-owned response body too,
+      // so a pending read cannot keep its upstream socket alive after shutdown.
+      const body = upstreamReader ?? upstreamResponse?.body;
+      if (body && !upstreamCancellation)
+        upstreamCancellation = body.cancel().catch(() => undefined);
+    };
+    const close = () => {
+      const finishLocal = !ended;
+      ended = true;
+      cancelUpstream();
+      if (finishLocal && !reply.raw.writableEnded) reply.raw.end();
     };
     liveStreams.add(close);
     reply.raw.once('close', close);
     try {
       upstreamResponse = await browserRemote.stream(`/spaces/${spaceId}/events`, controller.signal);
-      if (!isCurrentSession(streamSession)) {
+      if (ended || !isCurrentSession(streamSession)) {
         close();
         return;
       }
@@ -912,7 +922,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
         connection: 'keep-alive',
         'x-accel-buffering': 'no',
       });
-      const reader = upstreamResponse.body!.getReader();
+      const reader = (upstreamReader = upstreamResponse.body!.getReader());
       try {
         while (!ended) {
           const { done, value } = await reader.read();
@@ -928,8 +938,8 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
             });
         }
       } finally {
-        await reader.cancel().catch(() => undefined);
         close();
+        await upstreamCancellation;
       }
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -942,9 +952,12 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
         await revokeLocalSession();
       throw error;
     } finally {
+      // Before hijacking, Fastify still owns error responses such as 401/403.
+      // Releasing upstream resources must not end those responses as empty 200s.
+      cancelUpstream();
       reply.raw.off('close', close);
       liveStreams.delete(close);
-      if (!upstreamResponse) controller.abort();
+      await upstreamCancellation;
     }
   });
   app.addHook('preClose', async () => {
