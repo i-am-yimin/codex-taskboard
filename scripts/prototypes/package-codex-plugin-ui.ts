@@ -4,6 +4,7 @@ import { build } from 'esbuild';
 import { chmod, copyFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { probePluginVersion } from './codex-plugin-ui.ts';
 
 export const probePluginName = 'taskboard-synthetic-ui-probe';
 export const probeMarketplaceName = 'taskboard-synthetic-ui';
@@ -45,7 +46,7 @@ export async function packagePluginUiProbe(outputDirectory: string, nodePath = p
   const manifest = {
     $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
     name: probePluginName,
-    version: '0.0.1',
+    version: probePluginVersion,
     description:
       'Synthetic read-only Taskboard global/thread UI compatibility probe. No real data.',
     license: 'MIT',
