@@ -61,9 +61,12 @@ export function createPluginUiProbe(): McpServer {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const server = createPluginUiProbe();
-  await server.connect(
-    new StdioServerTransport(process.stdin, process.stdout, { maxBufferSize: 65536 }),
-  );
+  void server
+    .connect(new StdioServerTransport(process.stdin, process.stdout, { maxBufferSize: 65536 }))
+    .catch(() => {
+      process.stderr.write('Synthetic MCP probe failed to start\n');
+      process.exitCode = 1;
+    });
   process.stdin.once('end', () => {
     void server.close();
   });
