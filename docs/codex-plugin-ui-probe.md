@@ -1,6 +1,6 @@
 # 官方插件 UI 合成原型
 
-日期：2026-10-29。此原型仅验证官方路线，不接入账号、任务 API、数据库或运行器，不随桌面包启动。
+日期：2026-10-29。当前独立 Codex 的 global 和 thread 合成界面均已通过显示、握手与展开交互。此原型仅验证官方路线，不接入业务账号、任务 API、数据库或运行器，不随桌面包启动。
 
 通过支持 stdio 的 MCP 测试客户端运行：
 
@@ -38,12 +38,16 @@ pnpm exec tsx scripts/prototypes/package-codex-plugin-ui.ts I:\acceptance\taskbo
 
 global 实机交互进一步绑定该原生进程的精确主页面、由该宿主生成的唯一 MCP App sandbox 目标和默认执行上下文，确认合成标题、握手状态及唯一任务后展开；合成负责人 A、开发者 B、验收人 C 已实际显示。未修改宿主 CSP、权限或门禁，未注入 Taskboard 侧栏；这是官方合成 UI 的独立证据，不是普通浏览器打开 HTML 的效果。导航后曾再次复核失败，当前操作停止；后续新的完整原生复核通过后才继续，未扩大超时。
 
-详情页的“在聊天中试用”打开了带插件提及的空白 Codex 草稿；当前草稿和标签页菜单中未观察到可验收的 thread 面板。该草稿未发送；没有使用已有真实会话或模型回复补造面板证据。因此 thread 仍未验收，不能从这次空白草稿观察推断所有会话均不支持面板。
+首轮详情页的“在聊天中试用”打开了带插件提及的空白 Codex 草稿；当时草稿和标签页菜单中未观察到可验收的 thread 面板。该草稿未发送，未从这次观察推断所有会话均不支持面板。
 
-随后通过官方 app-server 元数据 API 核对原登记的独立 home：全部来源的活动与归档列表均为空。通过 `thread/start` 创建无消息合成会话并设置名称后，新的服务进程可读取其元数据，但正常会话列表仍为空；没有调用 `turn/start`。空会话的持久化不构成面板验收，后续需在获准发送消息的合成会话中继续检查。原配置摘要保持，三个诊断服务进程均正常退出；请求准备与证据保存在 `.artifacts/acceptance/2026-10-29-official-ui-thread-fixture/`。
+随后通过官方 app-server 元数据 API 核对原登记的独立 home：全部来源的活动与归档列表均为空。通过 `thread/start` 创建无消息合成会话并设置名称后，新的服务进程可读取其元数据，但当时正常列表仍为空。三个元数据诊断服务进程均正常退出，原配置摘要保持。
 
-两轮后续独立实例均已退出，正常关闭后残留的进程经精确身份和保留的完整测试 profile 备份复核后回收；私有控制已释放、测试插件已卸载、独立配置按原字节恢复，日常进程与配置摘要保持。证据分别保存在本机忽略目录 `.artifacts/acceptance/2026-10-29-official-ui-transport/` 和 `.artifacts/acceptance/2026-10-29-official-ui-initialized/`，后一目录包含 global 显示、交互及清理记录。
+获得用户明确授权后，向这一会话通过官方 API 发送了固定合成提示一次，请求使用只读 sandbox、关闭命令网络访问并采用 `untrusted` 审批策略。模型返回“Taskboard 合成会话已就绪”，实际 terminal 为 completed，没有工具调用或额外审批请求；正常列表随后显示了该会话。请求、唯一 turn ID、事件和进程正常退出证据保存在 `.artifacts/acceptance/2026-10-29-official-ui-thread-fixture/`。此处只验证构造 UI 测试会话，不将它算作 Taskboard AgentRunner 的完整模型/取消/续接验收。
 
-官方 [Extensions](https://developers.openai.com/plugins/build/extensions) 的 UI 章节明确描述 ChatGPT；[连接与测试](https://developers.openai.com/plugins/deploy/connect-chatgpt)要求完整插件在实际宿主验证。当前只在独立配置/profile 安装原型；当前版本的 global 合成界面已验收，thread 面板和业务登录、撤权、同步仍未验收，不能宣布官方路线已替代结构适配。0.1.9 固定安装候选仍来自 `81ef9d1`，这些开发原型补充没有进入其产品载荷。
+当前真实宿主的 thread 入口路径为：打开已有消息的独立合成会话，点击右上角“新建标签页”，在右侧新页的工具区选择“更多工具…”，再选择 `Taskboard synthetic UI probe`。面板显示“宿主桥接已就绪（合成）”，合成任务实际展开。精确会话 ID、预期合成回复和选中的应用标签页同时保留，布局检查确认面板位于会话右侧；原生主页面、唯一宿主 sandbox 和默认执行上下文继续逐次复核。
+
+以上独立实例均已退出，正常关闭后残留的进程经精确身份和保留的完整测试 profile 备份复核后回收；私有控制已释放、测试插件已卸载、独立配置按原字节恢复，日常进程与配置摘要保持。证据保存在本机忽略目录 `.artifacts/acceptance/2026-10-29-official-ui-transport/`、`.artifacts/acceptance/2026-10-29-official-ui-initialized/` 和 `.artifacts/acceptance/2026-10-29-official-ui-thread-panel/`，分别保留旧失败、global 与 thread 实际交互及清理记录。
+
+官方 [Extensions](https://developers.openai.com/plugins/build/extensions) 的 UI 章节明确描述 ChatGPT；[连接与测试](https://developers.openai.com/plugins/deploy/connect-chatgpt)要求完整插件在实际宿主验证。当前只在独立配置/profile 安装原型，实测支持范围为 Codex `26.1021.3705.0` 的 global/thread 合成显示与交互；业务登录、撤权、同步仍需后续实现与验收。0.1.9 固定安装候选仍来自 `81ef9d1`，这些开发原型补充没有进入其产品载荷，生产侧栏继续使用结构适配。
 
 真实验收须在独立环境登记完整插件，确认全局入口、会话面板和合成任务展开，记录宿主版本、账户能力与界面结果。只发现工具、读取资源、在普通浏览器打开 HTML 或 ChatGPT 上的效果均不能判定 Codex UI 通过。宿主若不提供入口，记录具体观察并继续使用 [ADR 0008](adr/0008-codex-structure-compatibility.md) 的有限结构路线。

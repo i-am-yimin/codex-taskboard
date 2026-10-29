@@ -23,4 +23,4 @@
 
 官方 Extensions 的 global/thread UI 入口目前明确描述 ChatGPT。先做合成数据原型并核对目标宿主，只有 Codex 真实显示并可使用所需 UI 才能替代本路径。MCP 工具发现不能当作侧栏 UI 验收。
 
-2026-10-29 的[合成原型实机记录](../codex-plugin-ui-probe.md)已证明当前独立 Codex 的 global 显示和展开交互；thread 面板及业务账号、撤权与同步仍未验收，尚不替代本 ADR 的生产侧栏路径。
+2026-10-29 的[合成原型实机记录](../codex-plugin-ui-probe.md)已证明当前独立 Codex 的 global 和 thread 界面显示、握手与展开交互。thread 入口在已有合成会话的右侧新标签页“更多工具…”中。业务账号、撤权与同步仍未验收，尚不替代本 ADR 的生产侧栏路径。
