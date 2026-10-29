@@ -254,6 +254,16 @@ export interface AdapterCapabilities {
   draft: boolean;
   thread: boolean;
   reason?: string;
+  /** Sidebar diagnostics do not grant draft or Agent execution permissions. */
+  sidebar?: {
+    state: 'unchecked' | 'structure-ready' | 'installed' | 'structure-missing'
+      | 'structure-ambiguous' | 'state-blocked' | 'ownership-failed' | 'target-mismatch'
+      | 'transport-unavailable' | 'restoration-unconfirmed' | 'disconnected';
+    appVersion?: string;
+    contractId?: string;
+    contractRevision?: number;
+  };
+  draftReason?: string;
 }
 export interface LocalProject {
   id: string;

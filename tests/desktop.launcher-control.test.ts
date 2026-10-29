@@ -232,7 +232,7 @@ describe('private launcher control', () => {
     }
   });
 
-  it('allows an isolated launch to report its unverified host without enabling injection', async () => {
+  it('does not reject an unlisted version before its actual transport and structure check', async () => {
     server = createServer((request, response) => {
       if (request.headers['x-taskboard-control-key'] !== key) {
         response.writeHead(403).end();
@@ -258,11 +258,11 @@ describe('private launcher control', () => {
       expect(probe.json().data).toMatchObject({
         embedded: false,
         draft: false,
-        reason: 'Codex 26.924.9999.0 尚未完成侧栏兼容验证，暂不能接入侧栏',
+        sidebar: { state: 'transport-unavailable', appVersion: '26.924.9999.0' },
       });
       const install = await runtime.app.inject({ method: 'POST', url: '/v1/codex/install', headers });
       expect(install.statusCode).toBe(409);
-      expect(install.json().error.code).toBe('ADAPTER_UNAVAILABLE');
+      expect(install.json().error.code).toBe('CODEX_INSTALL_REFUSED');
     } finally {
       await runtime.stop();
     }

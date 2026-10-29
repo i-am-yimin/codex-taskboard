@@ -166,7 +166,7 @@ for (const kind of ['string', 'error'] as const)
   test(`preserves native ${kind} refusal without installing or remembering success`, async ({
     page,
   }) => {
-    const reason = 'Codex 26.1016.9999.0 尚未完成侧栏兼容验证，暂不能接入侧栏';
+    const reason = 'Codex 进程、监听者或精确页面身份未通过核验，已停止接入';
     const installs = await desktop(page, 'connectable', reason, kind);
     await page.getByRole('button', { name: '连接 Codex', exact: true }).click();
     await expect(page.locator('#codex-connection-notice')).toContainText(reason);
@@ -191,6 +191,22 @@ test('failed sidebar handshake stays visible and does not enable startup connect
   await expect(page.locator('#codex-connection-notice')).toContainText('侧栏看板就绪超时');
   await expect(page.getByRole('button', { name: '打开 Codex', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => localStorage.getItem('tb:daily-codex:auto-connect'))).toBeNull();
+});
+
+test('a structure refusal preserves the taskboard and manual retry without claiming connection', async ({ page }) => {
+  await desktop(page);
+  await page.route('http://127.0.0.1:47831/v1/codex/install', route => route.fulfill({
+    status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+    body: JSON.stringify({ data: { embedded: false, draft: false, projects: false, thread: false,
+      sidebar: { state: 'structure-ambiguous', appVersion: '99.999.1.0' },
+      reason: 'Codex 结构匹配不唯一，已停止侧栏接入' } }),
+  }));
+  await page.getByRole('button', { name: '连接 Codex', exact: true }).click();
+  await expect(page.locator('#codex-connection-notice')).toContainText('结构匹配不唯一');
+  await expect(page.getByRole('button', { name: '重新连接', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '打开 Codex', exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem('tb:daily-codex:auto-connect'))).toBeNull();
+  await expect(page.locator('.board')).toBeVisible();
 });
 test('plain browser board does not offer a native connection action', async ({ page }) => {
   await page.goto('/?demo=1');

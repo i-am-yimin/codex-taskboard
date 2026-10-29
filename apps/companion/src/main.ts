@@ -15,8 +15,6 @@ import {
 import { LocalAgentRunner } from './runners.ts';
 import {
   CodexDesktopAdapter,
-  SUPPORTED_CODEX_VERSIONS,
-  codexHostMarkers,
 } from '@taskboard/adapter-codex';
 import type { AdapterCapabilities, AgentAdapter, DraftRequest } from '@taskboard/core';
 import { CompanionStore, defaultDataDirectory, normalizeUpstream } from './store.ts';
@@ -176,7 +174,6 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
   let controlSession: LauncherSession | undefined;
   let retirementSession: LauncherSession | undefined;
   let retirementError: string | undefined;
-  let unsupportedHostReason: string | undefined;
   const refreshAdapter = async (): Promise<AgentAdapter | undefined> => {
     if (options.adapter || !control) return adapter;
     if (retirementError) {
@@ -198,13 +195,8 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     }
     adapter = undefined;
     controlSession = undefined;
-    unsupportedHostReason = undefined;
     if (retirementError) return undefined;
     if (!session) return undefined;
-    if (!(SUPPORTED_CODEX_VERSIONS as readonly string[]).includes(session.version)) {
-      unsupportedHostReason = `Codex ${session.version} 尚未完成侧栏兼容验证，暂不能接入侧栏`;
-      return undefined;
-    }
     adapter = new CodexDesktopAdapter({
       endpoint: session.endpoint,
       appVersion: session.version,
@@ -218,7 +210,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
         pageWebSocketUrl: session.pageWebSocketUrl,
       },
       owner: { verify: () => control.verify(session) },
-      ...codexHostMarkers(session.version),
+      structureCheck: 'auto',
       allowCspBypass: true,
       allowCspReload: true,
       cdpTimeoutMs: 15_000,
@@ -668,7 +660,8 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     const current = await currentAdapter();
     return {
       data: retirementError
-        ? { embedded: false, projects: false, draft: false, thread: false, reason: retirementError }
+        ? { embedded: false, projects: false, draft: false, thread: false, reason: retirementError,
+            sidebar: { state: 'restoration-unconfirmed' } }
         : current
           ? await current.probe()
           : {
@@ -676,8 +669,8 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
               projects: false,
               draft: false,
               thread: false,
+              sidebar: { state: 'disconnected' },
               reason:
-                unsupportedHostReason ??
                 '尚未连接 Codex；请在连接与设备中选择“接入日常 Codex”。已打开且未启用连接的窗口需先正常退出一次。',
             },
     };
@@ -690,7 +683,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     if (!(current instanceof CodexDesktopAdapter))
       throw new CompanionError(
         'ADAPTER_UNAVAILABLE',
-        unsupportedHostReason ?? '当前设备没有可安装的 Codex 适配器',
+        '当前设备没有可安装的 Codex 适配器',
         409,
       );
     if (sidebarInstallation?.adapter === current) return sidebarInstallation.task;

@@ -99,7 +99,7 @@ pub fn status() -> Result<Value, String> {
     let installation = discover()?;
     let (state, reason) = if let Some(pid) = installation.pids.first() {
         if attach(&installation, *pid)?.is_some() {
-            ("connectable", "检测到日常 Codex 的连接端口；接入时还会检查侧栏版本兼容性。")
+            ("connectable", "检测到日常 Codex 的连接端口；接入时将自动检查侧栏结构与能力。")
         } else { ("restart-required", RESTART) }
     } else { ("not-running", "接入时将打开日常 Codex，沿用原登录、项目和会话。") };
     Ok(json!({"state": state, "reason": reason, "version": installation.version}))

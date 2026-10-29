@@ -23,7 +23,8 @@
 | [架构](architecture.md) | 数据流、模块职责与一致性约束 |
 | [协作工作流设计](collaborative-workflows-design.md) | 责任、父子/依赖、状态、通知、自动化与 API 契约 |
 | [桌面技术说明](desktop.md) | 原生启动、伴随服务、兼容清单与打包 |
-| [Codex 更新兼容性提案](codex-compatibility-proposal.md) | 从逐版白名单转向结构契约与自动自检；官方插件路线与实施边界，尚未实施 |
+| [Codex 更新兼容性改造](codex-compatibility-proposal.md) | 按有限结构契约自动自检；实施进度与真实证据见[验收记录](acceptance-codex-compatibility.md) |
+| [官方插件 UI 原型](codex-plugin-ui-probe.md) | 合成 MCP 资源与 global/thread 声明；工具发现与实际宿主 UI 分别验收 |
 | [架构决策](adr/README.md) | 已接受设计及其约束 |
 | [仓库维护](maintenance.md) | 目录约定、分支生命周期、清理与恢复 |
 | [开发交接](../HANDOFF.md) | 当前基线和继续工作的入口 |

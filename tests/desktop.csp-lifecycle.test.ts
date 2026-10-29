@@ -33,6 +33,8 @@ let activeAdapter: CodexDesktopAdapter | undefined;
 let delayComposerOnNextLoad = false;
 let delayProjectOnNextLoad = false;
 let projectFixtureId: string | undefined;
+let structureFixture: string | undefined;
+let blockNextDocument = false;
 const pageErrors: string[] = [];
 
 const composerModelFixture = String.raw`
@@ -168,6 +170,10 @@ async function waitForShell(): Promise<void> {
 
 beforeAll(async () => {
   host = createServer((_request, response) => {
+    if (_request.url === '/synthetic-delayed-script') {
+      setTimeout(() => { response.setHeader('Content-Type', 'text/javascript'); response.end('/* synthetic delayed load */'); }, 3500);
+      return;
+    }
     const delayComposer = delayComposerOnNextLoad;
     delayComposerOnNextLoad = false;
     const delayProject = delayProjectOnNextLoad;
@@ -187,6 +193,13 @@ beforeAll(async () => {
       : '';
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
     response.setHeader('Content-Security-Policy', "frame-src 'self'");
+    if (structureFixture) {
+      const blocker = blockNextDocument ? '<script src="/synthetic-delayed-script"></script>' : '';
+      blockNextDocument = false;
+      const deferred = delayComposer ? structureFixture.replace('<div contenteditable="true" role="textbox"><p><br></p></div>',
+        '<div id="delayed-contract-composer"></div><script>setTimeout(()=>{document.querySelector("#delayed-contract-composer").outerHTML=\'<div contenteditable="true" role="textbox"><p><br></p></div>\'},3500)</script>') : structureFixture;
+      response.end(`<!doctype html><html><head>${blocker}</head><body>${deferred}</body></html>`); return;
+    }
     response.end(`<!doctype html><html><body><script>
       const mount = () => {
         document.body.innerHTML = '<main id="codex-shell"><nav id="codex-sidebar">${delayProject ? '' : projectRow}</nav><section id="codex-content"></section></main>';
@@ -231,6 +244,8 @@ afterEach(async () => {
   } finally {
     activeAdapter = undefined;
     projectFixtureId = undefined;
+    structureFixture = undefined;
+    blockNextDocument = false;
     delayProjectOnNextLoad = false;
     await page.goto(`${hostOrigin}/`);
     await waitForShell();
@@ -252,6 +267,71 @@ afterAll(async () => {
 });
 
 describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () => {
+  it.each([
+    { appVersion: '99.999.1234.0', codexHome: 'C:\\synthetic-unused-home', activePage: false },
+    { appVersion: '26.1016.8622.0', codexHome: undefined, activePage: false },
+    { appVersion: '99.999.2345.0', codexHome: undefined, activePage: true },
+  ])('accepts structure on $appVersion, restores CSP, and never grants unapproved drafts ($codexHome)', { timeout: 45000 }, async (identity) => {
+    structureFixture = `<div data-app-shell-workspace-row><aside class="app-shell-left-panel">
+      <nav data-app-navigation-rail></nav><nav></nav></aside><section data-app-shell-header-placement>
+      <header data-app-shell-titlebar>Complete thread toolbar</header><main data-app-shell-main-surface>
+      <div contenteditable="true" role="textbox"><p><br></p></div></main></section></div>`;
+    if (identity.activePage) structureFixture = structureFixture
+      .replace('<section data-app-shell-header-placement>', '<div data-app-shell-active-page style="display:contents"><section data-app-shell-header-placement>')
+      .replace('</section></div>', '</section></div></div>');
+    await page.goto(`${hostOrigin}/`);
+    const target = await boundPage();
+    const instance = new CodexDesktopAdapter({ owner: { verify: async () => true },
+      ...identity, structureCheck: 'auto',
+      endpoint: cdpEndpoint, boardUrl: `${boardOrigin}/board`,
+      targetBinding: { targetId: target.id, exactPageUrl: target.url, pageWebSocketUrl: target.webSocketDebuggerUrl },
+      allowCspBypass: true, allowCspReload: true, cdpTimeoutMs: 5000 });
+    activeAdapter = instance;
+    expect(await instance.probe()).toMatchObject({ embedded: false, draft: false,
+      sidebar: { state: 'structure-ready', contractId: identity.activePage ? 'active-page-shell-v1' : 'workspace-shell-v1' } });
+    await expect(instance.openDraft({ taskId: 'task', spaceId: 'space', projectPath: 'C:\\synthetic', prompt: 'must not write' })).rejects.toThrow('DRAFT_UNAVAILABLE');
+    await instance.install();
+    expect(await instance.probe()).toMatchObject({ embedded: true, draft: false, sidebar: { state: 'installed' } });
+    await page.locator('[data-taskboard-entry]').click();
+    expect(await page.locator('[data-app-shell-header-placement]').isVisible()).toBe(false);
+    blockNextDocument = true;
+    delayComposerOnNextLoad = true;
+    await page.reload();
+    await expect.poll(async () => (await instance.ensureInstalled()).embedded, { timeout: 15000 }).toBe(true);
+    expect(await instance.probe()).toMatchObject({ draft: false });
+    // Structure drift retracts the view immediately. A later probe confirms
+    // cleanup and restores CSP; a cached successful check is never authority.
+    await page.locator('[data-app-shell-workspace-row]').evaluate(root => {
+      const unknown = document.createElement('section'); unknown.id = 'unknown-overlay'; root.append(unknown);
+    });
+    await page.locator('[data-taskboard-entry]').waitFor({ state: 'detached' });
+    // No external probe is needed to retire the invalid installation and CSP.
+    await expect.poll(cspBlocksBoard, { timeout: 10000 }).toBe(true);
+    expect(await instance.probe()).toMatchObject({ embedded: false, sidebar: { state: 'structure-missing' } });
+    await instance.dispose();
+  });
+
+  it('refuses mismatched future structure before enabling CSP or touching a draft', async () => {
+    structureFixture = '<div><aside class="app-shell-left-panel"><nav></nav></aside><div><p>unsupported shell</p></div></div>';
+    await page.goto(`${hostOrigin}/`);
+    const target = await boundPage();
+    const calls: string[] = [];
+    const instance = new CodexDesktopAdapter({ owner: { verify: async () => true }, appVersion: '99.999.1.0',
+      structureCheck: 'auto', endpoint: cdpEndpoint, boardUrl: `${boardOrigin}/board`,
+      targetBinding: { targetId: target.id, exactPageUrl: target.url, pageWebSocketUrl: target.webSocketDebuggerUrl },
+      allowCspBypass: true, allowCspReload: true }, async url => {
+        const connection = await connectCdp(url);
+        return { ...connection, send: ((method, params, timeout) => {
+          calls.push(method); return connection.send(method, params, timeout);
+        }) as CdpConnection['send'] };
+      });
+    activeAdapter = instance;
+    expect(await instance.probe()).toMatchObject({ draft: false, sidebar: { state: 'structure-missing' } });
+    await expect(instance.install()).rejects.toThrow('完整结构契约');
+    expect(calls).not.toContain('Page.setBypassCSP');
+    expect(calls).not.toContain('Page.reload');
+    expect(await page.locator('[data-taskboard-owned]').count()).toBe(0);
+  });
   it('selects the project navigation and visible content in the redesigned host', async () => {
     await page.setContent(`<div data-app-shell-workspace-row><aside class="app-shell-left-panel">
       <nav data-app-navigation-rail="true" aria-label="应用导航"></nav>

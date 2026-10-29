@@ -16,14 +16,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-// Native package-context launch and real handle transfer verified per version.
-// 26.928.1915.0 native probe evidence: 2026-09-30, source 92d1cde.
-// 26.930.7945.0 native probe evidence: 2026-10-08, source e72c648.
-// 26.1007.9446.0 native ownership and host project contract observed: 2026-10-16.
-// 26.1013.4894.0 native package/handle/listener/exact-page probe: 2026-10-20.
-// 26.1016.8622.0 native package/handle/listener/exact-page probe: 2026-10-24.
-// The companion keeps its separate host-DOM allowlist for injection and drafts.
-const LAUNCHABLE_VERSIONS: &[&str] = &["26.924.2738.0", "26.928.1915.0", "26.930.7945.0", "26.1007.9446.0", "26.1013.4894.0", "26.1016.8622.0"];
+// ADR 0008: native identity is version-independent. Launching grants no DOM or
+// draft capability; the companion must inspect a complete structure contract.
 const CODEX_PAGE: &str = "app://-/index.html";
 const START_TIMEOUT: Duration = Duration::from_secs(90);
 const CDP_TIMEOUT: Duration = Duration::from_millis(1200);
@@ -193,18 +187,17 @@ impl ManagedCodex {
 }
 
 pub fn launch(data_directory: &Path) -> Result<ManagedCodex, String> {
-    launch_versions(data_directory, LAUNCHABLE_VERSIONS)
+    launch_versions(data_directory, &[])
 }
 
-/// Developer-only native acceptance. It does not expand the installed app gate
-/// or the companion's separate host/draft allowlist.
+/// Developer-only native acceptance of one exact package. This does not grant
+/// sidebar compatibility or automatic draft capability.
 #[cfg(feature = "acceptance-probes")]
 pub fn launch_probe(data_directory: &Path, version: &str) -> Result<ManagedCodex, String> {
     validate_probe_version(version)?;
     launch_versions(data_directory, &[version])
 }
 
-#[cfg(any(feature = "acceptance-probes", test))]
 fn validate_probe_version(version: &str) -> Result<(), String> {
     let parts: Vec<_> = version.split('.').collect();
     if parts.len() != 4
@@ -427,18 +420,25 @@ fn select_installed(listing: &str, versions: &[&str]) -> Result<(String, PathBuf
     let mut matches: Vec<_> = listing
         .lines()
         .filter_map(|line| line.trim().split_once('|'))
-        .filter(|(installed, _)| versions.contains(installed))
+        .filter(|(installed, _)| validate_probe_version(installed).is_ok()
+            && (versions.is_empty() || versions.contains(installed)))
         .map(|(version, location)| (
             version.to_string(),
             Path::new(location.trim()).join("app").join("ChatGPT.exe"),
         ))
-        .filter(|(_, path)| path.is_file())
+        .filter(|(version, path)| {
+            if !path.is_file() { return false; }
+            let expected = format!("OpenAI.Codex_{version}_x64__2p2nqsd0c76g0");
+            fs::canonicalize(path).ok().and_then(|canonical|
+                canonical.parent().and_then(Path::parent).and_then(Path::file_name)
+                    .map(|name| name == expected.as_str())).unwrap_or(false)
+        })
         .collect();
     if matches.is_empty() {
-        return Err("当前 Codex 安装包版本未列入隔离启动清单".into());
+        return Err("未找到版本、路径与发布者身份一致的 Codex 安装包".into());
     }
     if matches.len() != 1 {
-        return Err("存在多个已验证 Codex 安装包，无法唯一确认启动身份".into());
+        return Err("存在多个 Codex 安装包，无法唯一确认启动身份".into());
     }
     Ok(matches.remove(0))
 }
@@ -933,51 +933,54 @@ mod tests {
         ] {
             assert!(validate_probe_version(invalid).is_err(), "accepted {invalid}");
         }
-        assert!(!LAUNCHABLE_VERSIONS.contains(&"26.999.1.0"));
+        assert!(validate_probe_version("26.999.1.0").is_ok());
     }
 
     #[test]
     fn native_candidates_require_exact_version_and_existing_executable() {
         let root = std::env::temp_dir().join(format!("taskboard-package-selection-{}", rand::random::<u64>()));
         fs::create_dir(&root).unwrap();
-        fs::create_dir(root.join("app")).unwrap();
-        let executable = root.join("app/ChatGPT.exe");
+        let package = root.join("OpenAI.Codex_26.928.1915.0_x64__2p2nqsd0c76g0");
+        fs::create_dir(&package).unwrap();
+        fs::create_dir(package.join("app")).unwrap();
+        let executable = package.join("app/ChatGPT.exe");
         fs::write(&executable, b"package selection fixture").unwrap();
-        let listing = format!("26.928.1915.0-extra|{0}\n26.928.1915.0|{0}\n26.924.2738.0|{0}\n26.928.1915.0|{0}/missing", root.display());
+        let listing = format!("26.928.1915.0-extra|{0}\n26.928.1915.0|{0}\n26.924.2738.0|{0}\n26.928.1915.0|{0}/missing", package.display());
         let probe = select_installed(&listing, &["26.928.1915.0"]).unwrap();
         assert_eq!(probe, ("26.928.1915.0".to_string(), executable.clone()));
-        for version in ["26.930.7945.0", "26.1007.9446.0", "26.1013.4894.0"] {
-            let newer_listing = format!("{version}|{}", root.display());
+        for version in ["26.930.7945.0", "26.1007.9446.0", "26.1013.4894.0", "99.999.1234.0"] {
+            let next_package = root.join(format!("OpenAI.Codex_{version}_x64__2p2nqsd0c76g0"));
+            fs::create_dir_all(next_package.join("app")).unwrap();
+            let next_executable = next_package.join("app/ChatGPT.exe");
+            fs::write(&next_executable, b"synthetic future package").unwrap();
+            let newer_listing = format!("{version}|{}", next_package.display());
             assert_eq!(
                 select_installed(&newer_listing, &[version]).unwrap(),
-                (version.to_string(), executable.clone())
+                (version.to_string(), next_executable.clone())
             );
             assert_eq!(
-                select_installed(&newer_listing, LAUNCHABLE_VERSIONS).unwrap(),
-                (version.to_string(), executable.clone())
+                select_installed(&newer_listing, &[]).unwrap(),
+                (version.to_string(), next_executable.clone())
             );
+            assert!(select_installed(&format!("{listing}\n{newer_listing}"), &[]).is_err());
+            fs::remove_file(next_executable).unwrap();
+            fs::remove_dir(next_package.join("app")).unwrap();
+            fs::remove_dir(next_package).unwrap();
         }
         for version in ["26.1013.4894.0-extra", "26.1013.4894.1", "26.1013.4895.0", "26.999.1.0"] {
-            let unverified_listing = format!("{version}|{}", root.display());
-            assert!(select_installed(&unverified_listing, LAUNCHABLE_VERSIONS).is_err());
+            let mismatched_listing = format!("{version}|{}", package.display());
+            assert!(select_installed(&mismatched_listing, &[]).is_err());
         }
-        // The normal discovery must reject two approved installed packages,
-        // rather than silently select one with uncertain package identity.
-        assert!(select_installed(&listing, LAUNCHABLE_VERSIONS).is_err());
+        assert!(select_installed(&format!("{listing}\n{listing}"), &[]).is_err());
         fs::remove_file(executable).unwrap();
-        fs::remove_dir(root.join("app")).unwrap();
+        fs::remove_dir(package.join("app")).unwrap();
+        fs::remove_dir(package).unwrap();
         fs::remove_dir(root).unwrap();
     }
 
     #[test]
-    #[ignore = "run only on a machine whose installed Codex version is outside the verified list"]
-    fn newer_installed_codex_is_refused_before_launch() {
-        assert!(discover_executable(LAUNCHABLE_VERSIONS).is_err());
-    }
-
-    #[test]
-    #[ignore = "run only on a machine with the verified Codex package installed"]
-    fn verified_installed_codex_is_discovered_without_launch() {
-        assert!(discover_executable(LAUNCHABLE_VERSIONS).unwrap().1.is_file());
+    #[ignore = "read-only probe requires a real installed Codex package"]
+    fn installed_codex_identity_is_discovered_without_launch() {
+        assert!(discover_executable(&[]).unwrap().1.is_file());
     }
 }

@@ -1,5 +1,7 @@
 # 在 Taskboard 内连接日常 Codex
 
+新的兼容候选在原生身份核验后自动检查完整结构，区分结构缺失/歧义、未发送草稿、打开弹窗及恢复未确认。Codex 更新但结构仍满足同一契约时，无需逐版加入清单；未知结构仍停止接入，任务看板可独立使用。此策略的实际版本与安装状态见[兼容改造验收](acceptance-codex-compatibility.md)，日常模式仍只允许手动复制草稿。
+
 0.1.4 已公开为未签名开发预览；安装、账号准备与完整操作见[使用手册](user-guide.md)，下载与校验和见 [Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.4)。
 
 打开普通的 Codex Taskboard，在看板标题右侧点击“连接 Codex”。已启用连接的日常窗口会被直接复用；没有运行时，由 Taskboard 打开正常的 Codex 环境。侧栏接入成功后，按钮变为“打开 Codex”，可返回原窗口。登录、项目和聊天沿用原环境。
