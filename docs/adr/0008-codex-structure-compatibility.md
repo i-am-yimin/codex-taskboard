@@ -1,6 +1,6 @@
 # ADR 0008：按结构契约接入 Codex 侧栏
 
-日期：2026-10-29。状态：已采纳，源码实施中；真实宿主和最终候选证据见[验收记录](../acceptance-codex-compatibility.md)。
+日期：2026-10-29。状态：已实施，真实独立宿主与本机 0.1.9 安装候选已核验，实装仍待完成；范围见[验收记录](../acceptance-codex-compatibility.md)。
 
 ## 背景
 

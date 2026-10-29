@@ -17,6 +17,16 @@
 
 最终修复的类型、相关 ESLint、生产构建、`desktop:prepare` 和 `desktop:check-runtime` 通过；完整 Tauri `cargo test --locked` 为 45 项通过、4 项按既有条件忽略。桌面资源在中文长路径、ES module 上级目录中实际执行，通过随包伴随服务和 CLI 检查。
 
+最终源码真实复验已通过：`host-functional-confirmed-source-private.json` 记录接入、完整视图切换、编辑器/样式保留、外部重载恢复、精确探针来源的 CSP enforce 事件及零残留节点。此前失败和短时探针未观测的记录均保留。诊断私有控制端及临时能力文件已清理；隔离窗口正常关闭后遗留的无窗口进程，已在精确身份复核和保留独立 profile 备份后回收。日常 Codex 与普通 Taskboard 的路径、PID/创建时间均保持原身份。
+
+## 0.1.9 固定本机候选
+
+- 产品源码固定为 `81ef9d112f6e4d28508e825a1e361de425ae4be2`，后续验收说明属于文档补充。
+- 标准 NSIS：`Codex.Taskboard_0.1.9_x64-setup.exe`，SHA256 为 `ae415d1ccbe8ac39d8b153005befaf2c8c2e816696f7a99b18a187a07dd15a07`。
+- 构建前后 303 个源码文件和 16 个随包资源摘要一致。独立提取的 17 个载荷全部核对；主程序仅有 Tauri 官方 NSIS 标记的精确三字节转换，其他字节一致，产品版本为 0.1.9。安装器与主程序均为 `NotSigned`。
+- 0.1.8 固定安装器摘要保持原值；原安装仍在正常运行。本机候选尚未安装或公开发布，不把提取校验算作最终安装验收。
+- 候选、校验文件和具体维护/回退方案位于本机忽略目录 `.artifacts/delivery/0.1.9-compatibility/`。
+
 原始日志和实机记录保存在本机忽略目录 `.artifacts/acceptance/2026-10-29-codex-compatibility/`。浏览器测试曾在服务启动阶段被本机代理误转发回环请求，针对测试进程补 `NO_PROXY` 后同一用例通过，未修改测试阈值。
 
 ## 尚待完成
