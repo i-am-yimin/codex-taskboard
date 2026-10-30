@@ -1,20 +1,33 @@
-# 当前候选与发布记录
+# 发布记录
 
-## Codex Taskboard 客户端 0.1.10（发布准备，固定标签资产待核验）
+## Codex Taskboard 客户端 0.1.10（未签名预发布）
 
-相较公开 0.1.7，本版包含此前本机候选的多人任务协作、任务流转、拆分/需求/决策提案、父子与依赖、收件箱和自动提醒、本机 Agent 运行面板，以及原创接力标识、克制动效和窄窗口适配。
+发布日期：2026-10-30。
 
-Codex 侧栏改为完整原生身份后的有限结构自检，支持已观察的显式当前/隐藏缓存页；修复切换会话后仍绑定旧页、编辑器延迟挂载与重载期间证明暂不可观测导致的恢复失败。所有缓存草稿参与刷新保护，身份验证和自动草稿权限独立。
+Windows x64 未签名预发布。客户端自带运行时，首次使用需要自己的 Taskboard HTTPS 服务和账号。
 
-发布门禁还发现极窄详情中日期/下拉控件、检查清单及子任务复选框的实际溢出，已作局部 CSS 修正；本机早前实装候选不包含这些样式变化，修正后的浏览器和最终包证据单列。
+[下载安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.10/Codex.Taskboard_0.1.10_x64-setup.exe) · [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.10/SHA256SUMS) · [使用手册](https://github.com/i-am-yimin/codex-taskboard/blob/main/docs/user-guide.md)
 
-- 新协作功能要求协作协议 1 及 0005—0009 迁移。旧服务器保留只读看板与本机草稿，网络探测失败单独显示未确认；客户端安装不会自动升级服务器。公开独立服务端镜像仍为 0.1.3-preview.1，不能据此宣称已支持新协作协议。
-- Codex CLI / Claude Code 提供独立运行器与专用配置契约；官方模型生成、真实取消/续接仍未验收。日常 Codex 不自动填写或发送聊天。官方 global/thread UI 仅为开发合成原型，不进入产品包。
-- Windows x64 未签名，按预发布交付。本机固定候选已完成原位安装、实际产品入口、缓存导航/同一 iframe、刷新/CSP、冷草稿和原账号恢复；GitHub 最终包与本机候选分别核验，不以已有实机记录代替待生成发布包。
+本版整合此前未公开的 0.1.8、0.1.9 与 0.1.10：
 
-源码检查、26 项连接浏览器场景、完整 Tauri 与随包运行时检查通过。本机实际 Codex 为 26.1021.3705.0；完整 CI、来源证明、发布包摘要与公开下载将在固定标签构建后补录。历史配置变化来源仍未确认，本次维护前后摘要一致。
+- 多人职责、明确验收人、父子与依赖、人工确认的拆分/需求/决策提案，以及领取、运行、提交和验收的完整任务流。
+- 个人任务、提及、持久收件箱、稍后/静音、系统提醒请求、自动规则和等待区间统计。
+- Codex CLI / Claude Code 的专用配置和本机运行面板；原创接力标识、克制动效、键盘操作与窄窗口适配。
+- Codex 完整原生身份后的有限结构自检，改善当前/缓存会话切换、多编辑器、刷新恢复和草稿保护。
 
-[0.1.10 验收与发布进度](acceptance-0.1.10.md) · [使用手册](user-guide.md) · [协作设计](collaborative-workflows-design.md) · [运行器说明](agent-runners.md)
+新协作需要服务器协作协议 1 与 0005—0009 迁移。公开独立服务端镜像仍为 0.1.3-preview.1；客户端安装不会自动升级服务器。旧服务器保留只读看板和本机草稿。Linux 归档属于本客户端标签构建，不是新的独立 server tag，也不表示生产已升级。
+
+固定标签源码 CI、独立 PostgreSQL、生产入口、外观、浏览器/离线、Windows 原生测试/标准 NSIS 和容器部署恢复/HTTPS 门禁均通过。源码 CI 为 333 项通过、1 项跳过，浏览器 158 项通过；生产依赖审计按既有 high 阈值通过，源码 CI 仍记录 5 low / 5 moderate，不是零风险报告。全部五项资产、校验和、严格 GitHub 来源证明、Linux 层摘要和 SPDX 已核验。CI 最终安装器已独立提取，web 载荷与最终源码的独立生产构建逐文件一致，Node、companion 与 CLI 等运行文件和本机候选字节相同；两份技能文本与固定标签源码的精确 CRLF 检出一致；实际运行随包 companion/CLI 的中文长路径及 ES module 场景通过。
+
+证据范围：本机早前候选已完成授权原位安装、独立 Codex 26.1021.3705.0 产品入口、缓存导航/同一 iframe、完整视图、刷新/CSP、未提交任务草稿、冷重开和原账号恢复。发布阶段另补三份 CSS 的极窄表单、清单及复选框溢出修正，由独立浏览器和最终 web 载荷核验；宿主适配器、原生及服务逻辑不变。未对当前普通安装执行 CI 最终包原位重装，也不宣称已完成该 CI 包的新一轮实机界面验收；两者分别记录。最终包主程序和安装器均 NotSigned。
+
+官方 CLI 登录后的模型生成、真实取消/续接仍未验收；日常 Codex 不自动填写或发送聊天。系统提醒请求不等于弹窗可见。官方 global/thread UI 只为开发合成原型，不进入产品包。历史日常 config.toml 变化仍未归因，本次维护前后摘要一致。
+
+固定来源：`c9ecd09098541cd38b19b3c4fcaf178f3e194aba`。
+
+安装器 SHA-256：`c84b36b9c4eff4d81bb0c631cf3526fd0d06ee2bbc8e77ba6f450d7da38880b1`。
+
+[发布工作流](https://github.com/i-am-yimin/codex-taskboard/actions/runs/41049789530) · [验收记录](https://github.com/i-am-yimin/codex-taskboard/blob/main/docs/acceptance-0.1.10.md) · [更新日志](https://github.com/i-am-yimin/codex-taskboard/blob/main/CHANGELOG.md)
 
 ## Codex Taskboard 客户端 0.1.8（本机候选，未公开发布）
 

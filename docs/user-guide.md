@@ -1,18 +1,18 @@
 # 使用手册
 
-适用客户端 **0.1.7**，服务端独立为 **0.1.3-preview.1**。更新日期：2026-10-25。
+适用客户端 **0.1.10**。公开独立服务端仍为 **0.1.3-preview.1**，新协作需要另行升级到支持协议 1 的服务端。更新日期：2026-10-30。
 
-[下载](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.7) · [服务端部署](deployment-openresty.md) · [更新日志](../CHANGELOG.md)
+[下载](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.10) · [服务端部署](deployment-openresty.md) · [更新日志](../CHANGELOG.md)
 
-## 未发布协作候选
+## 多人协作与服务器兼容
 
-本节适用于本地 **0.1.8 / 0.1.9 / 0.1.10 客户端候选**，配套独立 **0.1.4-preview.1 服务端候选**；候选版本不等于公开发布。已发布的 0.1.7 安装包及 0.1.3-preview.1 服务端保持原固定来源，后者只覆盖既有能力，不声明支持本节协作协议。协作与安装范围见 [0.1.8 验收](acceptance-0.1.8.md)、[0.1.9 实装记录](acceptance-0.1.9.md)及 [0.1.10 实装记录](acceptance-0.1.10.md)。
+本节适用于已公开的 **0.1.10 客户端**，协作需要协议 1。配套独立 **0.1.4-preview.1 服务端候选**已有授权实例的部署验收，但尚未公开独立镜像。已发布的 0.1.7 安装包及 0.1.3-preview.1 服务端保持原固定来源，后者只覆盖既有能力，不声明支持本节协作协议。协作与安装范围见 [0.1.8 验收](acceptance-0.1.8.md)、[0.1.9 实装记录](acceptance-0.1.9.md)及 [0.1.10 实装记录](acceptance-0.1.10.md)。
 
-**0.1.10 稳定性候选**改善 Codex 缓存会话的看板切换与刷新恢复：已识别的编辑器短暂加载时，入口会暂不可用，完整检查恢复后才可打开；隐藏页草稿也会阻止需要重载的操作。本机已完成授权原位安装与原账号恢复，实际产品入口、缓存页、刷新和冷草稿均已核验；诊断方式和配置调查限制见 [0.1.10 记录](acceptance-0.1.10.md)。
+**0.1.10**改善 Codex 缓存会话的看板切换与刷新恢复：已识别的编辑器短暂加载时，入口会暂不可用，完整检查恢复后才可打开；隐藏页草稿也会阻止需要重载的操作。本机已完成授权原位安装与原账号恢复，实际产品入口、缓存页、刷新和冷草稿均已核验；诊断方式和配置调查限制见 [0.1.10 记录](acceptance-0.1.10.md)。
 
 ### 先核对服务器兼容性
 
-0.1.8 连接后读取服务器 `/api/v1/health`：保留健康状态，另读取独立 serverVersion、apiVersion 和 `capabilities.collaborativeWorkflows`。服务器仅在 `0005_collaborative_workflows`、`0006_workflow_services`、`0007_run_recovery`、`0008_run_permissions`、`0009_active_workflow_intervals` 齐全后声明协作协议 1；版本字符串本身不算能力证明。
+0.1.10 连接后读取服务器 `/api/v1/health`：保留健康状态，另读取独立 serverVersion、apiVersion 和 `capabilities.collaborativeWorkflows`。服务器仅在 `0005_collaborative_workflows`、`0006_workflow_services`、`0007_run_recovery`、`0008_run_permissions`、`0009_active_workflow_intervals` 齐全后声明协作协议 1；版本字符串本身不算能力证明。
 
 旧 health 缺少能力、协议不匹配或迁移未齐全时，界面明确显示“服务器需要升级”。基础看板与本机草稿保留，只读浏览仍可用；新的协作写入、通知/自动化等不兼容接口暂停。升级后点“重新检查服务器”恢复，不需要清草稿。网络探测失败显示“暂时无法确认服务器兼容性”，不会把断网诊断成旧版本。任务本身的 404 仍显示任务错误。
 
@@ -72,11 +72,11 @@ Taskboard 保存共享任务，Codex 保留本机项目和聊天。安装客户�
 - 自己部署：按[部署文档](deployment-openresty.md)启动服务，配置 HTTPS，并在网页创建首个管理员。
 - 只用浏览器：登录同一 HTTPS 地址即可管理任务；浏览器不负责打开或接入本机 Codex。
 
-Windows 包为未签名预发布版，本轮日常 Codex 精确验收版本为 `26.1016.8622.0`。Taskboard 与 Codex 分别登录，普通使用无需另装 Node.js、pnpm 或 Codex CLI。
+Windows 包为未签名预发布版。早前本机候选（未含发布阶段三份 CSS 修正）的独立 Codex 精确验收版本为 `26.1021.3705.0`；CI 最终包的独立载荷与随包运行时已核验，未再次原位安装。Taskboard 与 Codex 分别登录，普通使用无需另装 Node.js、pnpm 或 Codex CLI。
 
 ## 安装与登录
 
-1. 下载 [Windows x64 0.1.7 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.7/Codex.Taskboard_0.1.7_x64-setup.exe)和 [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.7/SHA256SUMS)，核对摘要后安装，无需登录 GitHub。
+1. 下载 [Windows x64 0.1.10 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.10/Codex.Taskboard_0.1.10_x64-setup.exe)和 [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.10/SHA256SUMS)，核对摘要后安装，无需登录 GitHub。
 2. 打开 **Codex Taskboard**，填写服务器根地址，点击 **“保存服务器”**。
 3. 输入 Taskboard 邮箱与密码，点击 **“登录并继续”**。选择或创建空间，确认 **“已同步”** 后再修改任务；团队成员由管理员邀请加入。
 
