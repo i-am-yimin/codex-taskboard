@@ -102,3 +102,24 @@ Windows Computer Use 初始化两次均在执行前报告 `failed to write kerne
 最终本机定向复验六项通过：真实独立 PostgreSQL 下的双设备同步、冲突草稿、刷新恢复、提交/确认验收及离线写入禁用，在 desktop/compact 两种配置均通过；独立/内嵌详情分别保留 1320、935、424、185px 的完整长记录及无横向溢出断言，并保存窄屏合成截图。最终验收条件文本框的默认列宽也改为按容器伸缩。此项是源码浏览器证据，不是后续固定标签 NSIS 的实装证据；完整 CI 仍由同一发布 PR 承担。
 
 同一源码的 Linux CI 随后为 156 通过、2 失败：桌面配置在抽屉有限入场动画尚未结束时立即缩放并读取几何，32px 入场位移被误作静态越界。布局测试现在在原有断言预算内等待该抽屉的真实动画完成，再保留相同窗口边界和溢出断言；没有关闭动效、增加产品超时或修改界面源码。原失败记录保留，修正后的精确提交继续重跑全部门禁。
+
+
+## GitHub 公开包结果
+
+发布日期：2026-10-30。[Release 与下载](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.10)，固定来源工作流 [41049789530](https://github.com/i-am-yimin/codex-taskboard/actions/runs/41049789530)。固定标签源码：`c9ecd09098541cd38b19b3c4fcaf178f3e194aba`。Windows 安装器 SHA-256：`c84b36b9c4eff4d81bb0c631cf3526fd0d06ee2bbc8e77ba6f450d7da38880b1`。
+
+发布 PR 的 verify/container/windows-desktop 及固定标签 release-gate/windows/linux 全部通过；覆盖独立 PostgreSQL、生产入口全部九项迁移、外观、E2E、离线、生产依赖审计、Windows 原生测试/标准 NSIS、容器部署恢复与 HTTPS。Linux CI 初次夹具/迁移预期失败已修正验证代码并保留原日志；宿主、原生和服务逻辑沿用已实装候选，另有三份 CSS 的极窄布局修正，未放宽权限、版本或宿主身份检查。release 环境由符合资格的维护者正常审批，没有关闭 reviewer 规则或使用 bypass。
+
+| 最终 CI 包范围 | 结果 |
+| --- | --- |
+| 固定来源 | 精确标签 v0.1.10、提交、workflow/run/attempt 和 GitHub hosted runner 的官方来源证明通过，五项资产均覆盖 |
+| Windows | 安装器和提取的主程序版本 0.1.10，均 NotSigned；17 个产品载荷逐项检查，Node、companion 与 CLI 等运行文件和本机候选字节相同；两份技能文本与标签源码的精确 CRLF 检出一致；web 全部文件与最终源码的独立生产构建逐字节一致 |
+| 实际随包运行时 | 从最终 CI 安装器提取并复制到中文长路径，在 ES module 父目录且缺 runtime/package.json 的情况下，真实 companion 启动/停止、CLI help 和专用 Node 合成运行器配置通过；不调用模型 |
+| Linux | 实际镜像配置、全部 blob/diff ID、Git package.json 和 SPDX 核验通过，部署恢复与 HTTPS 结果来自相同标签 CI |
+| 公开访问 | 未签名预发布、不设 latest；匿名 Release 页面、安装器与 SHA256SUMS 下载成功，大小与 SHA-256 和固定资产一致 |
+
+源码和固定标签门禁均为 333 项通过、1 项跳过，浏览器 158 项通过。生产依赖审计按既有 high 阈值通过，仍有 5 low / 5 moderate，并非零风险报告。最终包首轮逐文件检查因两份技能文本的换行字节不同而未通过；该回执保留。随后逐字节证明仅为固定标签源码的精确 CRLF 检出，二进制与其余入口没有差异，再形成新的完整通过回执，没有改写原失败或放宽内容检查。
+
+最终 CI NSIS 没有再次对当前普通安装执行原位重装，也没有新增该 CI 包的真实界面验收。早前本机候选（未含发布阶段三份 CSS 修正）的原位安装/独立宿主证据，与本轮最终包提取/实际 runtime/来源证明分别记录，不能混称最终 CI 包已实装。用户可从仓库下载安装；当前普通安装、日常 Codex、原账号/真实草稿和生产服务不因本轮公开发布被替换或重启。
+
+私有发布回执留在忽略目录 .artifacts/release/2026-10-30-v0.1.10/，包括 source-gate、release-verification、final-package-verification、public-release-verification 及原始失败记录。旧标签与旧资产逐项保持原 ID、大小及摘要；后续文档补充不移动本版标签或替换安装包。
