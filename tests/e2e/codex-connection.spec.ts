@@ -1,4 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
+const evidenceDirectory =
+  process.env.TASKBOARD_E2E_EVIDENCE_DIR ?? '.artifacts/e2e/codex-connection';
 type NativeMock = {
   state: string;
   calls: string[];
@@ -88,7 +90,7 @@ test('main board connects once and shares its state with settings without a shor
   if (info.project.name === 'desktop') {
     await page.setViewportSize({ width: 1320, height: 860 });
     await page.screenshot({
-      path: '.artifacts/acceptance/2026-10-24-taskboard-in-app/main-connected.png',
+      path: `${evidenceDirectory}/main-connected.png`,
     });
   }
   await settings(page);
@@ -144,7 +146,7 @@ test('waits for normal Codex exit then opens and attaches the daily environment'
       true,
     );
     await page.screenshot({
-      path: '.artifacts/acceptance/2026-10-24-taskboard-in-app/main-waiting-compact.png',
+      path: `${evidenceDirectory}/main-waiting-compact.png`,
     });
   }
   await setState(page, 'not-running');
@@ -248,7 +250,7 @@ test('first connection keeps storage failure visible and retries only the settin
     info.project.name === 'compact' ? { width: 980, height: 680 } : { width: 1320, height: 860 },
   );
   await page.screenshot({
-    path: `.artifacts/acceptance/2026-10-24-v0.1.4-fix/warning-${info.project.name}.png`,
+    path: `${evidenceDirectory}/warning-${info.project.name}.png`,
   });
   await settings(page);
   const automatic = page.getByRole('checkbox', { name: '启动 Taskboard 时自动连接日常 Codex' });

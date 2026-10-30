@@ -29,6 +29,65 @@ describe('private launcher control', () => {
     server = undefined;
   });
 
+  it('rechecks a transient empty session and still verifies the exact original identity', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json({ session: null }))
+      .mockResolvedValueOnce(Response.json({ session: original }))
+      .mockResolvedValueOnce(Response.json({ valid: true }));
+    expect(await new LauncherControl(9, key).verify(original)).toBe(true);
+    expect(fetch.mock.calls.map(call => new URL(String(call[0])).pathname)).toEqual([
+      '/session', '/session', `/verify/${original.id}`,
+    ]);
+  });
+
+  it('never accepts a replacement or malformed session through the empty-session recheck', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    for (const session of [{ ...original, createdTicks: '987654321' }, { ...original, extra: true }]) {
+      fetch.mockReset().mockResolvedValueOnce(Response.json({ session: null }))
+        .mockResolvedValueOnce(Response.json({ session }));
+      expect(await new LauncherControl(9, key).verify(original)).toBe(false);
+      expect(fetch).toHaveBeenCalledTimes(2);
+    }
+  });
+
+  it('bounds an empty-session recheck by the original four-second observation budget', async () => {
+    let now = 1000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      now = 5001;
+      return Response.json({ session: null });
+    });
+    expect(await new LauncherControl(9, key).session()).toBeUndefined();
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('requires a new matching description and native verification after a transient negative proof', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json({ session: original }))
+      .mockResolvedValueOnce(Response.json({ valid: false }))
+      .mockResolvedValueOnce(Response.json({ session: original }))
+      .mockResolvedValueOnce(Response.json({ valid: true }));
+    expect(await new LauncherControl(9, key).verify(original)).toBe(true);
+    expect(fetch.mock.calls.map(call => new URL(String(call[0])).pathname)).toEqual([
+      '/session', `/verify/${original.id}`, '/session', `/verify/${original.id}`,
+    ]);
+  });
+
+  it('rejects a replaced identity during proof recheck and keeps the original eight-second budget', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json({ session: original }))
+      .mockResolvedValueOnce(Response.json({ valid: false }))
+      .mockResolvedValueOnce(Response.json({ session: { ...original, pid: 4343 } }));
+    expect(await new LauncherControl(9, key).verify(original)).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    let now = 1000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    fetch.mockReset().mockResolvedValueOnce(Response.json({ session: original }))
+      .mockImplementationOnce(async () => { now = 9001; return Response.json({ valid: false }); });
+    expect(await new LauncherControl(9, key).verify(original)).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it('accepts a native daily session without guessing a home directory or enabling automatic drafts', async () => {
     const { codexHome: _home, ...withoutHome } = original;
     void _home;

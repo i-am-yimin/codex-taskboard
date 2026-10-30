@@ -9,7 +9,7 @@ import { realpathSync } from 'node:fs';
 import WebSocket from 'ws';
 import { resolveCodexProject } from './project-identity.ts';
 import {
-  CODEX_CONTRACT_REVISION, CODEX_STRUCTURE_CONTRACTS,
+  CODEX_CONTRACT_REVISION, CODEX_STRUCTURE_CONTRACTS, CODEX_COMPOSER_SELECTOR,
   inspectCodexStructureScript, parseStructureObservation,
   type StructureObservation,
 } from './structure-contracts.ts';
@@ -285,10 +285,13 @@ export function boardEmbedScript(
   contentMarker?: string,
   workspaceMarker?: string,
   structureGuard?: string,
+  loadingGuard?: string,
+  loadingTimeoutMs = CSP_RELOAD_HOST_READY_TIMEOUT_MS,
 ): string {
   return `(() => {
     if (location.href !== ${JSON.stringify(exactPageUrl)}) return { installed: false };
     const structureValid = () => ${structureGuard ?? 'true'};
+    const knownLoading = () => ${loadingGuard ?? 'false'};
     if (!structureValid()) return { installed: false, reason: 'shell-marker-not-observed' };
     const owner = ${JSON.stringify(String(owner))};
     const cleanupKey = ${JSON.stringify(`__taskboardEmbedCleanup_${owner}`)};
@@ -299,7 +302,7 @@ export function boardEmbedScript(
     const root = selectOne(${JSON.stringify(shellMarker)});
     const sidebar = ${sidebarMarker ? `selectOne(${JSON.stringify(sidebarMarker)})` : 'null'};
     const content = ${contentMarker ? `selectOne(${JSON.stringify(contentMarker)})` : 'null'};
-    const workspace = ${workspaceMarker ? `selectOne(${JSON.stringify(workspaceMarker)})` : 'content'};
+    let workspace = ${workspaceMarker ? `selectOne(${JSON.stringify(workspaceMarker)})` : 'content'};
     const mount = workspace && workspace.parentElement;
     if (!root || (${Boolean(sidebarMarker || contentMarker || workspaceMarker)} &&
       (!sidebar || !content || !workspace || !mount || !root.contains(sidebar) || !root.contains(content)
@@ -369,6 +372,8 @@ export function boardEmbedScript(
     return new Promise((resolve) => {
       let finished = false;
       let viewState = null;
+      let loadingDeadline = 0;
+      let loadingTimer;
       let returnFocus = workspace && workspace.contains(installFocus) ? installFocus : null;
       const nativeCurrent = new Map();
       const restoreAttribute = (node, name, value) => value === null ? node.removeAttribute(name) : node.setAttribute(name, value);
@@ -422,7 +427,18 @@ export function boardEmbedScript(
       };
       const show = () => {
         if (host.style.display !== 'none') return;
-        if (!structureValid() || (sidebar && (!workspace.isConnected || workspace.parentElement !== mount || !host.isConnected))) return cleanup();
+        if (!structureValid()) return checkWorkspace();
+        if (sidebar && (!workspace.isConnected || workspace.parentElement !== mount || !host.isConnected)) return cleanup();
+        // A retained-page host changes the active sibling without unmounting
+        // the old workspace. Resolve the current verified boundary every time
+        // the user opens the board, so its titlebar cannot remain visible.
+        if (sidebar) {
+          const currentWorkspace = ${workspaceMarker ? `selectOne(${JSON.stringify(workspaceMarker)})` : 'workspace'};
+          if (!currentWorkspace || currentWorkspace.parentElement !== mount
+            || !root.contains(currentWorkspace) || currentWorkspace.contains(sidebar)) return cleanup();
+          workspace = currentWorkspace;
+          if (returnFocus && !workspace.contains(returnFocus)) returnFocus = null;
+        }
         if (sidebar) { suspendWorkspace(); suspendCurrent(); }
         host.style.display = sidebar ? 'flex' : 'block';
         if (entry) { entry.style.background = 'rgba(127,127,127,.14)'; entry.setAttribute('aria-pressed', 'true'); entry.setAttribute('aria-current', 'page'); entry.title = '当前显示任务看板'; entry.focus(); }
@@ -477,11 +493,35 @@ export function boardEmbedScript(
         }
         if (changed) onHostNavigation();
       }) : null;
-      const workspaceObserver = sidebar ? new MutationObserver(() => {
-        if (!structureValid()) return cleanup();
-        if (!root.isConnected || !workspace.isConnected || workspace.parentElement !== mount || !host.isConnected || !root.contains(sidebar)) return cleanup();
+      const checkWorkspace = () => {
+        clearTimeout(loadingTimer); loadingTimer = undefined;
+        if (!root.isConnected || !host.isConnected || !root.contains(sidebar)) return cleanup();
+        if (!structureValid()) {
+          if (!knownLoading()) return cleanup();
+          if (!loadingDeadline) loadingDeadline = Date.now() + ${loadingTimeoutMs};
+          if (Date.now() >= loadingDeadline) return cleanup();
+          hide(false);
+          if (entry) { entry.disabled = true; entry.setAttribute('aria-busy', 'true'); entry.title = '等待 Codex 工作区就绪'; }
+          loadingTimer = setTimeout(checkWorkspace, 100);
+          return;
+        }
+        if (loadingDeadline) {
+          loadingDeadline = 0;
+          if (entry) { entry.disabled = false; entry.removeAttribute('aria-busy'); entry.title = '打开任务看板'; }
+        }
+        if (!workspace.isConnected || workspace.parentElement !== mount) {
+          const current = ${workspaceMarker ? `selectOne(${JSON.stringify(workspaceMarker)})` : 'null'};
+          if (viewState || !current || current.parentElement !== mount || !root.contains(current) || current.contains(sidebar)) return cleanup();
+          workspace = current;
+        }
         if (viewState && (workspace.style.getPropertyValue('display') !== 'none' || workspace.style.getPropertyPriority('display') !== 'important'
           || workspace.getAttribute('aria-hidden') !== 'true' || !workspace.inert)) hide(false);
+      };
+      const workspaceObserver = sidebar ? new MutationObserver((records) => {
+        if (records.every(record => record.type === 'attributes' && record.attributeName === 'style'
+          && !record.target.matches('[data-app-shell-active-page],[data-app-shell-header-placement]')
+          && record.target !== workspace)) return;
+        checkWorkspace();
       }) : null;
       const navigation = sidebar ? window.navigation : null;
       const teardown = () => {
@@ -495,6 +535,7 @@ export function boardEmbedScript(
         navigation && navigation.removeEventListener('navigate', onHostNavigation);
         selectionObserver && selectionObserver.disconnect();
         workspaceObserver && workspaceObserver.disconnect();
+        clearTimeout(loadingTimer);
         entry && entry.removeEventListener('click', show);
         clearTimeout(timeout);
         clearInterval(challengeTimer);
@@ -542,7 +583,8 @@ export function boardEmbedScript(
             'data-app-action-sidebar-thread-active', 'data-app-action-sidebar-thread-selected'] });
         workspaceObserver.observe(root, { subtree: true, childList: true,
           attributes: true, attributeFilter: ['class', 'role', 'data-app-navigation-rail',
-            'data-app-shell-main-surface', 'data-app-shell-workspace-row', 'data-app-shell-header-placement'] });
+            'data-app-shell-main-surface', 'data-app-shell-workspace-row', 'data-app-shell-header-placement',
+            'data-app-shell-active-page', 'style', 'contenteditable', 'hidden', 'aria-hidden', 'inert'] });
         workspaceObserver.observe(workspace, { attributes: true, attributeFilter: ['style', 'aria-hidden', 'inert'] });
       }
       entry && entry.addEventListener('click', show);
@@ -573,6 +615,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
   private withdrawalReason?: string;
   private documentLoading = false;
   private loadingSince = 0;
+  private cachedPageLoadingSince = 0;
   private get hostMarkers() { return this.detectedMarkers ?? this.config; }
 
   private monitorStructure(): void {
@@ -621,10 +664,12 @@ export class CodexDesktopAdapter implements AgentAdapter {
       throw new Error('Codex 结构契约发生变化，已停止侧栏接入；请重新连接');
     this.contractId = spec.id;
     this.detectedMarkers = { ...spec, workspaceMarker: 'workspaceMarker' in spec ? spec.workspaceMarker : undefined,
-      composerMarker: '[contenteditable="true"][role="textbox"]', modalMarker: '[role="dialog"],[aria-modal="true"]' };
+      composerMarker: 'composerMarker' in spec ? spec.composerMarker : CODEX_COMPOSER_SELECTOR,
+      modalMarker: '[role="dialog"],[aria-modal="true"]' };
   }
 
   private structureReason(observation: StructureObservation): string {
+    if (observation.status === 'loading') return 'Codex 工作区正在切换，请等待编辑器就绪后重试';
     if (observation.status === 'target-mismatch') return 'Codex 精确页面发生变化，已停止侧栏接入';
     if (observation.status === 'ambiguous') return 'Codex 结构匹配不唯一，已停止侧栏接入';
     return 'Codex 页面未匹配完整结构契约；请等待工作区就绪或更新 Taskboard';
@@ -634,6 +679,12 @@ export class CodexDesktopAdapter implements AgentAdapter {
     if (this.config.structureCheck !== 'auto' || !this.config.targetBinding) return undefined;
     return `(() => { const observation = ${inspectCodexStructureScript(this.config.targetBinding.exactPageUrl)};
       return observation.status === 'matched' && observation.contracts[0] === ${JSON.stringify(this.contractId)}; })()`;
+  }
+
+  private cachedPageLoadingGuard(): string | undefined {
+    if (this.config.structureCheck !== 'auto' || !this.config.targetBinding) return undefined;
+    return `(() => { const observation = ${inspectCodexStructureScript(this.config.targetBinding.exactPageUrl)};
+      return observation.status === 'loading' && observation.contracts[0] === ${JSON.stringify(this.contractId)}; })()`;
   }
   // A session is published only after its connector is still current. Cleanup
   // always compares identity, so a late failed install cannot tear down a newer one.
@@ -711,6 +762,11 @@ export class CodexDesktopAdapter implements AgentAdapter {
       if (generation !== this.generation) return response('unchecked', 'Codex 接入已取消，请重新连接');
       if (this.session && (this.installing || this.recovery || this.documentLoading))
         return response('unchecked', 'Codex 页面正在接入或恢复，完成后重新自检');
+      if (observation.status === 'loading' && (!this.contractId || this.contractId === observation.contracts[0])) {
+        if (!this.cachedPageLoadingSince) this.cachedPageLoadingSince = Date.now();
+        if (!this.session || Date.now() - this.cachedPageLoadingSince < this.hostReadyTimeoutMs())
+          return response('unchecked', 'Codex 工作区正在切换，等待编辑器就绪；任务看板入口暂不可用');
+      } else this.cachedPageLoadingSince = 0;
       const matched = observation.status === 'matched'
         && (!this.contractId || this.contractId === observation.contracts[0]);
       let installed = false;
@@ -766,6 +822,14 @@ export class CodexDesktopAdapter implements AgentAdapter {
           appVersion: this.config.appVersion,
         } } : {}),
       };
+    // A known reload has not established its new-document proof yet. Pending
+    // grants no capabilities; sensitive recovery work still verifies the owner
+    // and exact target after the workspace becomes observable again.
+    if (this.config.structureCheck === 'auto' && this.session
+      && (this.installing || this.recovery || this.documentLoading))
+      return { embedded: false, projects: false, draft: false, thread: false,
+        reason: 'Codex 页面正在接入或恢复，完成后重新自检',
+        sidebar: { state: 'unchecked', appVersion: this.config.appVersion } };
     if (!this.config.owner)
       return {
         embedded: false,
@@ -999,6 +1063,8 @@ export class CodexDesktopAdapter implements AgentAdapter {
           this.hostMarkers.contentMarker,
           this.hostMarkers.workspaceMarker,
           this.structureGuard(),
+          this.cachedPageLoadingGuard(),
+          this.hostReadyTimeoutMs(),
         ),
         HANDSHAKE_COMMAND_TIMEOUT_MS,
       );
@@ -1037,7 +1103,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
     }
   }
 
-  private async assertReloadSafe(connection: CdpConnection, exactPageUrl: string, waitForWorkspace = false): Promise<void> {
+  private async assertReloadSafe(connection: CdpConnection, exactPageUrl: string, waitForWorkspace = false, restoring = false): Promise<void> {
     const shell = this.hostMarkers.shellMarker;
     const editor = this.hostMarkers.composerMarker;
     const modal = this.hostMarkers.modalMarker;
@@ -1046,11 +1112,28 @@ export class CodexDesktopAdapter implements AgentAdapter {
     const deadline = Date.now() + (waitForWorkspace ? this.hostReadyTimeoutMs() : 0);
     while (true) {
       await this.assertOwner();
+      let structure: StructureObservation | undefined;
+      if (this.config.structureCheck === 'auto') {
+        structure = await this.checkStructure(connection);
+        if (structure.status === 'target-mismatch') throw new Error('CSP reload refused: Codex target changed');
+        if (structure.modal) throw new Error('CSP reload refused: a Codex dialog is open');
+        if (structure.hasDraft) throw new Error('CSP reload refused: the Codex editor contains an unsent draft');
+        if (structure.status === 'matched') {
+          if (structure.contracts[0] !== this.contractId)
+            throw new Error('CSP reload refused: Codex structure contract changed');
+          return;
+        }
+        if (structure.status === 'ambiguous')
+          throw new Error('CSP reload refused: Codex workspace structure is ambiguous');
+      }
       const safe = await this.evaluate<boolean>(
         connection,
-        `(() => location.href === ${JSON.stringify(exactPageUrl)} && document.querySelectorAll(${JSON.stringify(shell)}).length === 1 && document.querySelectorAll(${JSON.stringify(editor)}).length === 1 && !document.querySelector(${JSON.stringify(modal)}) && !(document.querySelector(${JSON.stringify(editor)})?.textContent ?? '').trim())()`,
+        `(() => location.href === ${JSON.stringify(exactPageUrl)} && document.querySelectorAll(${JSON.stringify(shell)}).length === 1 && document.querySelectorAll(${JSON.stringify(editor)}).length === 1 && ${this.config.structureCheck === 'auto' ? `document.querySelectorAll(${JSON.stringify(CODEX_COMPOSER_SELECTOR)}).length === 1 && ` : ''}!document.querySelector(${JSON.stringify(modal)}) && !(document.querySelector(${JSON.stringify(editor)})?.textContent ?? '').trim())()`,
       );
-      if (safe) return;
+      // Retiring an invalid installation still needs the original safe path
+      // for one empty editor. Unknown extra views never authorize injection,
+      // and multiple cached editors require their complete contract to match.
+      if (safe && (!structure || restoring)) return;
       // Diagnose the refused state without enabling bypass or reloading.
       const state = await this.evaluate<{
         url?: string; shell?: number; editors?: number; modal?: boolean; hasText?: boolean; login?: boolean;
@@ -1062,6 +1145,10 @@ export class CodexDesktopAdapter implements AgentAdapter {
       if (state.modal) throw new Error('CSP reload refused: a Codex dialog is open');
       if (state.hasText) throw new Error('CSP reload refused: the Codex editor contains an unsent draft');
       if (state.login) throw new Error('CSP reload refused: Codex workspace is not ready; sign in and open a project first');
+      if (structure && waitForWorkspace && state.shell === 1 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        continue;
+      }
       if (waitForWorkspace && state.shell === 1 && state.editors === 1 && Date.now() < deadline) {
         // The initial mount may finish between the safety and diagnostic samples.
         // Retry the full owner/page/empty-editor check; diagnostics never authorize reload.
@@ -1118,7 +1205,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
       throw new Error('CSP reload refused: Codex target changed');
     const before = await this.evaluate<number>(session.connection, 'performance.timeOrigin');
     assertIdentity();
-    await this.assertReloadSafe(session.connection, exactPageUrl);
+    await this.assertReloadSafe(session.connection, exactPageUrl, false, retiring);
     assertIdentity();
     await this.assertOwner();
     await session.connection.send('Page.reload');
@@ -1136,7 +1223,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
         url?: string;
       }>(
         session.connection,
-        `({ origin: performance.timeOrigin, shell: document.querySelectorAll(${JSON.stringify(this.hostMarkers.shellMarker)}).length, composer: document.querySelectorAll(${JSON.stringify(this.hostMarkers.composerMarker)}).length, modal: Boolean(document.querySelector(${JSON.stringify(this.hostMarkers.modalMarker)})), composerHasText: Array.from(document.querySelectorAll(${JSON.stringify(this.hostMarkers.composerMarker)})).some(editor => Boolean((editor.textContent ?? '').trim())), url: location.href })`,
+        `({ origin: performance.timeOrigin, shell: document.querySelectorAll(${JSON.stringify(this.hostMarkers.shellMarker)}).length, composer: document.querySelectorAll(${JSON.stringify(this.hostMarkers.composerMarker)}).length, modal: Boolean(document.querySelector(${JSON.stringify(this.hostMarkers.modalMarker)})), composerHasText: Array.from(document.querySelectorAll(${JSON.stringify(this.config.structureCheck === 'auto' ? CODEX_COMPOSER_SELECTOR : this.hostMarkers.composerMarker)})).some(editor => Boolean((editor.textContent ?? '').trim())), url: location.href })`,
       ).catch(() => undefined);
       if (ready && ready.origin !== before) {
         assertIdentity();
@@ -1145,7 +1232,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
           throw new Error('CSP reload refused: Codex editor is not empty or a modal is open');
         if (ready.shell === 1) sawShell = true;
         if (ready.shell !== 1 || ready.composer !== 1) continue;
-        await this.assertReloadSafe(session.connection, exactPageUrl);
+        await this.assertReloadSafe(session.connection, exactPageUrl, false, retiring);
         if (!retiring) await this.requireStructure(session.connection);
         return;
       }
@@ -1171,7 +1258,12 @@ export class CodexDesktopAdapter implements AgentAdapter {
     if (!binding) return;
     this.recovery = (async () => {
       try {
-        await this.assertOwner();
+        const deadline = Date.now() + this.hostReadyTimeoutMs();
+        while (!(await this.hasOwner())) {
+          if (generation !== this.generation || connection !== this.connection) return;
+          if (Date.now() >= deadline) throw new Error('Codex launcher ownership is missing or expired');
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
         const target = await connection.send<{
           targetInfo?: { targetId?: string; type?: string; url?: string };
         }>('Target.getTargetInfo');
@@ -1198,7 +1290,6 @@ export class CodexDesktopAdapter implements AgentAdapter {
           }
           return;
         }
-        const deadline = Date.now() + this.hostReadyTimeoutMs();
         while (Date.now() < deadline) {
           if (generation !== this.generation || connection !== this.connection) return;
           const ready = await this.evaluate<boolean>(
@@ -1242,6 +1333,8 @@ export class CodexDesktopAdapter implements AgentAdapter {
             this.hostMarkers.contentMarker,
             this.hostMarkers.workspaceMarker,
             this.structureGuard(),
+            this.cachedPageLoadingGuard(),
+            this.hostReadyTimeoutMs(),
           ),
           HANDSHAKE_COMMAND_TIMEOUT_MS,
         );
@@ -1318,7 +1411,7 @@ export class CodexDesktopAdapter implements AgentAdapter {
         const binding = this.config.targetBinding;
         if (!binding)
           throw new Error('CSP restoration unconfirmed: exact target binding is missing');
-        await this.assertReloadSafe(session.connection, binding.exactPageUrl);
+        await this.assertReloadSafe(session.connection, binding.exactPageUrl, false, true);
         await this.reloadAndWait(session, binding.exactPageUrl, true);
       }
     } catch (error) {

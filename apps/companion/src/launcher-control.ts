@@ -45,21 +45,35 @@ export class LauncherControl {
     return new LauncherControl(port, key);
   }
 
-  private async query(path: string): Promise<unknown> {
+  private async query(path: string, timeoutMs = 4_000): Promise<unknown> {
     const response = await fetch(`http://127.0.0.1:${this.port}${path}`, {
       headers: { 'x-taskboard-control-key': this.key },
-      signal: AbortSignal.timeout(4_000),
+      signal: AbortSignal.timeout(timeoutMs),
       redirect: 'error',
     });
     if (!response.ok) throw new Error('Codex launcher control is unavailable');
     return response.json();
   }
 
-  async session(): Promise<LauncherSession | undefined> {
+  async session(budgetMs = 4_000): Promise<LauncherSession | undefined> {
+    const deadline = Date.now() + Math.min(4_000, budgetMs);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return undefined;
+      const session = await this.readSession(remaining);
+      if (session) return session;
+      // The native launcher can fail one bounded transport observation while
+      // still holding the same live process. Recheck once within the original
+      // budget; only a fresh complete native description can authorize use.
+    }
+    return undefined;
+  }
+
+  private async readSession(timeoutMs: number): Promise<LauncherSession | undefined> {
     const value = z
       .object({ session: sessionSchema.nullable() })
       .strict()
-      .parse(await this.query('/session'));
+      .parse(await this.query('/session', timeoutMs));
     const session = value.session;
     if (!session) return undefined;
     const endpoint = new URL(session.endpoint);
@@ -89,12 +103,21 @@ export class LauncherControl {
 
   async verify(expected: LauncherSession): Promise<boolean> {
     try {
-      const current = await this.session();
-      if (!current || JSON.stringify(current) !== JSON.stringify(expected)) return false;
-      return z
-        .object({ valid: z.boolean() })
-        .strict()
-        .parse(await this.query(`/verify/${expected.id}`)).valid;
+      // This was already two four-second requests. A transient negative may
+      // be observed again within that same total budget, but every attempt
+      // requires a fresh exact identity and a new positive native proof.
+      const deadline = Date.now() + 8_000;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) return false;
+        const current = await this.session(remaining);
+        if (!current || JSON.stringify(current) !== JSON.stringify(expected)) return false;
+        const proofBudget = Math.min(4_000, deadline - Date.now());
+        if (proofBudget <= 0) return false;
+        if (z.object({ valid: z.boolean() }).strict()
+          .parse(await this.query(`/verify/${expected.id}`, proofBudget)).valid) return true;
+      }
+      return false;
     } catch {
       return false;
     }

@@ -8,6 +8,8 @@
 
 本节适用于本地 **0.1.8 / 0.1.9 客户端候选**，配套独立 **0.1.4-preview.1 服务端候选**；候选版本不等于公开发布。已发布的 0.1.7 安装包及 0.1.3-preview.1 服务端保持原固定来源，后者只覆盖既有能力，不声明支持本节协作协议。协作与安装范围见 [0.1.8 验收](acceptance-0.1.8.md)和 [0.1.9 实装记录](acceptance-0.1.9.md)；0.1.9 的结构自检、诊断方式及拒绝边界单列于后者。
 
+后续 **0.1.10 稳定性候选**改善 Codex 缓存会话的看板切换与刷新恢复：已识别的编辑器短暂加载时，入口会暂不可用，完整检查恢复后才可打开；隐藏页草稿也会阻止需要重载的操作。源码与独立宿主已验证，当前普通安装仍为 0.1.9，最终包实装和配置调查限制见 [0.1.10 记录](acceptance-0.1.10.md)。
+
 ### 先核对服务器兼容性
 
 0.1.8 连接后读取服务器 `/api/v1/health`：保留健康状态，另读取独立 serverVersion、apiVersion 和 `capabilities.collaborativeWorkflows`。服务器仅在 `0005_collaborative_workflows`、`0006_workflow_services`、`0007_run_recovery`、`0008_run_permissions`、`0009_active_workflow_intervals` 齐全后声明协作协议 1；版本字符串本身不算能力证明。
