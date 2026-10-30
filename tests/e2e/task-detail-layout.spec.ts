@@ -1,12 +1,18 @@
 import { test, expect } from '@playwright/test';
 import { demoUser, makeDemoBoard, makeDemoDetail } from '../../apps/web/src/demo';
+import { compatibleServerHealth } from '../server-compatibility-fixture';
 
 for (const embedded of [false, true]) {
   test(`long execution records stay inside the ${embedded ? 'embedded' : 'desktop'} task drawer`, async ({
     page,
   }) => {
     const board = makeDemoBoard();
-    const task = { ...board.tasks[0], statusId: 's-review', title: '长记录布局回归' };
+    const task = {
+      ...board.tasks[0],
+      statusId: 's-review',
+      title: '长记录布局回归',
+      reviewerId: demoUser.id,
+    };
     board.tasks = [task];
     const verification = `第一行：保留验证记录的换行\nSHA256=${'0123456789abcdef'.repeat(24)}\n${'并发领取只成功一次，原任务与本地草稿保持完整。'.repeat(12)}`;
     const summary = '安装版执行结果：' + 'https://example.test/verification/'.repeat(12);
@@ -41,21 +47,23 @@ for (const embedded of [false, true]) {
     };
     await page.route('**/api/v1/**', async (route) => {
       const path = new URL(route.request().url()).pathname;
-      const data = path.endsWith('/me')
-        ? demoUser
-        : path.endsWith('/spaces')
-          ? [board.space]
-          : path.endsWith('/board')
-            ? board
-            : path.endsWith('/detail')
-              ? detail
-              : undefined;
+      const data = path.endsWith('/health')
+        ? compatibleServerHealth
+        : path.endsWith('/me')
+          ? demoUser
+          : path.endsWith('/spaces')
+            ? [board.space]
+            : path.endsWith('/board')
+              ? board
+              : path.endsWith('/detail')
+                ? detail
+                : undefined;
       if (data === undefined) return route.abort();
       return route.fulfill({ status: 200, json: { data } });
     });
     await page.goto(embedded ? '/?embedded=1' : '/');
     await page.locator('.task-card').getByText(task.title, { exact: true }).click();
-    const drawer = page.getByRole('complementary', { name: '任务详情' });
+    const drawer = page.getByRole('dialog', { name: '任务详情' });
     await expect(drawer.locator('.activity pre')).toHaveText(verification);
     await expect(drawer.getByText(summary, { exact: true })).toBeVisible();
     for (const width of [1320, 935, 424, 185]) {
