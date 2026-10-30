@@ -1,3 +1,4 @@
+import { compatibleServerHealth } from '../server-compatibility-fixture.ts';
 import { test, expect, type Page } from '@playwright/test';
 import { demoUser, makeDemoBoard } from '../../apps/web/src/demo';
 import type { AppearanceRecord, ThemePackage } from '../../packages/core/src/themes';
@@ -113,7 +114,8 @@ function serverMock() {
       const path = new URL(req.url()).pathname.replace('/api/v1', '');
       if (path.startsWith('/me/') && offline) return route.abort('internetdisconnected');
       let data: unknown = {};
-      if (path === '/setup') data = { required: false };
+      if (path === '/health') data = compatibleServerHealth;
+      else if (path === '/setup') data = { required: false };
       if (path === '/me') data = account;
       if (path === '/spaces') data = [makeDemoBoard().space];
       if (path.endsWith('/board')) data = makeDemoBoard();
@@ -315,13 +317,11 @@ test('an import started by one account cannot populate another account after ses
     light: {},
     dark: {},
   };
-  await page
-    .getByLabel('主题文件', { exact: true })
-    .setInputFiles({
-      name: 'private.json',
-      mimeType: 'application/json',
-      buffer: Buffer.from(JSON.stringify(manifest)),
-    });
+  await page.getByLabel('主题文件', { exact: true }).setInputFiles({
+    name: 'private.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(manifest)),
+  });
   await expect(page.getByRole('button', { name: '正在读取主题…' })).toBeVisible();
   server.switchAccount();
   await page.evaluate(() => dispatchEvent(new Event('online')));

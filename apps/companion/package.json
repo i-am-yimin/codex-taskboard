@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/main.ts",
     "./secret": "./src/secret.ts",
-    "./store": "./src/store.ts"
+    "./store": "./src/store.ts",
+    "./runners": "./src/runners.ts"
   },
   "dependencies": {
     "@taskboard/adapter-codex": "workspace:*",

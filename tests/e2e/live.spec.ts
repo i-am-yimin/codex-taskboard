@@ -56,6 +56,9 @@ test.describe('real PostgreSQL browser collaboration', () => {
       await second.getByText('同步前的标题', { exact: true }).click();
       await page.getByRole('textbox', { name: '任务标题' }).fill('保留这份中文草稿');
       await second.getByRole('textbox', { name: '任务标题' }).fill('另一台设备已保存');
+      await second
+        .getByRole('combobox', { name: '验收人', exact: true })
+        .selectOption({ label: '浏览器验收' });
       await Promise.all([
         second.waitForResponse(
           (response) =>
@@ -75,7 +78,7 @@ test.describe('real PostgreSQL browser collaboration', () => {
         await page.screenshot({ path: test.info().outputPath('conflict-state.png') });
       await expect(page.getByRole('textbox', { name: '任务标题' })).toHaveValue('保留这份中文草稿');
       await page.reload();
-      await page.getByText('另一台设备已保存', { exact: true }).click();
+      await expect(page.getByRole('dialog', { name: '任务详情' })).toBeVisible();
       await expect(page.getByRole('textbox', { name: '任务标题' })).toHaveValue('保留这份中文草稿');
       await page.getByRole('button', { name: '放弃草稿，加载最新内容' }).click();
       await second.getByRole('button', { name: '领取任务', exact: true }).click();
@@ -90,6 +93,9 @@ test.describe('real PostgreSQL browser collaboration', () => {
       await second.getByLabel('验证记录', { exact: true }).fill('两端同步和冲突草稿检查通过');
       await second.getByRole('button', { name: '提交验收', exact: true }).click();
       await page.getByRole('button', { name: '验收并完成', exact: true }).click();
+      const acceptance = page.getByRole('dialog', { name: '验收并完成', exact: true });
+      await acceptance.getByLabel('验收结论 / 管理员代验理由').fill('双设备协作及冲突草稿已核对');
+      await acceptance.getByRole('button', { name: '确认操作', exact: true }).click();
       await expect(
         second.locator('.drawer').getByRole('option', { name: '已完成', exact: true }),
       ).toHaveJSProperty('selected', true);

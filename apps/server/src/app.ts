@@ -1,3 +1,4 @@
+import serverManifest from '../package.json' with { type: 'json' };
 /* eslint-disable @typescript-eslint/no-explicit-any -- PostgreSQL rows are dynamically shaped at the API boundary. */
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
@@ -11,6 +12,8 @@ import { hash, verify, Algorithm } from '@node-rs/argon2';
 import { z } from 'zod';
 import {
   BoardError,
+  COLLABORATION_PROTOCOL,
+  COLLABORATION_MIGRATIONS,
   requireRole,
   roles,
   spaceSchema,
@@ -25,6 +28,10 @@ import type pg from 'pg';
 import { readInstanceSettings, registerInstanceRoutes } from './instance.ts';
 import { RuntimeLogs } from './runtime.ts';
 import { registerAppearanceRoutes } from './appearance.ts';
+import { createCollaboration } from './collaboration.ts';
+import { registerRuns } from './runs.ts';
+import { createWorkflowServices } from './workflow-services.ts';
+import { createAutomation, type AutomationOptions } from './automation.ts';
 
 type Auth = {
   id: string;
@@ -36,6 +43,9 @@ type Auth = {
   sessionId?: string;
 };
 declare module 'fastify' {
+  interface FastifyInstance {
+    runWorkflowAutomation(): Promise<void>;
+  }
   interface FastifyRequest {
     auth?: Auth;
   }
@@ -49,6 +59,7 @@ type AppOptions = {
   runtimeLogs?: RuntimeLogs;
   databaseUrl?: string;
   managedSecrets?: boolean;
+  automation?: AutomationOptions;
 };
 const id = () => randomUUID();
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -111,6 +122,12 @@ function rowTask(row: any): Task {
     statusId: row.status_id,
     priority: row.priority,
     assigneeId: row.assignee_id,
+    reviewerId: row.reviewer_id ?? null,
+    parentTaskId: row.parent_task_id ?? null,
+    requiredForParent: row.required_for_parent ?? true,
+    requirementsVersion: row.requirements_version ?? 1,
+    acceptanceCriteria: row.acceptance_criteria ?? '',
+    dueAt: row.due_at?.toISOString() ?? null,
     labels: row.labels ?? [],
     checklist: row.checklist ?? [],
     repository: row.repository,
@@ -133,6 +150,16 @@ function rowExecution(row: any) {
     phase: row.phase,
     summary: row.summary,
     verification: row.verification,
+    claimId: row.claim_id ?? null,
+    agentKind: row.agent_kind,
+    branch: row.branch ?? '',
+    prUrl: row.pr_url ?? null,
+    commitSha: row.commit_sha ?? '',
+    handoffSummary: row.handoff_summary ?? '',
+    blockers: row.blockers ?? '',
+    nextStep: row.next_step ?? '',
+    limitations: row.limitations ?? '',
+    requirementsVersion: row.requirements_version ?? 1,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -295,7 +322,10 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     const allowed =
       path === '/api/v1/auth/logout' ||
       /^\/api\/v1\/spaces\/[^/]+\/tasks$/.test(path) ||
-      /^\/api\/v1\/tasks\/[^/]+\/(claim|submit|release|comments|executions)$/.test(path) ||
+      /^\/api\/v1\/tasks\/[^/]+\/(claim|submit|release|comments|executions|progress|artifacts|proposals)$/.test(
+        path,
+      ) ||
+      /^\/api\/v1\/tasks\/[^/]+\/runs(?:\/[^/]+\/events)?$/.test(path) ||
       (request.method === 'PATCH' && /^\/api\/v1\/tasks\/[^/]+$/.test(path));
     if (!allowed)
       throw new BoardError(
@@ -404,6 +434,11 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
       statusId: 'status_id',
       priority: 'priority',
       assigneeId: 'assignee_id',
+      reviewerId: 'reviewer_id',
+      parentTaskId: 'parent_task_id',
+      requiredForParent: 'required_for_parent',
+      acceptanceCriteria: 'acceptance_criteria',
+      dueAt: 'due_at',
       labels: 'labels',
       checklist: 'checklist',
       repository: 'repository',
@@ -430,6 +465,28 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     return { fields, values };
   }
 
+  const collaborationContext = {
+    db,
+    taskAndRole,
+    member,
+    stored,
+    saveIdempotency,
+    rowTask,
+    rowExecution,
+    activity,
+    emit,
+  };
+  const workflowServices = createWorkflowServices(collaborationContext);
+  registerRuns(app, collaborationContext);
+  const collaboration = createCollaboration({
+    ...collaborationContext,
+    event: workflowServices.event,
+  });
+  collaboration.register(app);
+  workflowServices.register(app);
+  const automation = createAutomation(collaborationContext, workflowServices, options.automation);
+  automation.register(app);
+  app.decorate('runWorkflowAutomation', automation.runOnce);
   registerAppearanceRoutes(app, { db, stored, saveIdempotency });
   registerInstanceRoutes(app, {
     db,
@@ -444,7 +501,27 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   });
   app.get('/api/v1/health', async (_request, reply) => {
     await db.query('SELECT 1');
-    return ok(reply, { status: 'ok', database: 'ok' });
+    const migrations = await db
+      .query<{ id: string }>('SELECT id FROM schema_migrations WHERE id=ANY($1::text[])', [
+        [...COLLABORATION_MIGRATIONS],
+      ])
+      .catch((error: unknown) => {
+        if (error && typeof error === 'object' && 'code' in error && error.code === '42P01')
+          return { rows: [] };
+        throw error;
+      });
+    const ready = COLLABORATION_MIGRATIONS.every((id) =>
+      migrations.rows.some((row) => row.id === id),
+    );
+    reply.header('cache-control', 'no-store');
+    return ok(reply, {
+      status: 'ok',
+      database: 'ok',
+      serverVersion: serverManifest.version,
+      apiVersion: 1,
+      capabilities: { collaborativeWorkflows: ready ? COLLABORATION_PROTOCOL : 0 },
+      migrationRequired: !ready,
+    });
   });
   app.get('/api/v1/openapi.json', async () => openapiDocument);
   app.post('/api/v1/auth/login', async (request, reply) => {
@@ -749,6 +826,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     const c = await stored(r);
     if (c.cached) return ok(p, c.cached.response, c.cached.status_code);
     await db.query('UPDATE spaces SET archived_at=now(),version=version+1 WHERE id=$1', [spaceId]);
+    await collaboration.syncSpaceIntervals(spaceId);
     const data = { archived: true };
     await saveIdempotency(r, c.key, data);
     emit(spaceId, { type: 'space.archived' });
@@ -760,6 +838,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     const c = await stored(r);
     if (c.cached) return ok(p, c.cached.response, c.cached.status_code);
     await db.query('UPDATE spaces SET archived_at=NULL,version=version+1 WHERE id=$1', [spaceId]);
+    await collaboration.syncSpaceIntervals(spaceId);
     const data = { archived: false };
     await saveIdempotency(r, c.key, data);
     emit(spaceId, { type: 'space.restored' });
@@ -1030,9 +1109,11 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
       spaceId,
     ]);
     if (!belongs.rowCount) throw new BoardError('INVALID_STATUS', '状态不属于当前空间', 422);
-    if (r.auth!.agent && belongs.rows[0].semantic === 'done')
-      throw new BoardError('AGENT_CANNOT_COMPLETE', 'Agent 不能直接创建已完成任务', 422);
+    if (belongs.rows[0].semantic !== 'todo')
+      throw new BoardError('TRANSITION_REQUIRED', '新任务从待办开始，请使用状态命令流转', 422);
     const taskId = id();
+    input.assigneeId ??= r.auth!.id;
+    await collaboration.validateTask(taskId, spaceId, input, r);
     const data = await withTransaction(db, async (client) => {
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [spaceId]);
       const seq = await client.query(
@@ -1040,7 +1121,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
         [spaceId],
       );
       const result = await client.query(
-        'INSERT INTO tasks (id,space_id,number,title,description,status_id,priority,assignee_id,labels,checklist,repository,blocked,blocked_reason,position) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11,$12,$13,$14) RETURNING *',
+        'INSERT INTO tasks (id,space_id,number,title,description,status_id,priority,assignee_id,labels,checklist,repository,blocked,blocked_reason,position,reviewer_id,parent_task_id,required_for_parent,acceptance_criteria,due_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *',
         [
           taskId,
           spaceId,
@@ -1056,9 +1137,18 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
           input.blocked,
           input.blockedReason,
           input.position,
+          input.reviewerId,
+          input.parentTaskId,
+          input.requiredForParent,
+          input.acceptanceCriteria,
+          input.dueAt,
         ],
       );
-      await activity(taskId, r.auth!.id, 'task.created', '', client);
+      await client.query(
+        'INSERT INTO task_participants(task_id,user_id,responsibility) VALUES($1,$2,$3)',
+        [taskId, input.assigneeId, '负责实施'],
+      );
+      await collaboration.changed(result.rows[0], r, 'task.created');
       return rowTask(result.rows[0]);
     });
     await saveIdempotency(r, c.key, data, 201);
@@ -1146,6 +1236,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
         createdAt: x.created_at.toISOString(),
       })),
       executions: e.rows.map(rowExecution),
+      ...(await collaboration.detail(taskId)),
     });
   });
   app.patch('/api/v1/tasks/:taskId', async (r, p) => {
@@ -1157,6 +1248,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     const c = await stored(r);
     if (c.cached) return ok(p, c.cached.response, c.cached.status_code);
     const input = body(r, taskPatchSchema) as Record<string, unknown>;
+    await collaboration.validateTask(taskId, existing.space_id, input, r, existing);
     if (input.assigneeId) {
       const assignee = await db.query(
         'SELECT 1 FROM space_members WHERE space_id=$1 AND user_id=$2',
@@ -1186,7 +1278,8 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     );
     if (!result.rowCount) throw new BoardError('VERSION_CONFLICT', '任务已被其他设备修改', 409);
     const data = rowTask(result.rows[0]);
-    await activity(taskId, r.auth!.id, 'task.updated');
+
+    await collaboration.changed(result.rows[0], r, 'task.updated');
     await saveIdempotency(r, c.key, data);
     emit(data.spaceId, { type: 'task.updated', taskId });
     return ok(p, data);
@@ -1197,13 +1290,22 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     requireRole(t.role, 'editor');
     const c = await stored(r);
     if (c.cached) return ok(p, c.cached.response, c.cached.status_code);
-    const input = body(r, z.object({ body: z.string().trim().min(1).max(10000) }).strict());
+    const input = body(
+      r,
+      z
+        .object({
+          body: z.string().trim().min(1).max(10000),
+          mentionIds: z.array(z.uuid()).max(30).default([]),
+        })
+        .strict(),
+    );
+    for (const userId of input.mentionIds) await collaboration.requireMember(t.space_id, userId);
     const commentId = id();
     const result = await db.query(
       'INSERT INTO comments (id,task_id,actor_id,body) VALUES ($1,$2,$3,$4) RETURNING *',
       [commentId, taskId, r.auth!.id, input.body],
     );
-    await activity(taskId, r.auth!.id, 'comment.added', input.body);
+    await collaboration.changed(t, r, 'comment.added', input.body, input.mentionIds);
     const data = {
       id: commentId,
       taskId,
@@ -1214,186 +1316,6 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     await saveIdempotency(r, c.key, data, 201);
     emit(t.space_id, { type: 'comment.created', taskId });
     return ok(p, data, 201);
-  });
-  app.post('/api/v1/tasks/:taskId/claim', async (r, p) => {
-    const { taskId } = r.params as any;
-    const task = await taskAndRole(taskId, r.auth!.id);
-    requireRole(task.role, 'editor');
-    if (!r.auth!.deviceId) throw new BoardError('DEVICE_REQUIRED', '领取任务需要已注册设备', 422);
-    const version = numberHeader(r.headers['if-match']);
-    if (!version) throw new BoardError('VERSION_REQUIRED', '领取必须携带 If-Match 版本', 428);
-    const c = await stored(r);
-    if (c.cached) return ok(p, c.cached.response, c.cached.status_code);
-    const input = body(
-      r,
-      z.object({ threadId: z.string().max(200).nullable().default(null) }).strict(),
-    );
-    const executionId = id();
-    try {
-      const data = await withTransaction(db, async (client) => {
-        const locked = await client.query(
-          'SELECT t.*, s.semantic FROM tasks t JOIN statuses s ON s.id=t.status_id WHERE t.id=$1 FOR UPDATE',
-          [taskId],
-        );
-        if (!locked.rowCount)
-          throw new BoardError('TASK_ALREADY_CLAIMED', '任务状态已变化，请刷新后重试', 409);
-        if (locked.rows[0].archived_at || ['done', 'cancelled'].includes(locked.rows[0].semantic))
-          throw new BoardError('TASK_NOT_CLAIMABLE', '已完成、已取消或已归档任务不能领取', 422);
-        if (locked.rows[0].version !== version)
-          throw new BoardError('VERSION_CONFLICT', '任务已被其他设备修改', 409);
-        const inProgress = await client.query(
-          "SELECT id FROM statuses WHERE space_id=$1 AND semantic='in_progress' ORDER BY position LIMIT 1",
-          [task.space_id],
-        );
-        if (!inProgress.rowCount)
-          throw new BoardError('MISSING_IN_PROGRESS_STATUS', '空间未配置进行中状态', 422);
-        const result = await client.query(
-          "INSERT INTO executions (id,task_id,actor_id,device_id,thread_id,phase) VALUES ($1,$2,$3,$4,$5,'running') RETURNING *",
-          [executionId, taskId, r.auth!.id, r.auth!.deviceId, input.threadId],
-        );
-        const updated = await client.query(
-          'UPDATE tasks SET status_id=$1,version=version+1,updated_at=now() WHERE id=$2 RETURNING *',
-          [inProgress.rows[0].id, taskId],
-        );
-        await activity(taskId, r.auth!.id, 'execution.claimed', '', client);
-        return {
-          task: rowTask(updated.rows[0]),
-          execution: rowExecution(result.rows[0]),
-        };
-      });
-      await saveIdempotency(r, c.key, data, 201);
-      emit(task.space_id, { type: 'execution.claimed', taskId });
-      return ok(p, data, 201);
-    } catch (error: any) {
-      if (error?.code === '23505') {
-        throw new BoardError('TASK_ALREADY_CLAIMED', '任务已被其他成员领取', 409);
-      }
-      throw error;
-    }
-  });
-  app.post('/api/v1/tasks/:taskId/submit', async (r, p) => {
-    const { taskId } = r.params as any;
-    const task = await taskAndRole(taskId, r.auth!.id);
-    requireRole(task.role, 'editor');
-    if (!r.auth!.deviceId) throw new BoardError('DEVICE_REQUIRED', '提交需要设备身份', 422);
-    const version = numberHeader(r.headers['if-match']);
-    if (!version) throw new BoardError('VERSION_REQUIRED', '提交必须携带 If-Match 版本', 428);
-    const c = await stored(r);
-    if (c.cached) return ok(p, c.cached.response, c.cached.status_code);
-    const input = body(
-      r,
-      z
-        .object({
-          summary: z.string().trim().min(1).max(20000),
-          verification: z.string().trim().min(1).max(20000),
-        })
-        .strict(),
-    );
-    const data = await withTransaction(db, async (client) => {
-      const exe = await client.query(
-        "UPDATE executions SET phase='submitted',summary=$1,verification=$2,updated_at=now() WHERE task_id=$3 AND actor_id=$4 AND device_id=$5 AND phase='running' RETURNING *",
-        [input.summary, input.verification, taskId, r.auth!.id, r.auth!.deviceId],
-      );
-      if (!exe.rowCount) throw new BoardError('NO_ACTIVE_CLAIM', '没有可提交的任务领取记录', 409);
-      const review = await client.query(
-        "SELECT id FROM statuses WHERE space_id=$1 AND semantic='in_review' ORDER BY position LIMIT 1",
-        [task.space_id],
-      );
-      if (!review.rowCount)
-        throw new BoardError('MISSING_REVIEW_STATUS', '空间未配置待验收状态', 422);
-      const updated = await client.query(
-        'UPDATE tasks SET status_id=$1,version=version+1,updated_at=now() WHERE id=$2 AND version=$3 RETURNING *',
-        [review.rows[0].id, taskId, version],
-      );
-      if (!updated.rowCount) throw new BoardError('VERSION_CONFLICT', '任务已被其他设备修改', 409);
-      await activity(taskId, r.auth!.id, 'execution.submitted', input.summary, client);
-      return {
-        task: rowTask(updated.rows[0]),
-        execution: rowExecution(exe.rows[0]),
-      };
-    });
-    await saveIdempotency(r, c.key, data);
-    emit(task.space_id, { type: 'execution.submitted', taskId });
-    return ok(p, data);
-  });
-  app.post('/api/v1/tasks/:taskId/accept', async (r, p) => {
-    const { taskId } = r.params as any;
-    if (r.auth!.agent)
-      throw new BoardError('AGENT_CANNOT_COMPLETE', 'Agent 不能验收并完成任务', 422);
-    const task = await taskAndRole(taskId, r.auth!.id);
-    requireRole(task.role, 'editor');
-    const version = numberHeader(r.headers['if-match']);
-    if (!version) throw new BoardError('VERSION_REQUIRED', '验收必须携带 If-Match 版本', 428);
-    const c = await stored(r);
-    if (c.cached) return ok(p, c.cached.response, c.cached.status_code);
-    const data = await withTransaction(db, async (client) => {
-      const current = await client.query(
-        'SELECT s.semantic FROM tasks t JOIN statuses s ON s.id=t.status_id WHERE t.id=$1 FOR UPDATE',
-        [taskId],
-      );
-      if (!current.rowCount || current.rows[0].semantic !== 'in_review')
-        throw new BoardError('TASK_NOT_READY_FOR_ACCEPTANCE', '只有待验收任务可以完成', 422);
-      const running = await client.query(
-        "SELECT 1 FROM executions WHERE task_id=$1 AND phase='running' LIMIT 1",
-        [taskId],
-      );
-      if (running.rowCount)
-        throw new BoardError('TASK_STILL_RUNNING', '任务仍有进行中的执行记录', 409);
-      const done = await client.query(
-        "SELECT id FROM statuses WHERE space_id=$1 AND semantic='done' ORDER BY position LIMIT 1",
-        [task.space_id],
-      );
-      if (!done.rowCount) throw new BoardError('MISSING_DONE_STATUS', '空间未配置已完成状态', 422);
-      const result = await client.query(
-        'UPDATE tasks SET status_id=$1,version=version+1,updated_at=now() WHERE id=$2 AND version=$3 RETURNING *',
-        [done.rows[0].id, taskId, version],
-      );
-      if (!result.rowCount) throw new BoardError('VERSION_CONFLICT', '任务已被其他设备修改', 409);
-      await client.query(
-        "UPDATE executions SET phase='released',updated_at=now() WHERE task_id=$1 AND phase='submitted'",
-        [taskId],
-      );
-      await activity(taskId, r.auth!.id, 'task.accepted', '', client);
-      return rowTask(result.rows[0]);
-    });
-    await saveIdempotency(r, c.key, data);
-    emit(task.space_id, { type: 'task.accepted', taskId });
-    return ok(p, data);
-  });
-  app.post('/api/v1/tasks/:taskId/release', async (r, p) => {
-    const { taskId } = r.params as any;
-    const task = await taskAndRole(taskId, r.auth!.id);
-    requireRole(task.role, 'editor');
-    const version = numberHeader(r.headers['if-match']);
-    if (!version) throw new BoardError('VERSION_REQUIRED', '释放必须携带 If-Match 版本', 428);
-    const c = await stored(r);
-    if (c.cached) return ok(p, c.cached.response, c.cached.status_code);
-    const input = body(r, z.object({ reason: z.string().trim().min(1).max(2000) }).strict());
-    const data = await withTransaction(db, async (client) => {
-      const running = await client.query(
-        "SELECT * FROM executions WHERE task_id=$1 AND phase='running' FOR UPDATE",
-        [taskId],
-      );
-      if (!running.rowCount)
-        throw new BoardError('NO_ACTIVE_CLAIM', '没有可释放的任务领取记录', 409);
-      const execution = running.rows[0];
-      if (execution.actor_id !== r.auth!.id && task.role !== 'admin' && task.role !== 'owner')
-        throw new BoardError('FORBIDDEN', '只能释放自己的执行记录，或由空间管理员恢复任务', 403);
-      const updated = await client.query(
-        'UPDATE tasks SET version=version+1,updated_at=now() WHERE id=$1 AND version=$2 RETURNING *',
-        [taskId, version],
-      );
-      if (!updated.rowCount) throw new BoardError('VERSION_CONFLICT', '任务已被其他设备修改', 409);
-      const result = await client.query(
-        "UPDATE executions SET phase='released',updated_at=now() WHERE id=$1 RETURNING *",
-        [execution.id],
-      );
-      await activity(taskId, r.auth!.id, 'execution.released', input.reason, client);
-      return { task: rowTask(updated.rows[0]), execution: rowExecution(result.rows[0]) };
-    });
-    await saveIdempotency(r, c.key, data);
-    emit(task.space_id, { type: 'execution.released', taskId });
-    return ok(p, data);
   });
   app.get('/api/v1/spaces/:spaceId/events', async (r, p) => {
     const { spaceId } = r.params as any;

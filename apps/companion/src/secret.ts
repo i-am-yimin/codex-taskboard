@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
@@ -7,35 +7,67 @@ const protect =
 const unprotect =
   'Add-Type -AssemblyName System.Security; [Text.Encoding]::UTF8.GetString([System.Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String($x),$null,[System.Security.Cryptography.DataProtectionScope]::CurrentUser))';
 
+/** Collect only an already-owned helper. Errors never include secret input/output. */
+export async function collectSecretHelper(
+  child: ChildProcessWithoutNullStreams,
+  input: string,
+  timeoutMs = 20000,
+  maxOutputBytes = 65536,
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    let stdout = '';
+    let size = 0;
+    let settled = false;
+    const fail = (code: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      stdout = '';
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+      reject(new Error(code));
+    };
+    const timer = setTimeout(() => fail('SECRET_HELPER_TIMEOUT'), timeoutMs);
+    child.stdout.on('data', (chunk: Buffer) => {
+      size += chunk.byteLength;
+      if (size > maxOutputBytes) {
+        fail('SECRET_HELPER_OUTPUT_LIMIT');
+        return;
+      }
+      if (!settled) stdout += chunk.toString('utf8');
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      size += chunk.byteLength;
+      if (size > maxOutputBytes) fail('SECRET_HELPER_OUTPUT_LIMIT');
+    });
+    child.once('error', () => fail('SECRET_HELPER_FAILED'));
+    child.stdin.on('error', () => fail('SECRET_HELPER_INPUT_FAILED'));
+    child.once('close', (code) => {
+      if (settled) return;
+      if (code !== 0) {
+        fail('SECRET_HELPER_FAILED');
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(stdout.trim());
+      stdout = '';
+    });
+    child.stdin.end(input);
+  });
+}
+
 async function dpapi(script: string, input: string): Promise<string> {
   // The command and script are fixed constants; the secret is provided over stdin,
   // never concatenated into a shell command or process arguments.
   const encoded = Buffer.from(`$x=[Console]::In.ReadToEnd(); ${script}`, 'utf16le').toString(
     'base64',
   );
-  return new Promise<string>((resolve, reject) => {
-    const child = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded],
-      { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] },
-    );
-    let stdout = '';
-    let stderr = '';
-    child.stdout.setEncoding('utf8').on('data', (chunk) => {
-      stdout += chunk;
-    });
-    child.stderr.setEncoding('utf8').on('data', (chunk) => {
-      stderr += chunk;
-    });
-    child
-      .once('error', reject)
-      .once('close', (code) =>
-        code === 0
-          ? resolve(stdout.trim())
-          : reject(new Error(`DPAPI failed: ${stderr.trim() || code}`)),
-      );
-    child.stdin.end(input);
-  });
+  const child = spawn(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded],
+    { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] },
+  );
+  return collectSecretHelper(child, input);
 }
 
 export class SecretStore {

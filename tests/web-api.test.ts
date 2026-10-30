@@ -1,12 +1,19 @@
+import { compatibleServerHealth } from './server-compatibility-fixture.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, api, request, clearAccountCache } from '../apps/web/src/api.ts';
 
+function stubFetch(fetcher: typeof fetch) {
+  vi.stubGlobal('fetch', ((input: RequestInfo | URL, init?: RequestInit) =>
+    String(input).endsWith('/health')
+      ? Promise.resolve(new Response(JSON.stringify({ data: compatibleServerHealth })))
+      : fetcher(input, init)) as typeof fetch);
+}
 describe('web API transport', () => {
   afterEach(() => vi.unstubAllGlobals());
   it('uses a local capability without browser cookies for the desktop proxy', async () => {
     vi.stubGlobal('window', { __TAURI__: { core: { invoke: async () => 'local-capability' } } });
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [] })));
-    vi.stubGlobal('fetch', fetchMock);
+    stubFetch(fetchMock);
     await request('/spaces');
     expect(fetchMock.mock.calls[0][0]).toBe('http://127.0.0.1:47831/api/v1/spaces');
     expect(fetchMock.mock.calls[0][1]).toMatchObject({
@@ -41,7 +48,7 @@ describe('web API transport', () => {
         headers: { 'content-type': 'application/json' },
       }),
     );
-    vi.stubGlobal('fetch', fetchMock);
+    stubFetch(fetchMock);
     await request('/tasks/task-1', {
       method: 'PATCH',
       body: { title: '更新' },
@@ -59,8 +66,7 @@ describe('web API transport', () => {
   });
 
   it('keeps a structured server conflict for the conflict dialog', async () => {
-    vi.stubGlobal(
-      'fetch',
+    stubFetch(
       vi.fn().mockResolvedValue(
         new Response(JSON.stringify({ error: { code: 'CONFLICT', message: '版本已过期' } }), {
           status: 409,
@@ -77,8 +83,7 @@ describe('web API transport', () => {
 
   it('treats a desktop proxy cache response as offline so the renderer stays read-only', async () => {
     vi.stubGlobal('window', { __TAURI__: { core: { invoke: async () => 'local-capability' } } });
-    vi.stubGlobal(
-      'fetch',
+    stubFetch(
       vi.fn().mockResolvedValue(
         new Response(JSON.stringify({ data: [], meta: { source: 'cache', offline: true } }), {
           headers: { 'content-type': 'application/json' },
@@ -95,7 +100,7 @@ describe('web API transport', () => {
         headers: { 'content-type': 'application/json' },
       }),
     );
-    vi.stubGlobal('fetch', fetchMock);
+    stubFetch(fetchMock);
     await api.accept('task-1', 9);
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.headers).toMatchObject({ 'If-Match': '9' });
@@ -109,8 +114,7 @@ describe('gateway unavailability and cached reads', () => {
   it.each([502, 503, 504])(
     'makes a failed GET eligible for read-only cache recovery on HTTP %i',
     async (status) => {
-      vi.stubGlobal(
-        'fetch',
+      stubFetch(
         vi.fn().mockResolvedValue(new Response('<h1>Gateway unavailable</h1>', { status })),
       );
       await expect(request('/me')).rejects.toMatchObject({ code: 'OFFLINE', status });
@@ -120,8 +124,7 @@ describe('gateway unavailability and cached reads', () => {
   it.each([401, 403])(
     'preserves HTTP %i authorization failures so account caches are cleared',
     async (status) => {
-      vi.stubGlobal(
-        'fetch',
+      stubFetch(
         vi.fn().mockResolvedValue(
           new Response(
             JSON.stringify({
@@ -138,8 +141,7 @@ describe('gateway unavailability and cached reads', () => {
   it.each([502, 503, 504])(
     'keeps a failed write explicit on HTTP %i instead of reporting a cached success',
     async (status) => {
-      vi.stubGlobal(
-        'fetch',
+      stubFetch(
         vi.fn().mockResolvedValue(
           new Response(
             JSON.stringify({

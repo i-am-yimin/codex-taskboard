@@ -33,6 +33,8 @@ let activeAdapter: CodexDesktopAdapter | undefined;
 let delayComposerOnNextLoad = false;
 let delayProjectOnNextLoad = false;
 let projectFixtureId: string | undefined;
+let structureFixture: string | undefined;
+let blockNextDocument = false;
 const pageErrors: string[] = [];
 
 const composerModelFixture = String.raw`
@@ -168,6 +170,10 @@ async function waitForShell(): Promise<void> {
 
 beforeAll(async () => {
   host = createServer((_request, response) => {
+    if (_request.url === '/synthetic-delayed-script') {
+      setTimeout(() => { response.setHeader('Content-Type', 'text/javascript'); response.end('/* synthetic delayed load */'); }, 3500);
+      return;
+    }
     const delayComposer = delayComposerOnNextLoad;
     delayComposerOnNextLoad = false;
     const delayProject = delayProjectOnNextLoad;
@@ -187,6 +193,13 @@ beforeAll(async () => {
       : '';
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
     response.setHeader('Content-Security-Policy', "frame-src 'self'");
+    if (structureFixture) {
+      const blocker = blockNextDocument ? '<script src="/synthetic-delayed-script"></script>' : '';
+      blockNextDocument = false;
+      const deferred = delayComposer ? structureFixture.replace('<div contenteditable="true" role="textbox"><p><br></p></div>',
+        '<div id="delayed-contract-composer"></div><script>setTimeout(()=>{document.querySelector("#delayed-contract-composer").outerHTML=\'<div contenteditable="true" role="textbox"><p><br></p></div>\'},3500)</script>') : structureFixture;
+      response.end(`<!doctype html><html><head>${blocker}</head><body>${deferred}</body></html>`); return;
+    }
     response.end(`<!doctype html><html><body><script>
       const mount = () => {
         document.body.innerHTML = '<main id="codex-shell"><nav id="codex-sidebar">${delayProject ? '' : projectRow}</nav><section id="codex-content"></section></main>';
@@ -231,6 +244,8 @@ afterEach(async () => {
   } finally {
     activeAdapter = undefined;
     projectFixtureId = undefined;
+    structureFixture = undefined;
+    blockNextDocument = false;
     delayProjectOnNextLoad = false;
     await page.goto(`${hostOrigin}/`);
     await waitForShell();
@@ -252,6 +267,186 @@ afterAll(async () => {
 });
 
 describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () => {
+  const cachedPage = (id: string, active: boolean, draft = '') => `<div id="${id}" data-app-shell-active-page="${active}" style="display:contents"><div data-app-shell-header-placement style="display:${active ? 'contents' : 'none'}"><header data-app-shell-titlebar>Complete toolbar</header><main data-app-shell-main-surface><div contenteditable="true" role="textbox"><p>${draft || '<br>'}</p></div></main></div></div>`;
+  const cachedShell = (draft = '') => `<div data-app-shell-workspace-row><aside class="app-shell-left-panel"><nav data-app-navigation-rail></nav><nav><button id="native-cache-navigation">Existing conversation</button></nav></aside>${cachedPage('cached-a', false, draft)}${cachedPage('cached-b', true)}</div>`;
+
+  it('keeps the active complete workspace exclusive after cached-page navigation', { timeout: 45000 }, async () => {
+    structureFixture = cachedShell();
+    await page.goto(`${hostOrigin}/`);
+    const target = await boundPage();
+    const instance = new CodexDesktopAdapter({ owner: { verify: async () => true },
+      appVersion: '99.999.2345.0', structureCheck: 'auto', endpoint: cdpEndpoint,
+      boardUrl: `${boardOrigin}/board`, allowCspBypass: true, allowCspReload: true,
+      targetBinding: { targetId: target.id, exactPageUrl: target.url, pageWebSocketUrl: target.webSocketDebuggerUrl } });
+    activeAdapter = instance;
+    expect(await instance.probe()).toMatchObject({ draft: false, sidebar: { state: 'structure-ready', contractId: 'active-page-cache-shell-v1' } });
+    await instance.install();
+    const editorsBefore = await page.locator('[contenteditable="true"]').evaluateAll(nodes => nodes.map(n => n.innerHTML));
+    await page.evaluate(() => {
+      const current = document.querySelector('#cached-b [contenteditable="true"]')!;
+      current.remove();
+    });
+    await page.locator('[data-taskboard-entry][aria-busy="true"]').waitFor();
+    expect(await page.locator('[data-taskboard-entry]').isDisabled()).toBe(true);
+    expect(await instance.probe()).toMatchObject({ embedded: false, sidebar: { state: 'unchecked' } });
+    await page.evaluate(() => {
+      document.querySelector('#cached-b main')!.innerHTML = '<div contenteditable="true" role="textbox"><p><br></p></div>';
+    });
+    await page.locator('[data-taskboard-entry]:enabled:not([aria-busy])').waitFor();
+    expect(await instance.probe()).toMatchObject({ embedded: true });
+    for (const current of ['cached-b', 'cached-a', 'cached-b']) {
+      await page.locator('#native-cache-navigation').click();
+      await page.evaluate(id => {
+        for (const node of document.querySelectorAll<HTMLElement>('[data-app-shell-active-page]')) {
+          const active = node.id === id;
+          node.setAttribute('data-app-shell-active-page', String(active));
+          (node.firstElementChild as HTMLElement).style.display = active ? 'contents' : 'none';
+        }
+      }, current);
+      expect(await instance.probe()).toMatchObject({ embedded: true, sidebar: { contractId: 'active-page-cache-shell-v1' } });
+      await page.locator('[data-taskboard-entry]').click();
+      expect(await page.locator(`#${current} header`).isVisible()).toBe(false);
+      expect(await page.locator(`#${current}`).getAttribute('inert')).not.toBeNull();
+      await page.locator('[data-taskboard-entry]').press('Escape');
+      expect(await page.locator(`#${current} header`).isVisible()).toBe(true);
+    }
+    expect(await page.locator('[contenteditable="true"]').evaluateAll(nodes => nodes.map(n => n.innerHTML))).toEqual(editorsBefore);
+    await instance.dispose();
+    expect(await cspBlocksBoard()).toBe(true);
+  });
+
+  it('keeps recovery pending until the same native owner is verified again', { timeout: 45000 }, async () => {
+    structureFixture = cachedShell();
+    await page.goto(`${hostOrigin}/`);
+    const target = await boundPage();
+    let valid = true;
+    const instance = new CodexDesktopAdapter({ owner: { verify: async () => valid },
+      appVersion: '99.999.2345.0', structureCheck: 'auto', endpoint: cdpEndpoint,
+      boardUrl: `${boardOrigin}/board`, allowCspBypass: true, allowCspReload: true,
+      targetBinding: { targetId: target.id, exactPageUrl: target.url, pageWebSocketUrl: target.webSocketDebuggerUrl } });
+    activeAdapter = instance;
+    await instance.install();
+    valid = false;
+    await page.reload();
+    expect(await instance.probe()).toMatchObject({ embedded: false, draft: false, sidebar: { state: 'unchecked' } });
+    expect(await page.locator('[data-taskboard-owned]').count()).toBe(0);
+    valid = true;
+    await expect.poll(async () => (await instance.probe()).embedded, { timeout: 10000 }).toBe(true);
+    await instance.dispose();
+    expect(await cspBlocksBoard()).toBe(true);
+  });
+
+  it('blocks CSP changes and reload for an unsent draft in an inactive cached page', async () => {
+    structureFixture = cachedShell('private cached draft');
+    await page.goto(`${hostOrigin}/`);
+    const target = await boundPage();
+    const calls: string[] = [];
+    const instance = new CodexDesktopAdapter({ owner: { verify: async () => true },
+      appVersion: '99.999.2345.0', structureCheck: 'auto', endpoint: cdpEndpoint,
+      boardUrl: `${boardOrigin}/board`, allowCspBypass: true, allowCspReload: true,
+      targetBinding: { targetId: target.id, exactPageUrl: target.url, pageWebSocketUrl: target.webSocketDebuggerUrl } }, async url => {
+      const connection = await connectCdp(url);
+      return { ...connection, send: ((method, params, timeout) => {
+        calls.push(method); return connection.send(method, params, timeout);
+      }) as CdpConnection['send'] };
+    });
+    activeAdapter = instance;
+    expect(await instance.probe()).toMatchObject({ embedded: false, draft: false, sidebar: { state: 'state-blocked' } });
+    await expect(instance.install()).rejects.toThrow(/draft|草稿/);
+    expect(calls).not.toContain('Page.setBypassCSP');
+    expect(calls).not.toContain('Page.reload');
+    expect(await page.locator('#cached-a [contenteditable]').textContent()).toBe('private cached draft');
+  });
+
+  it('preserves a newly written inactive draft when teardown cannot safely reload', { timeout: 45000 }, async () => {
+    structureFixture = cachedShell();
+    await page.goto(`${hostOrigin}/`);
+    const target = await boundPage();
+    const calls: string[] = [];
+    const instance = new CodexDesktopAdapter({ owner: { verify: async () => true },
+      appVersion: '99.999.2345.0', structureCheck: 'auto', endpoint: cdpEndpoint,
+      boardUrl: `${boardOrigin}/board`, allowCspBypass: true, allowCspReload: true,
+      targetBinding: { targetId: target.id, exactPageUrl: target.url, pageWebSocketUrl: target.webSocketDebuggerUrl } }, async url => {
+      const connection = await connectCdp(url);
+      return { ...connection, send: ((method, params, timeout) => {
+        calls.push(method); return connection.send(method, params, timeout);
+      }) as CdpConnection['send'] };
+    });
+    activeAdapter = instance;
+    await instance.install();
+    calls.length = 0;
+    await page.locator('#cached-a [contenteditable]').evaluate(node => { node.textContent = 'keep this inactive draft'; });
+    await expect(instance.dispose()).rejects.toThrow(/draft/);
+    expect(calls).not.toContain('Page.reload');
+    expect(await page.locator('#cached-a [contenteditable]').textContent()).toBe('keep this inactive draft');
+    expect(await page.locator('[data-taskboard-owned]').count()).toBe(0);
+  });
+
+  it.each([
+    { appVersion: '99.999.1234.0', codexHome: 'C:\\synthetic-unused-home', activePage: false },
+    { appVersion: '26.1016.8622.0', codexHome: undefined, activePage: false },
+    { appVersion: '99.999.2345.0', codexHome: undefined, activePage: true },
+  ])('accepts structure on $appVersion, restores CSP, and never grants unapproved drafts ($codexHome)', { timeout: 45000 }, async (identity) => {
+    structureFixture = `<div data-app-shell-workspace-row><aside class="app-shell-left-panel">
+      <nav data-app-navigation-rail></nav><nav></nav></aside><section data-app-shell-header-placement>
+      <header data-app-shell-titlebar>Complete thread toolbar</header><main data-app-shell-main-surface>
+      <div contenteditable="true" role="textbox"><p><br></p></div></main></section></div>`;
+    if (identity.activePage) structureFixture = structureFixture
+      .replace('<section data-app-shell-header-placement>', '<div data-app-shell-active-page style="display:contents"><section data-app-shell-header-placement>')
+      .replace('</section></div>', '</section></div></div>');
+    await page.goto(`${hostOrigin}/`);
+    const target = await boundPage();
+    const instance = new CodexDesktopAdapter({ owner: { verify: async () => true },
+      ...identity, structureCheck: 'auto',
+      endpoint: cdpEndpoint, boardUrl: `${boardOrigin}/board`,
+      targetBinding: { targetId: target.id, exactPageUrl: target.url, pageWebSocketUrl: target.webSocketDebuggerUrl },
+      allowCspBypass: true, allowCspReload: true, cdpTimeoutMs: 5000 });
+    activeAdapter = instance;
+    expect(await instance.probe()).toMatchObject({ embedded: false, draft: false,
+      sidebar: { state: 'structure-ready', contractId: identity.activePage ? 'active-page-shell-v1' : 'workspace-shell-v1' } });
+    await expect(instance.openDraft({ taskId: 'task', spaceId: 'space', projectPath: 'C:\\synthetic', prompt: 'must not write' })).rejects.toThrow('DRAFT_UNAVAILABLE');
+    await instance.install();
+    expect(await instance.probe()).toMatchObject({ embedded: true, draft: false, sidebar: { state: 'installed' } });
+    await page.locator('[data-taskboard-entry]').click();
+    expect(await page.locator('[data-app-shell-header-placement]').isVisible()).toBe(false);
+    blockNextDocument = true;
+    delayComposerOnNextLoad = true;
+    await page.reload();
+    await expect.poll(async () => (await instance.ensureInstalled()).embedded, { timeout: 15000 }).toBe(true);
+    expect(await instance.probe()).toMatchObject({ draft: false });
+    // Structure drift retracts the view immediately. A later probe confirms
+    // cleanup and restores CSP; a cached successful check is never authority.
+    await page.locator('[data-app-shell-workspace-row]').evaluate(root => {
+      const unknown = document.createElement('section'); unknown.id = 'unknown-overlay'; root.append(unknown);
+    });
+    await page.locator('[data-taskboard-entry]').waitFor({ state: 'detached' });
+    // No external probe is needed to retire the invalid installation and CSP.
+    await expect.poll(cspBlocksBoard, { timeout: 10000 }).toBe(true);
+    expect(await instance.probe()).toMatchObject({ embedded: false, sidebar: { state: 'structure-missing' } });
+    await instance.dispose();
+  });
+
+  it('refuses mismatched future structure before enabling CSP or touching a draft', async () => {
+    structureFixture = '<div><aside class="app-shell-left-panel"><nav></nav></aside><div><p>unsupported shell</p></div></div>';
+    await page.goto(`${hostOrigin}/`);
+    const target = await boundPage();
+    const calls: string[] = [];
+    const instance = new CodexDesktopAdapter({ owner: { verify: async () => true }, appVersion: '99.999.1.0',
+      structureCheck: 'auto', endpoint: cdpEndpoint, boardUrl: `${boardOrigin}/board`,
+      targetBinding: { targetId: target.id, exactPageUrl: target.url, pageWebSocketUrl: target.webSocketDebuggerUrl },
+      allowCspBypass: true, allowCspReload: true }, async url => {
+        const connection = await connectCdp(url);
+        return { ...connection, send: ((method, params, timeout) => {
+          calls.push(method); return connection.send(method, params, timeout);
+        }) as CdpConnection['send'] };
+      });
+    activeAdapter = instance;
+    expect(await instance.probe()).toMatchObject({ draft: false, sidebar: { state: 'structure-missing' } });
+    await expect(instance.install()).rejects.toThrow('完整结构契约');
+    expect(calls).not.toContain('Page.setBypassCSP');
+    expect(calls).not.toContain('Page.reload');
+    expect(await page.locator('[data-taskboard-owned]').count()).toBe(0);
+  });
   it('selects the project navigation and visible content in the redesigned host', async () => {
     await page.setContent(`<div data-app-shell-workspace-row><aside class="app-shell-left-panel">
       <nav data-app-navigation-rail="true" aria-label="应用导航"></nav>
@@ -567,29 +762,43 @@ describe.sequential('Codex adapter CSP lifecycle in independent Chromium', () =>
     expect(await page.locator('#codex-composer').count()).toBe(1);
   });
 
-  it('waits for the initial workspace to mount before enabling CSP bypass', async () => {
+  it.each(['while-waiting', 'before-diagnosis'] as const)('rechecks initial workspace mounting: %s', async (mountTiming) => {
     const target = await boundPage();
     const before = await documentOrigin();
-    await page.evaluate(() => {
+    const markup = await page.evaluate(() => {
       const shell = document.querySelector('#codex-shell')!;
       const markup = shell.outerHTML;
       shell.remove();
-      setTimeout(() => document.body.insertAdjacentHTML('beforeend', markup), 350);
+      return markup;
     });
+    if (mountTiming === 'while-waiting')
+      await page.evaluate((html) => {
+        setTimeout(() => document.body.insertAdjacentHTML('beforeend', html), 350);
+      }, markup);
     const mountChecks: number[] = [];
+    let mounted = false;
     const connector: CdpConnector = async (webSocketDebuggerUrl) => {
       const connection = await connectCdp(webSocketDebuggerUrl, 5_000);
       return {
         send: async <T = unknown>(method: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<T> => {
           if (method === 'Page.setBypassCSP' && params?.enabled === true)
             mountChecks.push(await page.locator('#codex-shell #codex-composer').count());
-          return connection.send<T>(method, params, timeoutMs);
+          const result = await connection.send<T>(method, params, timeoutMs);
+          if (mountTiming === 'before-diagnosis' && method === 'Runtime.evaluate' && !mounted &&
+              typeof params?.expression === 'string' &&
+              params.expression.includes('&& !document.querySelector(')) {
+            // Commit the initial mount after the safety sample and before its diagnostic sample.
+            await page.evaluate((html) => document.body.insertAdjacentHTML('beforeend', html), markup);
+            mounted = true;
+          }
+          return result;
         },
         onEvent: connection.onEvent?.bind(connection),
         close: () => connection.close(),
       } satisfies CdpConnection;
     };
     await adapter(target, connector).install();
+    if (mountTiming === 'before-diagnosis') expect(mounted).toBe(true);
     expect(mountChecks).toEqual([1]);
     expect(await documentOrigin()).not.toBe(before);
     expect(await page.locator('[data-taskboard-owned]').count()).toBe(1);

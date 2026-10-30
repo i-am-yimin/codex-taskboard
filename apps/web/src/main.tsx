@@ -1,14 +1,15 @@
-import { StrictMode, useEffect, useMemo, useRef, useState } from 'react';
+import { StrictMode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   DndContext,
+  DragOverlay,
+  defaultDropAnimationSideEffects,
   useDroppable,
   useSensor,
   useSensors,
   PointerSensor,
-  KeyboardSensor,
   closestCenter,
   type DragEndEvent,
 } from '@dnd-kit/core';
@@ -21,6 +22,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   Archive,
+  Bell,
+  GitBranch,
   ArrowUpRight,
   Check,
   CheckCircle2,
@@ -43,12 +46,15 @@ import {
   Wifi,
   X,
 } from 'lucide-react';
+import { ServerCompatibilityNotice } from './ServerCompatibilityNotice';
 import { ConnectionSettings } from './ConnectionSettings';
 import { CodexConnectionAction, CodexConnectionNotice } from './CodexConnectionAction';
 import { DesktopServerSetup } from './DesktopServerSetup';
 import { ServerAdministration, ServerSetupGate } from './ServerAdministration';
 import {
   api,
+  checkServerCompatibility,
+  resetServerCompatibility,
   ApiError,
   cacheBoard,
   clearAccountCache,
@@ -62,12 +68,28 @@ import {
   saveOfflineSnapshot,
 } from './offlineSnapshot';
 import { TaskDrawer } from './TaskDrawer';
-import { subscribeDesktopBoardEvents } from './realtime';
+import { NotificationCenter } from './NotificationCenter';
+import { useNotificationInbox } from './useNotificationInbox';
+import { AutomationPanel } from './AutomationPanel';
+import { MyTaskViews } from './MyTaskViews';
+import {
+  connectBoardEvents,
+  subscribeBrowserBoardEvents,
+  subscribeDesktopBoardEvents,
+} from './realtime';
 import { SpaceActions } from './SpaceActions';
 import { demoUser, makeDemoBoard } from './demo';
 import { useEmbeddedReadyResponder } from './embeddedReady';
 import type { Board, Member, Semantic, Space, Status, Task } from './types';
 import './styles.css';
+import { TaskboardBrand } from './brand/TaskboardBrand';
+import { useBoardReflow, boardMotion, prefersReducedMotion } from './motion/boardMotion';
+import './motion/boardMotion.css';
+import { BufferedKeyboardSensor, KeyboardSensorScope } from './motion/BufferedKeyboardSensor';
+import { useKeyboardDropFocus } from './motion/useKeyboardDropFocus';
+import { useBoardKeyboardInput } from './motion/useBoardKeyboardInput';
+import './collaboration.css';
+import './workflow.css';
 import './glass.css';
 import './themes.css';
 import { AppearanceSettings } from './AppearanceSettings';
@@ -125,14 +147,32 @@ function App() {
   const [view, setView] = useState<'board' | 'list'>('board');
   const [spaceMenu, setSpaceMenu] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [automationOpen, setAutomationOpen] = useState(false);
   const [serverAdmin, setServerAdmin] = useState(location.hash === '#admin');
   const [newTask, setNewTask] = useState(false);
   const [newSpace, setNewSpace] = useState(false);
-  const [drawer, setDrawer] = useState<string | null>(null);
+  const [drawer, setDrawer] = useState<string | null>(
+    new URLSearchParams(location.search).get('task'),
+  );
+  const [drawerSpaceId, setDrawerSpaceId] = useState<string | null>(
+    new URLSearchParams(location.search).get('space'),
+  );
+  const [drawerEpoch, setDrawerEpoch] = useState(0);
+  const openTaskDrawer = (id: string, targetSpaceId = spaceId) => {
+    setDrawerSpaceId(targetSpaceId);
+    setDrawerEpoch((epoch) => epoch + 1);
+    setDrawer(id);
+  };
+  const [drawerIntent, setDrawerIntent] = useState<
+    'submit' | 'accept' | 'return' | 'cancel' | 'reopen' | null
+  >(null);
   const [search, setSearch] = useState('');
   const [priority, setPriority] = useState<number | null>(null);
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [labelFilter, setLabelFilter] = useState('');
+  const [relation, setRelation] = useState('');
+  const [personalTasks, setPersonalTasks] = useState<Task[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [conflict, setConflict] = useState<{ task: Task; changes: Partial<Task> } | null>(null);
   const [offline, setOffline] = useState(!navigator.onLine);
@@ -160,6 +200,28 @@ function App() {
     },
   });
   const user = userQuery.data;
+  const compatibilityQuery = useQuery({
+    queryKey: ['server-compatibility', user?.id],
+    enabled: !!user && !isDemo,
+    networkMode: 'always',
+    queryFn: checkServerCompatibility,
+    retry: false,
+    refetchInterval: 30000,
+    refetchOnWindowFocus: true,
+  });
+  const compatible =
+    isDemo || (compatibilityQuery.data?.status === 'compatible' && !compatibilityQuery.error);
+  const compatibilityNotice = !isDemo ? (
+    <ServerCompatibilityNotice
+      compatibility={compatibilityQuery.data}
+      error={compatibilityQuery.error}
+      checking={compatibilityQuery.isFetching}
+      onRetry={() => {
+        resetServerCompatibility();
+        void compatibilityQuery.refetch();
+      }}
+    />
+  ) : null;
   const appearance = useAppearance(user?.id, isDemo);
   const spacesQuery = useQuery({
     queryKey: ['spaces', user?.id],
@@ -188,7 +250,21 @@ function App() {
       }
     },
   });
-  const [spaceId, setSpaceId] = useState(isDemo ? 'space-work' : '');
+  const [spaceId, setSpaceId] = useState(
+    isDemo ? 'space-work' : (new URLSearchParams(location.search).get('space') ?? ''),
+  );
+  useLayoutEffect(() => {
+    if (!drawer) return;
+    if (drawerSpaceId === null) {
+      if (spaceId) setDrawerSpaceId(spaceId);
+    } else if (drawerSpaceId !== spaceId) {
+      // Navigation retires the old drawer immediately, including a still-running exit.
+      // Explicit cross-space task opens set their target scope in the same update.
+      setDrawer(null);
+      setDrawerIntent(null);
+      setDrawerSpaceId(null);
+    }
+  }, [drawer, drawerSpaceId, spaceId]);
   useEffect(() => {
     if (!spaceId && spacesQuery.data?.[0]) setSpaceId(spacesQuery.data[0].id);
   }, [spaceId, spacesQuery.data]);
@@ -227,7 +303,18 @@ function App() {
   useEffect(() => {
     if (!user || isDemo) return;
     if (priorAccountId.current && priorAccountId.current !== user.id) {
-      for (const kind of ['spaces', 'board', 'task']) {
+      for (const kind of [
+        'spaces',
+        'board',
+        'task',
+        'my-tasks',
+        'saved-filters',
+        'notifications',
+        'notification-preferences',
+        'notification-delivery-candidates',
+        'automation-rules',
+        'workflow-metrics',
+      ]) {
         const queryKey = [kind, priorAccountId.current];
         void client.cancelQueries({ queryKey });
         client.removeQueries({ queryKey });
@@ -260,7 +347,7 @@ function App() {
       setOfflineSession(null);
     }
   }, [offlineSession, user, userQuery.error]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!user || !spaceId || isDemo) return;
     setSync('connecting');
     const refresh = () => {
@@ -269,14 +356,39 @@ function App() {
     };
     const revoke = () => {
       localStorage.removeItem(`tb:board:${user.id}:${spaceId}`);
+      for (const key of Object.keys(localStorage)) {
+        if (
+          !['tb:draft:', 'tb:result:', 'tb:comment:'].some((prefix) =>
+            key.startsWith(`${prefix}${user.id}:`),
+          )
+        )
+          continue;
+        try {
+          const value = JSON.parse(localStorage.getItem(key) ?? 'null');
+          if (value?.spaceId === spaceId) localStorage.removeItem(key);
+        } catch {
+          /* Legacy plain text is covered by the known board task IDs below. */
+        }
+      }
       latestBoard.current?.tasks.forEach((task) => {
         localStorage.removeItem(`tb:draft:${user.id}:${task.id}`);
         localStorage.removeItem(`tb:result:${user.id}:${task.id}`);
+        localStorage.removeItem(`tb:comment:${user.id}:${task.id}`);
       });
       removeOfflineBoard(user.id, spaceId);
       setOfflineSession(readOfflineSnapshot());
       client.removeQueries({ queryKey: ['board', user.id, spaceId] });
       client.removeQueries({ queryKey: ['task'] });
+      client.removeQueries({ queryKey: ['my-tasks', user.id] });
+      client.removeQueries({ queryKey: ['saved-filters', user.id] });
+      client.removeQueries({ queryKey: ['notifications', user.id] });
+      client.removeQueries({
+        queryKey: ['notification-preferences', user.id],
+      });
+      client.removeQueries({ queryKey: ['notification-delivery-candidates', user.id] });
+      client.removeQueries({ queryKey: ['automation-rules', user.id, spaceId] });
+      client.removeQueries({ queryKey: ['workflow-metrics', user.id, spaceId] });
+      setPersonalTasks(null);
       client.setQueryData<Space[]>(['spaces', user.id], (spaces) =>
         spaces?.filter((space) => space.id !== spaceId),
       );
@@ -285,65 +397,47 @@ function App() {
       // replace the live UI with login as well as clearing persisted caches.
       void client.invalidateQueries({ queryKey: ['me'] });
     };
-    if (hasLocalCompanion()) {
-      let stopped = false;
-      let retry = 0;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      let unsubscribe: () => void = () => undefined;
-      const connect = () => {
-        unsubscribe = subscribeDesktopBoardEvents(spaceId, {
-          ready: () => {
-            retry = 0;
-            setSync('synced');
-            setOffline(false);
-            refresh();
-          },
-          board: () => {
-            setSync('synced');
-            setOffline(false);
-            refresh();
-          },
-          revoked: () => {
-            stopped = true;
-            revoke();
-          },
-          error: () => {
-            if (stopped) return;
-            setSync('offline');
-            timer = setTimeout(connect, Math.min(2000, 250 * 2 ** retry++));
-          },
-        });
-      };
-      connect();
-      return () => {
-        stopped = true;
-        if (timer) clearTimeout(timer);
-        unsubscribe();
-      };
-    }
-    const events = new EventSource(
-      `${import.meta.env.VITE_API_BASE ?? '/api/v1'}/spaces/${spaceId}/events`,
-      { withCredentials: true },
-    );
-    events.addEventListener('ready', () => {
-      setSync('synced');
-      setOffline(false);
-      refresh();
+    return connectBoardEvents({
+      network: window,
+      online: () => navigator.onLine,
+      subscribe: (handlers) =>
+        hasLocalCompanion()
+          ? subscribeDesktopBoardEvents(spaceId, handlers)
+          : subscribeBrowserBoardEvents(
+              spaceId,
+              handlers,
+              import.meta.env.VITE_API_BASE ?? '/api/v1',
+            ),
+      handlers: {
+        connecting: () => {
+          setSync('connecting');
+          setOffline(false);
+        },
+        offline: () => {
+          setSync('offline');
+          setOffline(true);
+        },
+        ready: () => {
+          setSync('synced');
+          setOffline(false);
+          refresh();
+        },
+        board: () => {
+          setSync('synced');
+          setOffline(false);
+          refresh();
+        },
+        revoked: revoke,
+        error: () => setSync('offline'),
+      },
     });
-    events.addEventListener('board', () => {
-      setSync('synced');
-      setOffline(false);
-      refresh();
-    });
-    events.addEventListener('revoked', revoke);
-    events.onerror = () => setSync('offline');
-    return () => events.close();
   }, [client, spaceId, user]);
   useEffect(() => {
     const change = () => {
       setOffline(!navigator.onLine);
-      setSync(navigator.onLine ? 'connecting' : 'offline');
       if (navigator.onLine) {
+        resetServerCompatibility();
+        client.invalidateQueries({ queryKey: ['server-compatibility'] });
         client.invalidateQueries({ queryKey: ['me'] });
         client.invalidateQueries({ queryKey: ['spaces', user?.id] });
         client.invalidateQueries({ queryKey: ['board', user?.id, spaceId] });
@@ -356,9 +450,16 @@ function App() {
       removeEventListener('offline', change);
     };
   }, [client, spaceId, user?.id]);
+  useEffect(() => {
+    const url = new URL(location.href);
+    if (spaceId) url.searchParams.set('space', spaceId);
+    if (drawer) url.searchParams.set('task', drawer);
+    else url.searchParams.delete('task');
+    history.replaceState(null, '', url);
+  }, [spaceId, drawer]);
   const visible = useMemo(
     () =>
-      board?.tasks.filter(
+      (personalTasks ?? board?.tasks ?? []).filter(
         (t) =>
           !t.archived &&
           (!search ||
@@ -367,15 +468,33 @@ function App() {
           (!assigneeFilter || t.assigneeId === assigneeFilter) &&
           (!labelFilter || t.labels.includes(labelFilter)),
       ) ?? [],
-    [board, search, priority, assigneeFilter, labelFilter],
+    [board, personalTasks, search, priority, assigneeFilter, labelFilter],
   );
   const editor = board?.space.role !== 'viewer' && !board?.space.archived;
   const readOnlyCached = offline || showingCached || (!isDemo && sync !== 'synced');
+  const taskReadOnly = readOnlyCached || !compatible;
+
+  const inbox = useNotificationInbox({
+    userId: user?.id,
+    enabled: !!user && !isDemo,
+    offline: taskReadOnly,
+    onOpen: (taskId, targetSpace) => {
+      setSpaceId(targetSpace);
+      setDrawerIntent(null);
+      openTaskDrawer(taskId, targetSpace);
+    },
+  });
+  const unreadNotifications = inbox.items.filter((item) => !item.readAt).length;
 
   const refresh = () => client.invalidateQueries({ queryKey: ['board', user?.id, spaceId] });
   const move = async (task: Task, statusId: string, position?: number) => {
     if (!board) return;
-    if (readOnlyCached) return setNotice('离线缓存仅供浏览；恢复连接后才能更新任务。');
+    if (taskReadOnly)
+      return setNotice(
+        !compatible
+          ? '服务器兼容性尚未确认，请先完成升级或重新检查。'
+          : '离线缓存仅供浏览；恢复连接后才能更新任务。',
+      );
     if (!editor) return setNotice('你只有查看权限，无法移动任务。');
     const changes = {
       statusId,
@@ -398,8 +517,38 @@ function App() {
       return;
     }
     try {
+      const from = board.statuses.find((status) => status.id === task.statusId)?.semantic;
+      const to = board.statuses.find((status) => status.id === statusId)?.semantic;
+      if (from !== to) {
+        if ((from === 'todo' || from === 'in_progress') && to === 'in_progress') {
+          await api.claim(task.id, task.version);
+          setNotice('任务已领取；领取不代表 Agent 已启动。');
+          await refresh();
+          return;
+        }
+        const intent =
+          to === 'in_review' && from === 'in_progress'
+            ? 'submit'
+            : to === 'done' && from === 'in_review'
+              ? 'accept'
+              : to === 'in_progress' && from === 'in_review'
+                ? 'return'
+                : to === 'cancelled' && from !== 'done'
+                  ? 'cancel'
+                  : to === 'todo' && (from === 'done' || from === 'cancelled')
+                    ? 'reopen'
+                    : null;
+        if (!intent) {
+          setNotice('此状态转换不可直接执行，请在任务详情中选择操作。');
+          return;
+        }
+        setDrawerIntent(intent);
+        openTaskDrawer(task.id);
+        setNotice('请补充操作材料并确认；状态尚未更改。');
+        return;
+      }
       await api.patchTask(task.id, changes, task.version);
-      refresh();
+      await refresh();
     } catch (e) {
       if (e instanceof ApiError && e.code === 'VERSION_CONFLICT') setConflict({ task, changes });
       else setNotice(e instanceof Error ? e.message : '更新失败');
@@ -410,6 +559,14 @@ function App() {
     if (user) {
       clearAccountCache(user.id);
       clearOfflineSnapshot(user.id);
+      for (const kind of [
+        'notifications',
+        'notification-preferences',
+        'notification-delivery-candidates',
+        'automation-rules',
+        'workflow-metrics',
+      ])
+        client.removeQueries({ queryKey: [kind, user.id] });
     }
     location.href = location.pathname;
   };
@@ -458,6 +615,7 @@ function App() {
             服务器管理
           </button>
         )}
+        {compatibilityNotice}
         <EmptySpace
           onCreated={(id) => {
             setSpaceId(id);
@@ -490,8 +648,7 @@ function App() {
     >
       <aside className="rail" aria-label="看板导航">
         <div className="brand">
-          <Sparkles size={18} />
-          <span>taskboard</span>
+          <TaskboardBrand compact />
         </div>
         <button
           className={`rail-icon${view === 'board' ? ' active' : ''}`}
@@ -527,6 +684,9 @@ function App() {
       <section className="workspace">
         <header className="topbar">
           <div className="space-switcher-wrap">
+            <span className="topbar-brand">
+              <TaskboardBrand compact />
+            </span>
             <button className="space-switcher" onClick={() => setSpaceMenu(!spaceMenu)}>
               <i style={{ background: board.space.color }}>{board.space.icon}</i>
               <span>
@@ -553,7 +713,7 @@ function App() {
                 ))}
                 <hr />
                 <button
-                  disabled={readOnlyCached}
+                  disabled={taskReadOnly}
                   onClick={() => {
                     setNewSpace(true);
                     setSpaceMenu(false);
@@ -575,6 +735,25 @@ function App() {
             )}
           </div>
           <div className="topbar-right">
+            <button
+              className="button ghost"
+              aria-label={`收件箱${unreadNotifications ? `，已加载 ${unreadNotifications} 条未读` : ''}`}
+              onClick={() => setInboxOpen(true)}
+            >
+              <Bell size={17} />
+              <span className="toolbar-word">收件箱</span>
+              {unreadNotifications > 0 && (
+                <span className="inbox-count">{unreadNotifications}</span>
+              )}
+            </button>
+            <button
+              className="button ghost"
+              aria-label="规则与统计"
+              onClick={() => setAutomationOpen(true)}
+            >
+              <GitBranch size={17} />
+              <span className="toolbar-word">规则与统计</span>
+            </button>
             <span className={sync === 'offline' ? 'connection offline' : 'connection'}>
               {sync === 'offline' ? <CloudOff size={14} /> : <Cloud size={14} />}{' '}
               {sync === 'offline'
@@ -609,7 +788,7 @@ function App() {
             <button
               className="button primary"
               onClick={() => setNewTask(true)}
-              disabled={!editor || readOnlyCached}
+              disabled={!editor || taskReadOnly}
             >
               <Plus size={17} />
               新建任务
@@ -667,6 +846,22 @@ function App() {
           </select>
           <span className="result-count">{visible.length} 个任务</span>
         </div>
+        <MyTaskViews
+          userId={user!.id}
+          spaceId={board.space.id}
+          offline={taskReadOnly}
+          demo={isDemo}
+          filters={{ search, priority, assigneeId: assigneeFilter, label: labelFilter, relation }}
+          onTasks={setPersonalTasks}
+          onFilter={(filter) => {
+            setSearch(filter.search ?? '');
+            setPriority(filter.priority ?? null);
+            setAssigneeFilter(filter.assigneeId ?? '');
+            setLabelFilter(filter.label ?? '');
+            setRelation(filter.relation ?? '');
+          }}
+        />
+        {compatibilityNotice}
         {readOnlyCached && sync === 'connecting' && !showingCached && !offline ? (
           <div className="banner">正在确认实时连接；所有写入已暂停。</div>
         ) : (
@@ -691,37 +886,72 @@ function App() {
           <BoardView
             board={board}
             tasks={visible}
-            onOpen={(id) => (id === '__new__' ? setNewTask(true) : setDrawer(id))}
+            onOpen={(id) => (id === '__new__' ? setNewTask(true) : openTaskDrawer(id))}
             onMove={move}
-            editable={!!editor && !readOnlyCached}
+            editable={!!editor && !taskReadOnly}
           />
         ) : (
           <ListView
             board={board}
             tasks={visible}
-            onOpen={(id) => (id === '__new__' ? setNewTask(true) : setDrawer(id))}
+            onOpen={(id) => (id === '__new__' ? setNewTask(true) : openTaskDrawer(id))}
           />
         )}
       </section>
-      {drawer && (
-        <TaskDrawer
-          key={drawer}
-          taskId={drawer}
-          userId={user!.id}
-          editable={!!editor && !readOnlyCached}
-          board={board}
-          demo={isDemo}
-          offline={readOnlyCached}
-          onClose={() => setDrawer(null)}
-          onRefresh={refresh}
-          onNotice={setNotice}
-        />
-      )}
+      <NotificationCenter
+        key={`inbox:${user!.id}`}
+        open={inboxOpen}
+        onClose={() => setInboxOpen(false)}
+        inbox={inbox}
+        spaces={spacesQuery.data ?? []}
+        spaceId={board.space.id}
+        offline={taskReadOnly || isDemo}
+        onOpen={(taskId, targetSpace) => {
+          setSpaceId(targetSpace);
+          setDrawerIntent(null);
+          openTaskDrawer(taskId, targetSpace);
+        }}
+      />
+      <AutomationPanel
+        key={`automation:${user!.id}:${board.space.id}`}
+        userId={user!.id}
+        open={automationOpen}
+        onClose={() => setAutomationOpen(false)}
+        board={board}
+        offline={taskReadOnly}
+        demo={isDemo}
+        onChanged={refresh}
+      />
+      {drawer &&
+        (drawerSpaceId === null || drawerSpaceId === spaceId) &&
+        board.space.id === spaceId && (
+          <TaskDrawer
+            key={`${user!.id}:${drawer}:${drawerEpoch}`}
+            taskId={drawer}
+            initialIntent={drawerIntent}
+            onOpenTask={(id) => {
+              setDrawerIntent(null);
+              openTaskDrawer(id);
+            }}
+            userId={user!.id}
+            editable={!!editor && !taskReadOnly}
+            canControlExistingRuns={!!editor && !readOnlyCached && !isDemo}
+            board={board}
+            demo={isDemo}
+            offline={taskReadOnly}
+            onClose={() => {
+              setDrawer(null);
+              setDrawerIntent(null);
+            }}
+            onRefresh={refresh}
+            onNotice={setNotice}
+          />
+        )}
       {newTask && (
         <NewTask
           board={board}
           demo={isDemo}
-          offline={readOnlyCached}
+          offline={taskReadOnly}
           onClose={() => setNewTask(false)}
           onRefresh={refresh}
           onNotice={setNotice}
@@ -748,7 +978,7 @@ function App() {
           }
           board={board}
           demo={isDemo}
-          offline={readOnlyCached}
+          offline={taskReadOnly}
           appearance={appearance}
           onClose={() => {
             appearance.cancel();
@@ -903,36 +1133,90 @@ function BoardView({
   board: Board;
   tasks: Task[];
   onOpen: (id: string) => void;
-  onMove: (task: Task, statusId: string, position?: number) => void;
+  onMove: (task: Task, statusId: string, position?: number) => Promise<void>;
   editable: boolean;
 }) {
+  const boardRef = useRef<HTMLDivElement>(null);
+  useBoardKeyboardInput(boardRef, editable);
+  const keyboardFocus = useKeyboardDropFocus(boardRef);
+  const keyboardScope = useMemo(() => new KeyboardSensorScope(), []);
+  useEffect(() => () => keyboardScope.dispose(), [keyboardScope]);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [targetStatus, setTargetStatus] = useState<string | null>(null);
+  useBoardReflow(
+    boardRef,
+    tasks.map((task) => [task.id, task.statusId, task.position, task.version].join(':')).join('|'),
+    draggedId !== null,
+  );
+  const draggedTask = tasks.find((task) => task.id === draggedId);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(BufferedKeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+      scope: keyboardScope,
+      keyboardCodes: {
+        start: ['Space'],
+        end: ['Space', 'Enter', 'Tab'],
+        cancel: ['Escape'],
+      },
+    }),
   );
-  const drop = (event: DragEndEvent) => {
-    const task = tasks.find((t) => t.id === event.active.id);
-    const overId = event.over?.id.toString();
-    if (!task || !overId || overId === task.id) return;
-    const overTask = tasks.find((item) => item.id === overId);
-    const statusId = overTask?.statusId ?? overId;
-    if (!board.statuses.some((status) => status.id === statusId)) return;
-    const remaining = tasks
-      .filter((item) => item.statusId === statusId && item.id !== task.id)
-      .sort((a, b) => a.position - b.position);
-    if (!overTask) return onMove(task, statusId);
-    let index = remaining.findIndex((item) => item.id === overId);
-    if (task.statusId === statusId && task.position < overTask.position) index++;
-    const previous = remaining[index - 1]?.position ?? 0;
-    const next = remaining[index]?.position ?? previous + 2048;
-    onMove(task, statusId, (previous + next) / 2);
+  const drop = async (event: DragEndEvent) => {
+    const restoreFocus = keyboardFocus.begin(event);
+    try {
+      setDraggedId(null);
+      setTargetStatus(null);
+      const task = tasks.find((t) => t.id === event.active.id);
+      const overId = event.over?.id.toString();
+      if (!task || !overId || overId === task.id) return;
+      const overTask = tasks.find((item) => item.id === overId);
+      const statusId = overTask?.statusId ?? overId;
+      if (!board.statuses.some((status) => status.id === statusId)) return;
+      const remaining = tasks
+        .filter((item) => item.statusId === statusId && item.id !== task.id)
+        .sort((a, b) => a.position - b.position);
+      if (!overTask) return await onMove(task, statusId);
+      let index = remaining.findIndex((item) => item.id === overId);
+      if (task.statusId === statusId && task.position < overTask.position) index++;
+      const previous = remaining[index - 1]?.position ?? 0;
+      const next = remaining[index]?.position ?? previous + 2048;
+      await onMove(task, statusId, (previous + next) / 2);
+    } finally {
+      restoreFocus();
+    }
   };
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={drop}>
-      <div className="board">
+    <DndContext
+      sensors={sensors}
+      accessibility={{
+        restoreFocus: false,
+        screenReaderInstructions: {
+          draggable:
+            '按 Enter 打开任务详情。按空格拾取任务；拾取后使用方向键移动，空格、Enter 或 Tab 放下，Esc 取消。',
+        },
+      }}
+      collisionDetection={closestCenter}
+      onDragStart={(event) => {
+        keyboardFocus.cancel();
+        setDraggedId(String(event.active.id));
+      }}
+      onDragOver={(event) => {
+        const id = event.over?.id.toString();
+        setTargetStatus(tasks.find((task) => task.id === id)?.statusId ?? id ?? null);
+      }}
+      onDragCancel={(event) => {
+        const restoreFocus = keyboardFocus.begin(event);
+        setDraggedId(null);
+        setTargetStatus(null);
+        restoreFocus();
+      }}
+      onDragEnd={drop}
+    >
+      <div className="board" ref={boardRef}>
         {board.statuses.map((status) => (
           <BoardColumn
             status={status}
+            destination={targetStatus === status.id}
             key={status.id}
             tasks={tasks.filter((t) => t.statusId === status.id)}
             members={board.members}
@@ -941,17 +1225,37 @@ function BoardView({
           />
         ))}
       </div>
+      <DragOverlay
+        dropAnimation={
+          prefersReducedMotion()
+            ? null
+            : {
+                ...boardMotion.drop,
+                sideEffects: defaultDropAnimationSideEffects({
+                  styles: { active: { opacity: '0' } },
+                }),
+              }
+        }
+      >
+        {draggedTask ? (
+          <div className="task-card task-drag-overlay">
+            <TaskCardContent task={draggedTask} members={board.members} />
+          </div>
+        ) : null}
+      </DragOverlay>
     </DndContext>
   );
 }
 function BoardColumn({
   status,
+  destination,
   tasks,
   members,
   onOpen,
   editable,
 }: {
   status: Status;
+  destination: boolean;
   tasks: Task[];
   members: Member[];
   onOpen: (id: string) => void;
@@ -959,7 +1263,11 @@ function BoardColumn({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status.id, disabled: !editable });
   return (
-    <section className={`column${isOver ? ' is-over' : ''}`} ref={setNodeRef}>
+    <section
+      className={`column${isOver ? ' is-over' : ''}`}
+      data-drop-target={destination}
+      ref={setNodeRef}
+    >
       <header className="column-head">
         <span className="status-dot" style={{ background: status.color }} />
         <b>{status.name}</b>
@@ -999,7 +1307,15 @@ function TaskCard({
   onOpen: (id: string) => void;
   disabled: boolean;
 }) {
-  const assignee = members.find((m) => m.id === task.assigneeId);
+  const priorVersion = useRef(task.version);
+  const [updated, setUpdated] = useState(false);
+  useEffect(() => {
+    if (priorVersion.current === task.version) return;
+    priorVersion.current = task.version;
+    setUpdated(true);
+    const timer = setTimeout(() => setUpdated(false), 900);
+    return () => clearTimeout(timer);
+  }, [task.version]);
   const { attributes, listeners, setNodeRef, isDragging, transform, transition } = useSortable({
     id: task.id,
     disabled,
@@ -1013,12 +1329,27 @@ function TaskCard({
   return (
     <button
       ref={setNodeRef}
+      data-motion-id={task.id}
+      data-dragging={isDragging}
+      data-motion-state={updated ? 'updated' : undefined}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={`task-card${isDragging ? ' dragging' : ''}`}
       onClick={() => onOpen(task.id)}
       {...sortableAttributes}
       {...(disabled ? {} : listeners)}
     >
+      <TaskCardContent task={task} members={members} />
+      <span className="card-update-announcement" role="status">
+        {updated ? '任务已更新' : ''}
+      </span>
+    </button>
+  );
+}
+function TaskCardContent({ task, members }: { task: Task; members: Member[] }) {
+  const assignee = members.find((member) => member.id === task.assigneeId);
+  const reviewer = members.find((member) => member.id === task.reviewerId);
+  return (
+    <>
       <span className="task-title">
         <GripVertical size={14} />
         <span>{task.title}</span>
@@ -1031,6 +1362,11 @@ function TaskCard({
           </span>
         ))}
       </span>
+      <span className="card-collaboration">
+        <span>{assignee ? `负责 ${assignee.name}` : '未派负责人'}</span>
+        <span>{reviewer ? `验收 ${reviewer.name}` : '待派验收人'}</span>
+        {task.parentTaskId && <span>独立子任务</span>}
+      </span>
       <span className="card-footer">
         <span className={`priority p${task.priority}`}>
           <i /> {priorityName[task.priority]}
@@ -1038,7 +1374,7 @@ function TaskCard({
         <span className="task-no">TB-{task.number}</span>
         {assignee && <span className="avatar small">{initials(assignee.name)}</span>}
       </span>
-    </button>
+    </>
   );
 }
 function ListView({
@@ -1672,8 +2008,7 @@ function Onboarding({ error }: { error?: string }) {
     <main className="onboarding">
       <div className="onboard-side">
         <div className="brand">
-          <Sparkles size={19} />
-          <span>taskboard</span>
+          <TaskboardBrand />
         </div>
         <div className="onboard-copy">
           <p className="eyebrow">为 Codex 而生</p>
@@ -1771,8 +2106,7 @@ function AuthFrame({
     <main className="onboarding">
       <div className="onboard-side">
         <div className="brand">
-          <Sparkles size={19} />
-          <span>taskboard</span>
+          <TaskboardBrand />
         </div>
         <div className="onboard-copy">
           <p className="eyebrow">{eyebrow}</p>

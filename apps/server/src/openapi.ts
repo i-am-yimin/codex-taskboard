@@ -1,3 +1,4 @@
+import { collaborationSchemas, collaborationPaths } from './collaboration-openapi.ts';
 /** Static OpenAPI supplement for clients; handlers remain the authorization authority. */
 import { z } from 'zod';
 import {
@@ -5,6 +6,7 @@ import {
   appearanceRecordSchema,
   themeManifestSchema,
   themePackageSchema,
+  serverHealthSchema,
 } from '@taskboard/core';
 const error = {
   type: 'object',
@@ -69,6 +71,7 @@ export const openapiDocument = {
           position: { type: 'number' },
         },
       },
+      ...collaborationSchemas,
     },
   },
   paths: {
@@ -208,7 +211,23 @@ export const openapiDocument = {
         responses: { '200': json({ type: 'object' }), '403': json(error) },
       },
     },
-    '/health': { get: { responses: { '200': json({ type: 'object' }) } } },
+    '/health': {
+      get: {
+        summary: '公开健康与协作能力；不返回账号数据',
+        description:
+          'serverVersion独立版本；仅0005—0009迁移齐全时声明协作协议1。旧响应缺能力不能授权新客户端写入。缓存能力不能授权离线写入。',
+        responses: {
+          '200': {
+            description: '数据库可连接；另检查migrationRequired和capabilities判断协作是否就绪',
+            ...json({
+              type: 'object',
+              required: ['data'],
+              properties: { data: z.toJSONSchema(serverHealthSchema) },
+            }),
+          },
+        },
+      },
+    },
     '/auth/login': {
       post: {
         requestBody: json({
@@ -371,5 +390,6 @@ export const openapiDocument = {
         responses: { '200': json({ type: 'object' }), '422': json(error) },
       },
     },
+    ...collaborationPaths,
   },
 } as const;

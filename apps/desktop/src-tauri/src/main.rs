@@ -28,6 +28,7 @@ use std::{
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Manager, RunEvent};
+use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 struct Companion {
     child: Mutex<Option<Child>>,
@@ -56,7 +57,9 @@ impl Drop for Companion {
 // Keep each loopback attempt short, but avoid killing a healthy first launch.
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
 const READY_POLL: Duration = Duration::from_millis(150);
-const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+// Runner cleanup has a 35s total budget (15s identity + 15s tree helper + I/O).
+// Keep the owner alive until that budget and final state persistence can finish.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(40);
 
 fn taskboard_data_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     if let Some(override_path) = std::env::var_os("TASKBOARD_DATA_DIR") {
@@ -178,6 +181,59 @@ fn await_companion_ready(child: &mut Child, bridge_key: &str) -> Result<(), Stri
         }
         thread::sleep(READY_POLL);
     }
+}
+
+fn validate_notification_payload(title: &str, body: &str) -> Result<(), String> {
+    if title.trim().is_empty()
+        || title.chars().count() > 240
+        || body.chars().count() > 2000
+        || title.contains('\0')
+        || body.contains('\0')
+    {
+        return Err("Notification text is empty or exceeds the allowed size".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn notification_permission(app: tauri::AppHandle, request: bool) -> Result<String, String> {
+    let permission = if request {
+        app.notification().request_permission()
+    } else {
+        app.notification().permission_state()
+    }
+    .map_err(|error| error.to_string())?;
+    Ok(match permission {
+        PermissionState::Granted => "granted",
+        PermissionState::Denied => "denied",
+        _ => "prompt",
+    }
+    .into())
+}
+
+#[tauri::command]
+fn notification_send(
+    app: tauri::AppHandle,
+    title: String,
+    body: String,
+) -> Result<serde_json::Value, String> {
+    validate_notification_payload(&title, &body)?;
+    if !matches!(
+        app.notification()
+            .permission_state()
+            .map_err(|error| error.to_string())?,
+        PermissionState::Granted
+    ) {
+        return Err("System notification permission is not granted".into());
+    }
+    app.notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|error| error.to_string())?;
+    // Plugin 2.3.3 queues the OS call and does not report its asynchronous result.
+    Ok(serde_json::json!({ "requested": true, "evidence": "plugin_queued" }))
 }
 
 #[tauri::command]
@@ -341,6 +397,7 @@ fn main() {
         std::process::exit(code);
     }
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             let intent = launch_intent::LaunchIntent::from_args(&args);
             if intent == launch_intent::LaunchIntent::Quit { app.exit(0); return; }
@@ -438,6 +495,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             bridge_capability,
+            notification_permission,
+            notification_send,
             codex_connection_status,
             connect_daily_codex,
             create_codex_connection_shortcut,
@@ -454,4 +513,22 @@ fn main() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod notification_tests {
+    use super::validate_notification_payload;
+
+    #[test]
+    fn notification_bridge_bounds_plain_text_without_opening_os_notifications() {
+        assert!(validate_notification_payload(
+            "Synthetic Taskboard notice",
+            "Independent test only"
+        )
+        .is_ok());
+        assert!(validate_notification_payload("", "body").is_err());
+        assert!(validate_notification_payload(&"中".repeat(241), "body").is_err());
+        assert!(validate_notification_payload("title", &"a".repeat(2001)).is_err());
+        assert!(validate_notification_payload("title", "a\0b").is_err());
+    }
 }

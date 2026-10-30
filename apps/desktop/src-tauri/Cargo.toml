@@ -1,6 +1,6 @@
 [package]
 name = "codex-taskboard-desktop"
-version = "0.1.7"
+version = "0.1.10"
 edition = "2021"
 
 [build-dependencies]
@@ -11,6 +11,7 @@ tauri = { version = "2", features = ["tray-icon"] }
 rand = "0.8"
 serde_json = "1"
 tauri-plugin-single-instance = "2"
+tauri-plugin-notification = "=2.3.3"
 
 [features]
 acceptance-probes = []

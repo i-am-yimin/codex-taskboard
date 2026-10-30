@@ -1,6 +1,8 @@
 # 文档索引
 
-安装和日常使用从[使用手册](user-guide.md)开始；参与开发先读[开发与贡献规范](../CONTRIBUTING.md)。当前客户端为 `0.1.7` 未签名预发布，服务端独立为 `0.1.3-preview.1`，版本状态见[更新日志](../CHANGELOG.md)。
+安装和日常使用从[使用手册](user-guide.md)开始；参与开发先读[开发与贡献规范](../CONTRIBUTING.md)。公开客户端为 `0.1.7` 未签名预发布，公开服务端独立为 `0.1.3-preview.1`，版本状态见[更新日志](../CHANGELOG.md)。本机候选客户端已升级为 `0.1.10`，继承 `0.1.8` 协作能力，配套服务端候选为 `0.1.4-preview.1`，需协作协议 1 与 `0005`—`0009` 迁移；实际安装/部署范围见[验收索引](acceptance.md)，不等于公开发布。兼容与升级步骤见[使用手册](user-guide.md#先核对服务器兼容性)。
+
+[0.1.10 稳定性候选](acceptance-0.1.10.md)支持已验证的 Codex 缓存页面结构，已完成授权原位安装、实际缓存导航/刷新/CSP/冷草稿验收与原账号恢复；诊断限制和历史配置调查单列于记录。
 
 ## 使用与部署
 
@@ -10,6 +12,7 @@
 | [OpenResty 部署](deployment-openresty.md) | 推荐的新实例镜像部署、初始化、备份与升级 |
 | [Caddy 与显式配置部署](deployment.md) | 现有部署方式、数据库恢复与迁移 |
 | [应用内 Codex 连接](in-app-codex-connection.md) | 连接日常环境、自动恢复与拒绝边界 |
+| [本机 Agent 运行](agent-runners.md) | taskctl、专用 CLI profile、权限模式、取消/恢复与证据范围 |
 | [主题指南](themes.md) | 外观设置、同步与声明式主题包 |
 | [隐私说明](privacy.md) / [安全说明](../SECURITY.md) | 数据存储、安全边界与漏洞报告 |
 
@@ -20,7 +23,10 @@
 | [开发与贡献规范](../CONTRIBUTING.md) | 模块边界、编码约定、验证和发布要求 |
 | [开发指南](development.md) | 环境安装、运行、测试与隔离探针命令 |
 | [架构](architecture.md) | 数据流、模块职责与一致性约束 |
+| [协作工作流设计](collaborative-workflows-design.md) | 责任、父子/依赖、状态、通知、自动化与 API 契约 |
 | [桌面技术说明](desktop.md) | 原生启动、伴随服务、兼容清单与打包 |
+| [Codex 更新兼容性改造](codex-compatibility-proposal.md) | 按有限结构契约自动自检；实施进度与真实证据见[验收记录](acceptance-codex-compatibility.md) |
+| [官方插件 UI 原型](codex-plugin-ui-probe.md) | 合成 MCP 资源与 global/thread 声明；工具发现与实际宿主 UI 分别验收 |
 | [架构决策](adr/README.md) | 已接受设计及其约束 |
 | [仓库维护](maintenance.md) | 目录约定、分支生命周期、清理与恢复 |
 | [开发交接](../HANDOFF.md) | 当前基线和继续工作的入口 |
@@ -33,6 +39,7 @@
 | [更新日志](../CHANGELOG.md) | 用户可感知的版本变化 |
 | [详细发布说明](release-notes.md) | 安装包、兼容和升级说明 |
 | [验收索引](acceptance.md) | 各版本的结论、范围与固定来源 |
+| [协作界面验收](acceptance-collaborative-ui.md) | 浏览器模拟交互、主题/动效和截图的证据范围 |
 | [部署验证](deployment-verification.md) | 容器、备份恢复与 HTTPS 验证 |
 | [历史记录](archive/README.md) | 早期实验与交接过程；不作为当前版本状态 |
 

@@ -1,5 +1,7 @@
 # Windows 桌面版
 
+2026-10-29 的新兼容候选按 [ADR 0008](adr/0008-codex-structure-compatibility.md) 实施原生身份后的结构自检：补丁号不单独阻断侧栏，新增 active-page 完整工作区契约；自动草稿仍按独立版本和项目验证。该策略不回写旧安装包的历史支持范围。当前实际证据与最终包进度见[兼容改造验收](acceptance-codex-compatibility.md)。
+
 > 当前状态（2026-10-24）：[客户端 0.1.4 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.4) 已公开为未签名预发布。固定标签 `v0.1.4` / `a8ed9f4` 的实际安装包通过应用内连接、自动恢复、连续打开及原数据保留验收，见 [0.1.4 验收](acceptance-0.1.4.md)。安装与操作见[使用手册](user-guide.md)；本页保留桌面技术说明与历史验证。
 
 桌面版是 Windows x64 的 Tauri 启动器。它在当前用户范围安装，使用安装资源目录中自带的 Node 运行时启动本机伴随服务，因此不要求安装系统 Node 或 Codex CLI。共享任务数据存放在服务器；本机凭据和仓库映射保存在 `%APPDATA%\CodexTaskboard`。卸载保留数据并重装恢复已在隔离测试目录实机通过，正式用户目录未参与该试验。

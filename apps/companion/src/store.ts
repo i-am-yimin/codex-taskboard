@@ -11,6 +11,7 @@ export interface Draft {
   createdAt: string;
 }
 export interface OutboxItem {
+  clientKind?: 'agent' | 'browser';
   id: string;
   identity: string;
   path: string;
