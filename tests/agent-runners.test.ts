@@ -169,7 +169,12 @@ describe('real owned subprocess supervisor with synthetic protocol fixtures', ()
   });
   it('cancels only the retained process tree and waits for real exit', async () => {
     const fixture = await setup(
-      `const child=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});require('node:fs').writeFileSync('child.pid',String(child.pid));console.log(JSON.stringify({type:'thread.started',thread_id:'synthetic'}));setInterval(()=>{},1000);`,
+      `const child=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});
+      let stopping=false;
+      child.once('close',()=>{if(stopping)process.exit(143);});
+      process.once('SIGTERM',()=>{stopping=true;if(child.exitCode!==null||child.signalCode!==null)process.exit(143);});
+      require('node:fs').writeFileSync('child.pid',String(child.pid));
+      console.log(JSON.stringify({type:'thread.started',thread_id:'synthetic'}));setInterval(()=>{},1000);`,
     );
     const value = run();
     await fixture.runner.start(value, 'synthetic', repository);
@@ -180,6 +185,8 @@ describe('real owned subprocess supervisor with synthetic protocol fixtures', ()
       .toBe('synthetic');
     const childPid = Number(await readFile(join(fixture.directory, 'child.pid'), 'utf8'));
     expect(() => process.kill(childPid, 0)).not.toThrow();
+    // On POSIX the fixture reaps its descendant before exiting, so PID absence
+    // proves termination without racing the host init process's zombie reaping.
     await fixture.runner.cancel(value.id);
     const cancelled = await terminal(fixture.runner, value.id);
     expect(cancelled.phase, JSON.stringify(cancelled)).toBe('cancelled');
