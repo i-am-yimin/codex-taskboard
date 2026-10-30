@@ -173,11 +173,17 @@ describe('real owned subprocess supervisor with synthetic protocol fixtures', ()
     );
     const value = run();
     await fixture.runner.start(value, 'synthetic', repository);
+    // The synthetic event is emitted after the descendant PID is written.
+    // start() proves the owned root was spawned, not that its script has run.
+    await expect
+      .poll(async () => (await fixture.runner.status(value.id)).externalSessionId, { timeout: 10000 })
+      .toBe('synthetic');
+    const childPid = Number(await readFile(join(fixture.directory, 'child.pid'), 'utf8'));
+    expect(() => process.kill(childPid, 0)).not.toThrow();
     await fixture.runner.cancel(value.id);
     const cancelled = await terminal(fixture.runner, value.id);
     expect(cancelled.phase, JSON.stringify(cancelled)).toBe('cancelled');
     expect(cancelled.finishedAt).not.toBeNull();
-    const childPid = Number(await readFile(join(fixture.directory, 'child.pid'), 'utf8'));
     expect(() => process.kill(childPid, 0)).toThrow();
   }, 45000);
   it('passes explicit Claude edit mode with no bypass and checks the official result event', async () => {
