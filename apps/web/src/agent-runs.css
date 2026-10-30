@@ -42,6 +42,8 @@
 @media (max-width: 480px) {
   .agent-run-panel button {
     width: 100%;
+    margin-inline: 0;
+    overflow-wrap: anywhere;
   }
 }
 

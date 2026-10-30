@@ -13,6 +13,16 @@ for (const embedded of [false, true]) {
       title: '长记录布局回归',
       reviewerId: demoUser.id,
     };
+    await page.addInitScript(() => {
+      class FixtureEvents extends EventTarget {
+        constructor() {
+          super();
+          setTimeout(() => this.dispatchEvent(new Event('ready')), 20);
+        }
+        close() {}
+      }
+      Object.defineProperty(window, 'EventSource', { value: FixtureEvents });
+    });
     board.tasks = [task];
     const verification = `第一行：保留验证记录的换行\nSHA256=${'0123456789abcdef'.repeat(24)}\n${'并发领取只成功一次，原任务与本地草稿保持完整。'.repeat(12)}`;
     const summary = '安装版执行结果：' + 'https://example.test/verification/'.repeat(12);
@@ -82,6 +92,32 @@ for (const embedded of [false, true]) {
         };
       });
       expect(layout.insideWindow, `drawer outside ${width}px window`).toBe(true);
+      if (layout.scrollWidth > layout.width + 1) {
+        await test.info().attach(`overflow-${width}`, {
+          body: JSON.stringify(
+            await drawer.evaluate((element) =>
+              [...element.querySelectorAll<HTMLElement>('*')]
+                .filter(
+                  (node) =>
+                    node.clientWidth > 0 &&
+                    (node.scrollWidth > node.clientWidth + 1 ||
+                      node.getBoundingClientRect().right > element.getBoundingClientRect().right),
+                )
+                .map((node) => ({
+                  tag: node.tagName,
+                  class: node.className,
+                  width: node.clientWidth,
+                  scrollWidth: node.scrollWidth,
+                  html: node.outerHTML.slice(0, 240),
+                  right: node.getBoundingClientRect().right,
+                  minWidth: getComputedStyle(node).minWidth,
+                  display: getComputedStyle(node).display,
+                })),
+            ),
+          ),
+          contentType: 'application/json',
+        });
+      }
       expect(layout.scrollWidth, `detail overflow at ${width}px`).toBeLessThanOrEqual(
         layout.width + 1,
       );
@@ -92,6 +128,8 @@ for (const embedded of [false, true]) {
       }
       await expect(drawer.locator('.activity pre')).toHaveText(verification);
       await expect(drawer.getByRole('button', { name: '验收并完成', exact: true })).toBeVisible();
+      if (width === 424 || width === 185)
+        await page.screenshot({ path: test.info().outputPath(`drawer-${width}.png`) });
     }
   });
 }

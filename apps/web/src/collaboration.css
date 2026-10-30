@@ -46,6 +46,16 @@
   min-height: 80px;
   resize: vertical;
 }
+.collaboration-form label.check-item {
+  display: flex;
+  align-items: start;
+}
+.collaboration-form .check-item input[type='checkbox'] {
+  flex: none;
+  width: auto;
+  margin: 3px 0 0;
+  padding: 0;
+}
 .collaboration-inline {
   display: flex;
   gap: 10px;

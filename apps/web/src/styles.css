@@ -672,6 +672,12 @@ h3 {
   color: #9895a0;
   font-weight: 500;
 }
+.drawer .detail-section > textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
 .description-editor {
   border: 0;
   background: transparent !important;
@@ -844,12 +850,15 @@ h3 {
   font-size: 14px;
   font-weight: 700;
   margin-top: 20px;
+  min-width: 0;
 }
 .form-label input,
 .form-label textarea,
 .form-label select {
   display: block;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin-top: 10px;
   padding: 12px;
   font-size: 14px;
@@ -1700,6 +1709,20 @@ h3 {
   }
 }
 @media (max-width: 360px) {
+  .drawer .section-heading {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .drawer .detail-section > .check-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+  .drawer .exec-actions .button {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
   .app-shell.embedded .topbar {
     height: auto;
     min-height: 48px;
