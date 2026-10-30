@@ -78,6 +78,17 @@ for (const embedded of [false, true]) {
     await expect(drawer.getByText(summary, { exact: true })).toBeVisible();
     for (const width of [1320, 935, 424, 185]) {
       await page.setViewportSize({ width, height: 900 });
+      // Text visibility can precede the drawer's finite entrance animation.
+      // Measure the settled layout, retaining the exact boundary assertions.
+      await expect
+        .poll(() =>
+          drawer.evaluate((element) =>
+            element
+              .getAnimations()
+              .every((animation) => !animation.pending && animation.playState === 'finished'),
+          ),
+        )
+        .toBe(true);
       const layout = await drawer.evaluate((element) => {
         const box = element.getBoundingClientRect();
         const records = [...element.querySelectorAll('.activity')].map((record) => ({
