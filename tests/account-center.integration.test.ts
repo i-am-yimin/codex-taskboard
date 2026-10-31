@@ -151,6 +151,52 @@ suite('account center with real PostgreSQL', () => {
     ]);
     expect(JSON.stringify(saved.rows)).not.toContain('private-phone');
   });
+  it('serializes profile writes and preserves email uniqueness during concurrent confirmations', async () => {
+    const profile = (await request('GET', '/me/profile')).json().data;
+    const writes = await Promise.all(
+      ['First device', 'Second device'].map((name) =>
+        request('PATCH', '/me/profile', { name, contacts: profile.contacts }, adminCookie, {
+          'if-match': String(profile.version),
+        }),
+      ),
+    );
+    expect(writes.map((result) => result.statusCode).sort()).toEqual([200, 409]);
+    const saved = (await request('GET', '/me/profile')).json().data;
+    expect(saved.version).toBe(profile.version + 1);
+    expect(['First device', 'Second device']).toContain(saved.name);
+
+    await smtp();
+    const other = await user('Other email claimant');
+    const email = `${randomUUID()}@example.test`;
+    const requests = await Promise.all(
+      [adminCookie, other.cookie].map((cookie) =>
+        request('POST', '/me/email/request', { email, currentPassword: password }, cookie),
+      ),
+    );
+    expect(requests.map((result) => result.statusCode)).toEqual([200, 200]);
+    await app.runAccountMail();
+    const tokens = messages
+      .filter((message) => message.to === email)
+      .map((message) =>
+        new URLSearchParams(new URL(message.text.match(/https:\/\/\S+/)![0]).hash.slice(1)).get(
+          'verify',
+        ),
+      );
+    expect(tokens).toHaveLength(2);
+    const confirmations = await Promise.all(
+      tokens.map((token) => request('POST', '/auth/email/complete', { token }, '')),
+    );
+    expect(confirmations.map((result) => result.statusCode).sort()).toEqual([200, 409]);
+    expect(confirmations.find((result) => result.statusCode === 409)!.json().error.code).toBe(
+      'EMAIL_IN_USE',
+    );
+    expect((await db.query('SELECT id FROM users WHERE email=$1', [email])).rowCount).toBe(1);
+    expect(
+      (await db.query('SELECT id FROM account_verifications WHERE used_at IS NOT NULL')).rowCount,
+    ).toBe(1);
+    expect((await request('GET', '/me')).statusCode).toBe(200);
+    expect((await request('GET', '/me', undefined, other.cookie)).statusCode).toBe(200);
+  });
   it('validates and normalizes avatar bytes, preserves old image on failure and rejects stale deletion', async () => {
     const png = await sharp({
       create: { width: 400, height: 300, channels: 3, background: '#e5a44b' },
