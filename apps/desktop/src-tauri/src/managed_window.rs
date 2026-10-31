@@ -1,4 +1,4 @@
-//! Restore only the unique main window of the launcher's retained process.
+//! Restore an unambiguous main window of the launcher's retained process.
 //! Titles and renderer-supplied PIDs never authorize window operations.
 
 use crate::owned_process::OwnedProcess;
@@ -95,10 +95,23 @@ fn unique_main(pid: u32) -> Result<MainWindow, String> {
     if unsafe { EnumWindows(collect, (&mut enumeration as *mut Enumeration) as isize) } == 0 {
         return Err("无法读取 Codex 窗口；请稍后重试".into());
     }
-    if enumeration.candidates.len() != 1 {
-        return Err("Codex 正在运行，但无法唯一确认可恢复的主窗口；请检查任务栏后重试".into());
+    // Newer Codex also keeps a hidden Chromium window with the same class and
+    // frame as its taskbar window. A minimized taskbar window remains visible
+    // to Win32, so prefer the unique visible candidate without showing helpers.
+    let mut visible = enumeration.candidates.iter()
+        .filter(|window| unsafe { IsWindowVisible(window.handle) } != 0);
+    let first = visible.next();
+    if visible.next().is_some() {
+        return Err("Codex 存在多个可见主窗口，无法唯一确认恢复目标；请检查任务栏后重试".into());
     }
-    Ok(enumeration.candidates.remove(0))
+    if let Some(window) = first { return Ok(window.clone()); }
+    // Preserve restoration of a hidden main only when no other window could
+    // be selected. Process/page checks and immediate re-enumeration still apply.
+    match enumeration.candidates.len() {
+        0 => Err("Codex 正在运行，但未找到可恢复的主窗口；请从任务栏打开 Codex 后重试".into()),
+        1 => Ok(enumeration.candidates.remove(0)),
+        _ => Err("Codex 正在运行，但仅找到多个隐藏窗口；请从任务栏打开 Codex 后重试".into()),
+    }
 }
 
 pub(super) fn restore(process: &OwnedProcess, verify_binding: impl Fn() -> bool) -> Result<bool, String> {
@@ -277,5 +290,42 @@ mod tests {
         let second = Fixture::with_style("Chrome_WidgetWin_1", 0, 0, 0x0007_0000);
         assert!(restore_verified(std::process::id(), || true).is_err());
         for window in [&first, &second] { assert_eq!(unsafe { IsWindowVisible(window.handle) }, 0); }
+    }
+
+    #[test]
+    fn restores_visible_or_minimized_main_without_showing_hidden_browser_window() {
+        let _guard = WINDOWS.lock().unwrap();
+        // Codex 26.1027 keeps a hidden, captioned Chromium window alongside
+        // its taskbar window. Both pass the frame and process identity checks.
+        let browser = Fixture::with_style("Chrome_WidgetWin_1", 0, 0, 0x00c7_0000);
+        for style in [0x00c7_0000, 0x0007_0000] {
+            let main = Fixture::with_style("Chrome_WidgetWin_1", 0, 0, style);
+            // Two hidden windows still provide no unique restore target.
+            assert!(restore_verified(std::process::id(), || true).is_err());
+            unsafe { ShowWindow(main.handle, SW_SHOW); }
+            assert_eq!(unique_main(std::process::id()).unwrap().handle, main.handle);
+            restore_verified(std::process::id(), || true).unwrap();
+            unsafe { ShowWindow(main.handle, 6); }
+            assert_ne!(unsafe { IsIconic(main.handle) }, 0);
+            restore_verified(std::process::id(), || true).unwrap();
+            assert_eq!(unsafe { IsIconic(main.handle) }, 0);
+            unsafe { ShowWindow(main.handle, 3); }
+            restore_verified(std::process::id(), || true).unwrap();
+            assert_ne!(unsafe { IsZoomed(main.handle) }, 0);
+            assert_eq!(unsafe { IsWindowVisible(browser.handle) }, 0);
+        }
+    }
+
+    #[test]
+    fn rejects_multiple_visible_mains_even_with_a_hidden_browser_window() {
+        let _guard = WINDOWS.lock().unwrap();
+        let browser = Fixture::with_style("Chrome_WidgetWin_1", 0, 0, 0x00c7_0000);
+        let first = Fixture::create("Chrome_WidgetWin_1", 0, 0);
+        let second = Fixture::create("Chrome_WidgetWin_1", 0, 0);
+        unsafe { ShowWindow(first.handle, SW_SHOW); ShowWindow(second.handle, 6); }
+        assert!(restore_verified(std::process::id(), || true).is_err());
+        assert_ne!(unsafe { IsWindowVisible(first.handle) }, 0);
+        assert_ne!(unsafe { IsIconic(second.handle) }, 0);
+        assert_eq!(unsafe { IsWindowVisible(browser.handle) }, 0);
     }
 }
