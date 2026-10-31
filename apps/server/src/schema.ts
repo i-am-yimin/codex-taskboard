@@ -1,6 +1,7 @@
 /** Drizzle schema mirrors migration ownership; SQL transactions remain explicit in handlers. */
 import {
   boolean,
+  customType,
   doublePrecision,
   integer,
   jsonb,
@@ -34,6 +35,10 @@ export const users = pgTable('users', {
   instanceAdmin: boolean('instance_admin').notNull(),
   createdAt: created(),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
+  profileVersion: integer('profile_version').notNull(),
+  contacts: jsonb('contacts').notNull(),
+  emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
+  avatarVersion: integer('avatar_version').notNull(),
 });
 export const instanceSettings = pgTable('instance_settings', {
   id: integer('id').primaryKey(),
@@ -47,6 +52,59 @@ export const devices = pgTable('devices', {
   tokenHash: text('token_hash'),
   createdAt: created(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  lastActiveAt: timestamp('last_active_at', { withTimezone: true }),
+});
+const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' });
+export const userAvatars = pgTable('user_avatars', {
+  userId: uuid('user_id').primaryKey(),
+  image: bytea('image').notNull(),
+});
+export const accountVerifications = pgTable('account_verifications', {
+  sessionId: uuid('session_id'),
+  id: uuid('id').primaryKey(),
+  userId: uuid('user_id').notNull(),
+  kind: text('kind').notNull(),
+  email: text('email').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: created(),
+});
+export const smtpSettings = pgTable('smtp_settings', {
+  id: integer('id').primaryKey(),
+  config: jsonb('config').notNull(),
+  passwordEncrypted: text('password_encrypted'),
+});
+export const mailOutbox = pgTable('mail_outbox', {
+  id: uuid('id').primaryKey(),
+  userId: uuid('user_id'),
+  kind: text('kind').notNull(),
+  payloadEncrypted: text('payload_encrypted'),
+  status: text('status').notNull(),
+  attempts: integer('attempts').notNull(),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull(),
+  createdAt: created(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  lastError: text('last_error'),
+});
+export const spaceTakeovers = pgTable('space_takeovers', {
+  id: uuid('id').primaryKey(),
+  spaceId: uuid('space_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  sessionId: uuid('session_id').notNull(),
+  reason: text('reason').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: created(),
+});
+export const accountAudit = pgTable('account_audit', {
+  id: uuid('id').primaryKey(),
+  actorId: uuid('actor_id'),
+  targetId: text('target_id'),
+  action: text('action').notNull(),
+  outcome: text('outcome').notNull(),
+  reason: text('reason').notNull(),
+  createdAt: created(),
 });
 export const sessions = pgTable('sessions', {
   id: uuid('id').primaryKey(),
@@ -154,6 +212,7 @@ export const idempotencyKeys = pgTable('idempotency_keys', {
   createdAt: created(),
 });
 export const invitations = pgTable('invitations', {
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
   id: uuid('id').primaryKey(),
   tokenHash: text('token_hash').notNull(),
   email: text('email'),

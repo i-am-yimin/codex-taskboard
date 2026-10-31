@@ -4,6 +4,7 @@ export * from './themes.ts';
 export * from './collaboration.ts';
 export * from './workflow.ts';
 export * from './server-contract.ts';
+export * from './accounts.ts';
 import {
   collaborationTaskFields,
   type TaskParticipant,
@@ -26,11 +27,14 @@ export interface User {
   name: string;
   email: string;
   instanceAdmin?: boolean;
+  avatarVersion?: number;
+  hasAvatar?: boolean;
 }
 export interface Member extends User {
   role: Role;
 }
 export interface Space {
+  takeover?: boolean;
   id: string;
   name: string;
   icon: string;
@@ -110,6 +114,7 @@ export interface Execution {
   createdAt: string;
 }
 export interface Board {
+  takeover?: import('./accounts.ts').TakeoverGrant | null;
   space: Space;
   statuses: Status[];
   tasks: Task[];
@@ -256,9 +261,18 @@ export interface AdapterCapabilities {
   reason?: string;
   /** Sidebar diagnostics do not grant draft or Agent execution permissions. */
   sidebar?: {
-    state: 'unchecked' | 'structure-ready' | 'installed' | 'structure-missing'
-      | 'structure-ambiguous' | 'state-blocked' | 'ownership-failed' | 'target-mismatch'
-      | 'transport-unavailable' | 'restoration-unconfirmed' | 'disconnected';
+    state:
+      | 'unchecked'
+      | 'structure-ready'
+      | 'installed'
+      | 'structure-missing'
+      | 'structure-ambiguous'
+      | 'state-blocked'
+      | 'ownership-failed'
+      | 'target-mismatch'
+      | 'transport-unavailable'
+      | 'restoration-unconfirmed'
+      | 'disconnected';
     appVersion?: string;
     contractId?: string;
     contractRevision?: number;

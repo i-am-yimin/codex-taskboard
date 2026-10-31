@@ -2,7 +2,12 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
-export type RuntimeSecrets = { databasePassword: string; sessionKey: string; setupToken: string };
+export type RuntimeSecrets = {
+  databasePassword: string;
+  sessionKey: string;
+  setupToken: string;
+  encryptionKey?: string;
+};
 
 /** Exclusive creation keeps secrets stable across restarts and concurrent initializers. */
 export function initializeRuntimeSecrets(directory: string): RuntimeSecrets {
@@ -23,6 +28,7 @@ export function initializeRuntimeSecrets(directory: string): RuntimeSecrets {
     databasePassword: read('postgres-password'),
     sessionKey: read('session-key'),
     setupToken: read('setup-token'),
+    encryptionKey: read('encryption-key'),
   };
 }
 
@@ -35,10 +41,19 @@ export function loadRuntimeEnvironment(): RuntimeSecrets | undefined {
     databasePassword: read('postgres-password'),
     sessionKey: read('session-key'),
     setupToken: read('setup-token'),
+    encryptionKey: (() => {
+      try {
+        return read('encryption-key');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+        throw error;
+      }
+    })(),
   };
-  if (Object.values(secrets).some((value) => !/^[a-f0-9]{64}$/i.test(value)))
+  if (Object.values(secrets).some((value) => value !== undefined && !/^[a-f0-9]{64}$/i.test(value)))
     throw new Error('Invalid runtime secrets; restore the taskboard-state volume');
   process.env.SESSION_KEY ??= secrets.sessionKey;
+  if (secrets.encryptionKey) process.env.TASKBOARD_ENCRYPTION_KEY ??= secrets.encryptionKey;
   process.env.DATABASE_URL ??= `postgres://taskboard:${secrets.databasePassword}@db:5432/taskboard`;
   return secrets;
 }

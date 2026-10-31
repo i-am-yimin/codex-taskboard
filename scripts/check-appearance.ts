@@ -77,6 +77,8 @@ try {
     channel: process.env.CI ? undefined : 'chrome',
   });
   const embeddedContext = await browser.newContext({ viewport: { width: 420, height: 850 } });
+  embeddedContext.setDefaultTimeout(15000);
+  embeddedContext.setDefaultNavigationTimeout(30000);
   const embedded = await embeddedContext.newPage();
   await embedded.goto(companion.embeddedUrl);
   await themes(embedded);
@@ -101,6 +103,8 @@ try {
     .toMatchObject({ themeId: 'island', mode: 'dark' });
   observations.push('内嵌主题真实写入 PostgreSQL（保留原有来源与能力校验）');
   const secondContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  secondContext.setDefaultTimeout(15000);
+  secondContext.setDefaultNavigationTimeout(30000);
   const browserLogin = await secondContext.request.post(`${origin}/api/v1/auth/login`, {
     data: { email, password, deviceName: 'browser-acceptance' },
   });
@@ -186,14 +190,15 @@ try {
   await expect(second.locator('.theme-choice').filter({ hasText: '验收森林' })).toHaveCount(0);
   observations.push('删除正在使用的自定义主题在真实数据库中原子回退，并同步清理其他设备');
   const recovery = await embeddedContext.newPage();
-  await recovery.route('**/v1/browser/identity', (route) => route.abort('connectionreset'), {
-    times: 1,
-  });
+  // Account avatars also read identity now; model the identity endpoint outage
+  // until the initialization error is observed, rather than racing consumers.
+  await recovery.route('**/v1/browser/identity', (route) => route.abort('connectionreset'));
   await recovery.goto(companion.embeddedUrl);
   await themes(recovery);
   await expect(recovery.locator('.appearance-settings [role=status]')).toContainText(
     '暂时无法读取主题配置',
   );
+  await recovery.unroute('**/v1/browser/identity');
   await recovery.evaluate(() => dispatchEvent(new Event('online')));
   await expect(recovery.locator('.appearance-settings [role=status]')).toContainText(
     '已同步到账号',
@@ -223,7 +228,7 @@ try {
         }),
       ),
     ).toBe(true);
-    await target.locator('.settings-content').evaluate((element) => {
+    await target.locator('.account-content').evaluate((element) => {
       element.scrollTop = 0;
     });
   }

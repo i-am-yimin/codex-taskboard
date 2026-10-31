@@ -1,5 +1,7 @@
 # 部署、备份与升级
 
+0.1.11 用户中心需要配套服务器及新的独立邮件加密密钥，SMTP、迁移和密钥备份要求见[用户中心部署说明](account-center.md#邮件服务)。托管升级保留状态卷并执行初始化服务；显式环境部署另设 `TASKBOARD_ENCRYPTION_KEY`，原有数据库密码与会话密钥不变。
+
 新实例使用预构建镜像、网页初始化和宿主机 OpenResty 反代时，先阅读[镜像与 OpenResty 部署手册](deployment-openresty.md)。下面保留原 Caddy / 显式环境变量部署方式，适用于现有实例。
 
 ## Linux Docker Compose

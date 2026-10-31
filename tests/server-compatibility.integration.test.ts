@@ -45,7 +45,7 @@ suite('server candidate protocol and migration readiness', () => {
     expect(data).toMatchObject({
       status: 'ok',
       database: 'ok',
-      serverVersion: '0.1.4-preview.1',
+      serverVersion: '0.1.5-preview.1',
       apiVersion: 1,
       capabilities: { collaborativeWorkflows: 1 },
       migrationRequired: false,

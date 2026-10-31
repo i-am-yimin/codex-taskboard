@@ -64,9 +64,40 @@ try {
       '0007_run_recovery',
       '0008_run_permissions',
       '0009_active_workflow_intervals',
+      '0010_account_center',
+      '0011_account_recovery_hardening',
     ];
     if (migrations.rows.map((row) => row.id).join(',') !== expected.join(','))
       throw new Error('Unexpected migration state');
+    const accountTables = await db.query(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema='public'
+      AND table_name=ANY($1::text[]) ORDER BY table_name`,
+      [
+        [
+          'account_audit',
+          'account_verifications',
+          'mail_outbox',
+          'smtp_settings',
+          'space_takeovers',
+          'user_avatars',
+        ],
+      ],
+    );
+    if (accountTables.rowCount !== 6)
+      throw new Error('Compiled migration did not create every account-center table');
+    const profile = (
+      await db.query('SELECT profile_version,email_verified_at,avatar_version,contacts FROM users')
+    ).rows[0];
+    if (
+      profile.profile_version !== 1 ||
+      profile.email_verified_at !== null ||
+      profile.avatar_version !== 0 ||
+      ['phone', 'wechat', 'qq'].some(
+        (kind) =>
+          profile.contacts[kind]?.value !== '' || profile.contacts[kind]?.visibility !== 'private',
+      )
+    )
+      throw new Error('Compiled bootstrap did not preserve private account defaults');
   } finally {
     await db.end();
   }

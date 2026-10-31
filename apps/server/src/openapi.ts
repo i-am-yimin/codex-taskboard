@@ -1,4 +1,5 @@
 import { collaborationSchemas, collaborationPaths } from './collaboration-openapi.ts';
+import { accountPaths } from './account-openapi.ts';
 /** Static OpenAPI supplement for clients; handlers remain the authorization authority. */
 import { z } from 'zod';
 import {
@@ -391,5 +392,6 @@ export const openapiDocument = {
       },
     },
     ...collaborationPaths,
+    ...accountPaths,
   },
 } as const;
