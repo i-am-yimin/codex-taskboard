@@ -9,6 +9,8 @@ type Options = {
   encryptionKey?: string;
   setupToken?: string;
   managedSecrets?: boolean;
+  smtpTransport?: boolean;
+  trustedCa?: string;
 };
 export async function startAccountTestServer(options: Options, messages: MailMessage[] = []) {
   const env: NodeJS.ProcessEnv = {};
@@ -24,6 +26,7 @@ export async function startAccountTestServer(options: Options, messages: MailMes
   ])
     if (process.env[key]) env[key] = process.env[key];
   env.NODE_ENV = 'test';
+  if (options.trustedCa) env.NODE_EXTRA_CA_CERTS = options.trustedCa;
   env.ACCOUNT_TEST_SERVER_OPTIONS = JSON.stringify(options);
   const child = spawn(
     process.execPath,

@@ -27,7 +27,7 @@ pnpm test:e2e
 pnpm test:offline
 ```
 
-0.1.11 用户中心可先 `pnpm build`，再运行 `pnpm test:account`：它自动启动独立本机测试 PostgreSQL，测试自行创建 schema 和随机端口的独立 Node HTTP 服务，并直接使用生产页面，不需要 Vite 或真实 SMTP。邮件替身只通过测试进程的私有 IPC 控制，接管隐私另行覆盖生产 `dist/server.js`。`pnpm exec tsx scripts/test-db.ts --offline` 可同样启动独立数据库运行冷启动离线验收。Windows 测试库使用保留的进程句柄与 `pg_ctl` 有界正常关闭；测试失败必须返回非零退出码。浏览器测试将回环地址加入当前测试进程的 `NO_PROXY`，避免互联网代理截获本机就绪探测。
+0.1.11 用户中心可先 `pnpm build`，再运行 `pnpm test:account`：它自动启动独立本机测试 PostgreSQL，测试自行创建 schema 和随机端口的独立 Node HTTP 服务，并直接使用生产页面，不需要 Vite 或真实 SMTP。邮件替身只通过测试进程的私有 IPC 控制，接管隐私另行覆盖生产 `dist/server.js`。`pnpm exec tsx scripts/test-db.ts --offline`、`--production`、`--appearance` 可同样启动独立数据库运行冷启动离线、编译后入口或真实伴随服务外观验收。真实 SMTP 协议回归运行 `pnpm test:db tests/account-smtp.integration.test.ts`，使用 OpenSSL 临时证书与回环接收端，测试 CA 仅在专用子进程生效。Windows 测试库使用保留的进程句柄与 `pg_ctl` 有界正常关闭；测试失败必须返回非零退出码。浏览器测试将回环地址加入当前测试进程的 `NO_PROXY`，避免互联网代理截获本机就绪探测。
 
 首次运行测试需安装 Playwright Chromium；Linux CI 使用 `pnpm exec playwright install --with-deps chromium` 同时安装系统依赖。`pnpm test` 包含独立回环服务上的 iframe 握手浏览器测试，不连接用户已打开的浏览器或 Codex。
 

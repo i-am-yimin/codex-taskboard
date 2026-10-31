@@ -11,6 +11,7 @@ const options = JSON.parse(process.env.ACCOUNT_TEST_SERVER_OPTIONS ?? '{}') as {
   encryptionKey?: string;
   setupToken?: string;
   managedSecrets?: boolean;
+  smtpTransport?: boolean;
 };
 if (!new URL(options.databaseUrl).pathname.endsWith('_test'))
   throw new Error('Account test server requires an isolated *_test database');
@@ -30,9 +31,13 @@ const app = buildApp({
   mail: {
     encryptionKey: options.encryptionKey,
     worker: false,
-    send: async (message) => {
-      process.send!({ type: 'mail', message });
-    },
+    ...(options.smtpTransport
+      ? {}
+      : {
+          send: async (message: import('../../apps/server/src/account-mail.ts').MailMessage) => {
+            process.send!({ type: 'mail', message });
+          },
+        }),
   },
 });
 const base = await app.listen({ host: '127.0.0.1', port: 0 });

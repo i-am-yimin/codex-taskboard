@@ -118,11 +118,17 @@ if (process.argv.includes('--serve')) {
   try {
     const args = process.argv.slice(2);
     const browserTests = args.includes('--playwright');
-    const offlineCheck = args.includes('--offline');
+    const standaloneCheck = args.includes('--offline')
+      ? 'scripts/check-offline.ts'
+      : args.includes('--production')
+        ? 'scripts/check-production.ts'
+        : args.includes('--appearance')
+          ? 'scripts/check-appearance.ts'
+          : null;
     const child = spawn(
       process.execPath,
-      offlineCheck
-        ? ['--import', 'tsx', resolve('scripts/check-offline.ts')]
+      standaloneCheck
+        ? ['--import', 'tsx', resolve(standaloneCheck)]
         : browserTests
           ? [
               resolve('node_modules/@playwright/test/cli.js'),
