@@ -39,7 +39,9 @@ jobs:
         if: always()
         with:
           name: server-administration-ui
-          path: .impeccable/review/*.png
+          path: |
+            .impeccable/review/*.png
+            .artifacts/acceptance-0.1.11/*.png
           if-no-files-found: ignore
           include-hidden-files: true
       - run: pnpm test:offline
