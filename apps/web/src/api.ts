@@ -16,6 +16,79 @@ export {
 const uncertainWriteKeys = new Map<string, string>();
 
 const base = import.meta.env.VITE_API_BASE ?? '/api/v1';
+export type AccountIdentity = { origin: string; userId: string };
+export type RequestOptions = {
+  method?: string;
+  body?: unknown;
+  version?: number;
+  idempotencyKey?: string;
+  expectedIdentity?: AccountIdentity;
+};
+export async function accountServerIdentity(accountId?: string): Promise<string> {
+  if (!hasLocalCompanion()) return new URL(base, location.origin).origin;
+  const response = await fetch(`${companionOrigin()}/v1/browser/identity`, {
+    headers: { 'x-taskboard-companion-key': (await companionKey()) ?? '' },
+    signal: AbortSignal.timeout(8000),
+    cache: 'no-store',
+  });
+  if (!response.ok)
+    throw new ApiError('IDENTITY_UNAVAILABLE', '无法确认服务器身份', response.status);
+  const value = await response.json();
+  if (
+    (accountId && value.data?.accountId !== accountId) ||
+    typeof value.data?.upstream !== 'string'
+  )
+    throw new ApiError('IDENTITY_CHANGED', '服务器或账号已变更', 409);
+  return new URL(value.data.upstream).origin;
+}
+export async function avatarRequest(
+  path: string,
+  options: { body?: Blob; version?: number; expectedIdentity?: AccountIdentity } = {},
+): Promise<Blob | void> {
+  const desktop = hasLocalCompanion();
+  const headers: Record<string, string> = {};
+  let signature: string | undefined;
+  if (options.expectedIdentity) {
+    headers['x-taskboard-account-id'] = options.expectedIdentity.userId;
+    headers['x-taskboard-account-origin'] = options.expectedIdentity.origin;
+  }
+  if (desktop) headers['x-taskboard-companion-key'] = (await companionKey()) ?? '';
+  if (options.body) {
+    const digest = Array.from(
+      new Uint8Array(await crypto.subtle.digest('SHA-256', await options.body.arrayBuffer())),
+      (value) => value.toString(16).padStart(2, '0'),
+    ).join('');
+    signature = JSON.stringify(['avatar', path, options.version, options.expectedIdentity, digest]);
+    if (uncertainWriteKeys.size >= 100 && !uncertainWriteKeys.has(signature))
+      throw new ApiError('PENDING_WRITES_LIMIT', '待确认操作过多，请先恢复连接', 0);
+    const key = uncertainWriteKeys.get(signature) ?? crypto.randomUUID();
+    uncertainWriteKeys.set(signature, key);
+    Object.assign(headers, {
+      'content-type': options.body.type,
+      'if-match': String(options.version),
+      'idempotency-key': key,
+    });
+  }
+  const response = await fetch(`${desktop ? `${companionOrigin()}/api/v1` : base}${path}`, {
+    method: options.body ? 'POST' : 'GET',
+    headers,
+    body: options.body,
+    credentials: desktop ? 'omit' : 'include',
+    cache: 'no-store',
+    signal: AbortSignal.timeout(12000),
+  });
+  if (!response.ok) {
+    if (signature && response.status < 500) uncertainWriteKeys.delete(signature);
+    const error = (await response.json().catch(() => ({}))).error ?? {};
+    throw new ApiError(
+      error.code ?? 'AVATAR_FAILED',
+      error.message ?? '头像操作失败',
+      response.status,
+    );
+  }
+  if (signature) uncertainWriteKeys.delete(signature);
+  if (!options.body) return response.blob();
+}
 export class ApiError extends Error implements ApiFault {
   constructor(
     public code: string,
@@ -29,16 +102,17 @@ export class ApiError extends Error implements ApiFault {
 export function idempotencyKey() {
   return crypto.randomUUID();
 }
-async function sendRequest<T>(
-  path: string,
-  init: { method?: string; body?: unknown; version?: number; idempotencyKey?: string } = {},
-): Promise<T> {
+async function sendRequest<T>(path: string, init: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
+  if (init.expectedIdentity) {
+    headers['x-taskboard-account-id'] = init.expectedIdentity.userId;
+    headers['x-taskboard-account-origin'] = init.expectedIdentity.origin;
+  }
   if (init.body !== undefined) headers['Content-Type'] = 'application/json';
   if (init.version !== undefined) headers['If-Match'] = String(init.version);
   const writeSignature =
     init.method && init.method !== 'GET'
-      ? JSON.stringify([init.method, path, init.version, init.body])
+      ? JSON.stringify([init.method, path, init.version, init.body, init.expectedIdentity])
       : null;
   if (writeSignature) {
     const key = init.idempotencyKey ?? uncertainWriteKeys.get(writeSignature) ?? idempotencyKey();
@@ -127,10 +201,7 @@ export async function ensureCollaborationServer(): Promise<void> {
     );
 }
 export const needsCollaborationContract = requiresCollaborationContract;
-export async function request<T>(
-  path: string,
-  init: { method?: string; body?: unknown; version?: number; idempotencyKey?: string } = {},
-): Promise<T> {
+export async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
   if (needsCollaborationContract(path, init.method)) await ensureCollaborationServer();
   return sendRequest<T>(path, init);
 }
@@ -259,6 +330,7 @@ export async function openCodexDraft(body: {
 
 /** Cache is keyed by the signed-in account, so a browser logout cannot expose another account's board. */
 export function cacheBoard(accountId: string, board: Board) {
+  if (board.takeover) return;
   localStorage.setItem(`tb:board:${accountId}:${board.space.id}`, JSON.stringify(board));
 }
 export function readCachedBoard(accountId: string, spaceId: string): Board | null {

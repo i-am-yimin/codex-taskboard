@@ -35,6 +35,33 @@ const space = (id: string): Space => ({
 const board = (id: string): Board => ({ space: space(id), statuses: [], tasks: [], members: [] });
 
 describe('offline snapshot', () => {
+  it('excludes elevated space metadata while caching a normal board', () => {
+    const storage = memoryStorage();
+    saveOfflineSnapshot(
+      account('A'),
+      [space('one'), { ...space('private'), takeover: true }],
+      board('one'),
+      storage,
+    );
+    expect(readOfflineSnapshot(storage)?.spaces.map((item) => item.id)).toEqual(['one']);
+  });
+  it('never persists takeover content', () => {
+    const storage = memoryStorage();
+    saveOfflineSnapshot(
+      account('A'),
+      [space('private')],
+      {
+        ...board('private'),
+        takeover: {
+          id: 'grant',
+          spaceId: 'private',
+          expiresAt: new Date(Date.now() + 60000).toISOString(),
+        },
+      },
+      storage,
+    );
+    expect(readOfflineSnapshot(storage)).toBeNull();
+  });
   it('restores spaces and every visited board after an offline reload', () => {
     const storage = memoryStorage();
     saveOfflineSnapshot(account('A'), [space('one'), space('two')], board('one'), storage);

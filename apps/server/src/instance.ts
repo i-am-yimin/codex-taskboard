@@ -201,7 +201,24 @@ export function registerInstanceRoutes(app: FastifyInstance, options: InstanceOp
         .strict(),
     );
     await checkPassword(request, input.currentPassword);
+    if (input.email !== request.auth!.email)
+      throw new BoardError(
+        'EMAIL_VERIFICATION_REQUIRED',
+        '请在个人设置中验证新邮箱后再更换登录邮箱',
+        409,
+      );
     if (input.newPassword) {
+      await db.query(
+        'UPDATE account_verifications SET used_at=now() WHERE user_id=$1 AND used_at IS NULL',
+        [request.auth!.id],
+      );
+      await db.query(
+        'UPDATE recovery_links SET used_at=now() WHERE user_id=$1 AND used_at IS NULL',
+        [request.auth!.id],
+      );
+      await db.query('UPDATE space_takeovers SET revoked_at=now() WHERE user_id=$1', [
+        request.auth!.id,
+      ]);
       await db.query('UPDATE users SET password_hash=$1 WHERE id=$2', [
         await hash(input.newPassword, { algorithm: Algorithm.Argon2id }),
         request.auth!.id,
@@ -215,11 +232,10 @@ export function registerInstanceRoutes(app: FastifyInstance, options: InstanceOp
         [request.auth!.id],
       );
     }
-    await db.query('UPDATE users SET name=$1,email=$2 WHERE id=$3', [
-      input.name,
-      input.email,
-      request.auth!.id,
-    ]);
+    await db.query(
+      'UPDATE users SET name=$1,email=$2,profile_version=profile_version+1 WHERE id=$3',
+      [input.name, input.email, request.auth!.id],
+    );
     const data = { name: input.name, email: input.email };
     await options.finishWrite(request, write.key, data);
     afterCommit(() => app.log.info('Instance administrator account updated'));

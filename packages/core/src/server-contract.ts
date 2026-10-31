@@ -17,7 +17,10 @@ export const serverHealthSchema = z
     serverVersion: z.string().min(1).max(80).optional(),
     apiVersion: z.number().int().positive().optional(),
     capabilities: z
-      .object({ collaborativeWorkflows: z.number().int().nonnegative().optional() })
+      .object({
+        collaborativeWorkflows: z.number().int().nonnegative().optional(),
+        accountCenter: z.number().int().nonnegative().optional(),
+      })
       .passthrough()
       .optional(),
     migrationRequired: z.boolean().optional(),

@@ -1,4 +1,5 @@
 import { migrateActiveWorkflowIntervals } from './workflow-interval-migration.ts';
+import { migrateAccounts } from './account-migration.ts';
 import { migrateWorkflowServices } from './workflow-migration.ts';
 import { migrateRunRecovery } from './run-recovery-migration.ts';
 import { migrateRunPermissions } from './run-permissions-migration.ts';
@@ -76,5 +77,22 @@ export async function migrate(db: Database): Promise<void> {
     await migrateRunRecovery(client);
     await migrateRunPermissions(client);
     await migrateActiveWorkflowIntervals(client);
+    await migrateAccounts(client);
+    if (
+      !(
+        await client.query(
+          "SELECT 1 FROM schema_migrations WHERE id='0011_account_recovery_hardening'",
+        )
+      ).rowCount
+    ) {
+      // Retire plaintext web recovery responses without disturbing invitation
+      // links, other cached writes, or already issued hashed recovery tokens.
+      await client.query(
+        "DELETE FROM idempotency_keys WHERE response->>'url' LIKE '%/#recovery=%'",
+      );
+      await client.query(
+        "INSERT INTO schema_migrations(id) VALUES ('0011_account_recovery_hardening')",
+      );
+    }
   });
 }

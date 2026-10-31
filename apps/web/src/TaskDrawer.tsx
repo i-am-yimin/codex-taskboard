@@ -80,6 +80,7 @@ export function TaskDrawer({
   onRefresh,
   onNotice,
 }: Props) {
+  const draftStorage = board.takeover ? undefined : localStorage;
   const client = useQueryClient();
   const query = useQuery({
     queryKey: ['task', userId, taskId],
@@ -180,7 +181,7 @@ export function TaskDrawer({
   useEffect(() => {
     if (!detail || dirty) return;
     try {
-      const cached = JSON.parse(localStorage.getItem(key) ?? 'null');
+      const cached = JSON.parse(draftStorage?.getItem(key) ?? 'null');
       if (cached?.draft && Number.isInteger(cached.baseVersion)) {
         setDraft({ ...fields(detail.task), ...cached.draft });
         setBaseVersion(cached.baseVersion);
@@ -189,18 +190,18 @@ export function TaskDrawer({
         return;
       }
     } catch {
-      localStorage.removeItem(key);
+      draftStorage?.removeItem(key);
     }
     setDraft(fields(detail.task));
     setBaseVersion(detail.task.version);
   }, [detail, dirty, key]);
   useEffect(() => {
     if (draftSpaceId && dirty && draft && baseVersion)
-      localStorage.setItem(key, JSON.stringify({ draft, baseVersion, spaceId: draftSpaceId }));
+      draftStorage?.setItem(key, JSON.stringify({ draft, baseVersion, spaceId: draftSpaceId }));
   }, [key, draft, dirty, baseVersion, draftSpaceId]);
   useEffect(() => {
     try {
-      const cached = JSON.parse(localStorage.getItem(resultKey) ?? 'null');
+      const cached = JSON.parse(draftStorage?.getItem(resultKey) ?? 'null');
       if (cached) {
         setSummary(cached.summary);
         setVerification(cached.verification ?? '');
@@ -222,7 +223,7 @@ export function TaskDrawer({
         setNextStep(cached.nextStep ?? '');
       }
     } catch {
-      localStorage.removeItem(resultKey);
+      draftStorage?.removeItem(resultKey);
     }
   }, [resultKey]);
   useEffect(() => {
@@ -230,7 +231,7 @@ export function TaskDrawer({
       draftSpaceId &&
       (summary || verification || handoffSummary || limitations || blockers || nextStep)
     )
-      localStorage.setItem(
+      draftStorage?.setItem(
         resultKey,
         JSON.stringify({
           spaceId: draftSpaceId,
@@ -262,7 +263,7 @@ export function TaskDrawer({
     draftSpaceId,
   ]);
   useEffect(() => {
-    const cached = localStorage.getItem(commentKey);
+    const cached = draftStorage?.getItem(commentKey);
     if (!cached) return;
     try {
       const value: unknown = JSON.parse(cached);
@@ -279,7 +280,7 @@ export function TaskDrawer({
   }, [commentKey]);
   useEffect(() => {
     if (draftSpaceId && (comment || mentionIds.length))
-      localStorage.setItem(
+      draftStorage?.setItem(
         commentKey,
         JSON.stringify({ body: comment, mentionIds, spaceId: draftSpaceId }),
       );
@@ -355,7 +356,7 @@ export function TaskDrawer({
           : Object.keys(changes).length
             ? await api.patchTask(task.id, changes, baseVersion ?? task.version)
             : task;
-        localStorage.removeItem(key);
+        draftStorage?.removeItem(key);
         setDirty(false);
         setConflicted(false);
         setBaseVersion(updated.version);
@@ -404,6 +405,11 @@ export function TaskDrawer({
       aria-modal="true"
       aria-label="任务详情"
     >
+      {board.takeover && (
+        <p className="banner" role="status">
+          接管期间草稿仅在当前窗口保留；关闭或退出接管前，请保存需要的更改。
+        </p>
+      )}
       <header className="drawer-top">
         <span className="task-id">
           TB-{task.number}
@@ -757,7 +763,7 @@ export function TaskDrawer({
             <button
               className="text-button"
               onClick={() => {
-                localStorage.removeItem(key);
+                draftStorage?.removeItem(key);
                 setDraft(fields(task));
                 setBaseVersion(task.version);
                 setDirty(false);
@@ -780,7 +786,13 @@ export function TaskDrawer({
         >
           保存任务
         </button>
-        {offline && <p className="muted">离线草稿保存在这台设备，尚未同步。</p>}
+        {offline && (
+          <p className="muted">
+            {board.takeover
+              ? '接管草稿仅在当前窗口保留，恢复连接后才能提交。'
+              : '离线草稿保存在这台设备，尚未同步。'}
+          </p>
+        )}
         <CollaborationPanel
           detail={detail}
           board={board}
@@ -1012,7 +1024,7 @@ export function TaskDrawer({
               onClick={() =>
                 perform(async () => {
                   if (!demo) await api.comment(taskId, comment, mentionIds);
-                  localStorage.removeItem(commentKey);
+                  draftStorage?.removeItem(commentKey);
                   setComment('');
                   setMentionIds([]);
                   await refresh();
@@ -1089,7 +1101,9 @@ export function TaskDrawer({
             {error && <p className="form-error">{error}</p>}
             <p className="muted">
               {offline
-                ? '结果已保存在本机，尚未同步。联网后重新核对任务版本并提交。'
+                ? board.takeover
+                  ? '结果仅在当前窗口保留。联网后重新核对任务版本并提交。'
+                  : '结果已保存在本机，尚未同步。联网后重新核对任务版本并提交。'
                 : '提交后由指定验收人核验；父任务需独立集成验证。'}
             </p>
             {resultRequirementsVersion !== null &&
@@ -1149,7 +1163,7 @@ export function TaskDrawer({
                         version: task.version,
                         signature,
                       };
-                    localStorage.setItem(
+                    draftStorage?.setItem(
                       resultKey,
                       JSON.stringify({
                         ...body,
@@ -1166,7 +1180,7 @@ export function TaskDrawer({
                         submitAttempt.current.key,
                       );
                     submitAttempt.current = null;
-                    localStorage.removeItem(resultKey);
+                    draftStorage?.removeItem(resultKey);
                     setSummary('');
                     setVerification('');
                     setBranch('');

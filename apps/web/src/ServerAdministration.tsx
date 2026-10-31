@@ -1,16 +1,18 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Database, LoaderCircle, RefreshCw, Server, ShieldCheck } from 'lucide-react';
-import { api, ApiError, request } from './api';
+import { api, ApiError, request as apiRequest, type RequestOptions } from './api';
 import type { User } from './types';
 import './serverAdministration.css';
+import { ServerGovernance, type GovernanceTab } from './ServerGovernance';
+import type { TakeoverGrant } from '@taskboard/core';
 
 const failure = (error: unknown) => (error instanceof Error ? error.message : '操作未完成，请重试');
 
 export function ServerSetupGate({ children }: { children: ReactNode }) {
   const setup = useQuery({
     queryKey: ['server-setup'],
-    queryFn: () => request<{ required: boolean }>('/setup'),
+    queryFn: () => apiRequest<{ required: boolean }>('/setup'),
   });
   if (setup.isPending)
     return (
@@ -38,7 +40,7 @@ function FirstRunSetup() {
     const email = String(fields.get('email'));
     const password = String(fields.get('password'));
     try {
-      await request('/setup', {
+      await apiRequest('/setup', {
         method: 'POST',
         body: {
           token: String(fields.get('token')),
@@ -181,18 +183,44 @@ type InstanceInfo = {
 };
 type LogEntry = { time: string; level: string; message: string };
 type RevealedSecrets = { databasePassword: string | null; sessionKey: string };
-type Tab = 'overview' | 'account' | 'secrets' | 'logs';
+type Tab = 'overview' | 'account' | 'secrets' | 'logs' | GovernanceTab;
 
-export function ServerAdministration({ user, onClose }: { user: User; onClose: () => void }) {
+export function ServerAdministration({
+  user,
+  onClose,
+  onAccount,
+  onOpenSpace,
+}: {
+  user: User;
+  onClose: () => void;
+  onAccount: () => void;
+  onOpenSpace: (grant: TakeoverGrant) => void;
+}) {
+  const request = <T,>(path: string, options: RequestOptions = {}) =>
+    apiRequest<T>(path, {
+      ...options,
+      ...(path.startsWith('/admin/')
+        ? { expectedIdentity: { origin: location.origin, userId: user.id } }
+        : {}),
+    });
   const client = useQueryClient();
   const [tab, setTab] = useState<Tab>('overview');
+  const accountCapability = useQuery({
+    queryKey: ['server-account-capability', location.origin, user.id],
+    queryFn: () => request<{ capabilities?: { accountCenter?: number } }>('/health'),
+    gcTime: 0,
+    retry: false,
+  });
+  const hasAccountCenter = accountCapability.data?.capabilities?.accountCenter === 1;
   const info = useQuery({
-    queryKey: ['server-instance'],
+    queryKey: ['server-instance', location.origin, user.id],
     queryFn: () => request<InstanceInfo>('/admin/instance'),
+    gcTime: 0,
   });
   const logs = useQuery({
-    queryKey: ['server-logs'],
+    queryKey: ['server-logs', location.origin, user.id],
     queryFn: () => request<{ entries: LogEntry[] }>('/admin/logs'),
+    gcTime: 0,
     enabled: tab === 'logs',
     refetchInterval: tab === 'logs' ? 10000 : false,
   });
@@ -224,12 +252,18 @@ export function ServerAdministration({ user, onClose }: { user: User; onClose: (
       setBusy(false);
     }
   };
-  const tabs: [Tab, string][] = [
+  const allTabs: [Tab, string][] = [
     ['overview', '运行与设置'],
-    ['account', '管理员账号'],
+    ['users', '用户与邀请'],
+    ['spaces', '空间治理'],
+    ['mail', '邮件服务'],
+    ['audit', '审计日志'],
     ['secrets', '数据库与密钥'],
     ['logs', '运行日志'],
   ];
+  const tabs = allTabs.filter(
+    ([key]) => hasAccountCenter || !['users', 'spaces', 'mail', 'audit'].includes(key),
+  );
   const data = info.data;
   return (
     <main className="server-admin">
@@ -243,6 +277,9 @@ export function ServerAdministration({ user, onClose }: { user: User; onClose: (
           <h1>服务器管理</h1>
         </div>
         <span className="muted">{user.name}</span>
+        <button className="button ghost" onClick={onAccount}>
+          个人设置
+        </button>
       </header>
       <div className="server-admin-layout">
         <nav className="server-admin-nav" aria-label="服务器管理分类">
@@ -276,6 +313,19 @@ export function ServerAdministration({ user, onClose }: { user: User; onClose: (
             </p>
           )}
           {info.isPending && <p role="status">正在读取服务器状态…</p>}
+          {!accountCapability.isPending && !hasAccountCenter && (
+            <p role="status" className="muted">
+              此服务器尚未声明用户中心能力，用户治理、邮件与空间接管需要升级服务器。
+            </p>
+          )}
+          {(['users', 'spaces', 'mail', 'audit'] as string[]).includes(tab) && (
+            <ServerGovernance
+              key={`${user.id}:${tab}`}
+              userId={user.id}
+              tab={tab as GovernanceTab}
+              onOpenSpace={onOpenSpace}
+            />
+          )}
           {data && tab === 'overview' && (
             <>
               <h2>运行与设置</h2>

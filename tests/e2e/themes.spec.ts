@@ -5,6 +5,15 @@ import type { AppearanceRecord, ThemePackage } from '../../packages/core/src/the
 import { identifyTheme } from '../../apps/web/src/themes';
 
 async function openThemes(page: Page) {
+  // Personal settings now retain a deep link across reloads/account refreshes.
+  if (await page.locator('.appearance-settings').isVisible()) return;
+  if (await page.getByRole('heading', { name: '个人设置', exact: true }).isVisible()) {
+    const category = page.getByRole('button', { name: '外观与主题', exact: true });
+    if (!(await category.isVisible()))
+      await page.getByRole('button', { name: '设置分类', exact: true }).click();
+    await category.click();
+    return;
+  }
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '外观与主题', exact: true }).click();
 }
@@ -30,7 +39,7 @@ test('four themes support both modes, reversible previews, layouts and narrow em
       await expect(page.locator('html')).toHaveAttribute('data-theme', mode);
       await page.screenshot({ path: info.outputPath(`${id}-${mode}-settings.png`) });
       await page.getByRole('button', { name: '应用主题', exact: true }).click();
-      await page.getByRole('button', { name: '关闭', exact: true }).click();
+      await page.getByRole('button', { name: '返回看板', exact: true }).click();
       await expect(page.getByRole('heading', { name: '任务看板', exact: true })).toBeVisible();
       await page.screenshot({ path: info.outputPath(`${id}-${mode}-board.png`) });
       await openThemes(page);
@@ -250,7 +259,7 @@ test('closing or cancelling settings invalidates a delayed theme import', async 
   await expect(page.locator('.theme-choice')).toHaveCount(4);
   await select();
   await expect(page.getByRole('button', { name: '正在读取主题…' })).toBeVisible();
-  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: '返回看板', exact: true }).click();
   await page.evaluate(() => document.dispatchEvent(new Event('release-theme-import')));
   await expect(page.locator('html')).toHaveAttribute('data-style', 'glass');
   await openThemes(page);
