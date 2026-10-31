@@ -307,4 +307,83 @@ test.describe('0.1.11 account center with PostgreSQL and production web', () => 
     }
     expect(errors).toEqual([]);
   });
+  test('retains unsaved settings during background read failures and hides them after authorization loss', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+    const id = randomUUID();
+    const refreshEmail = `${id}@example.test`;
+    await db.query('INSERT INTO users(id,email,name,password_hash) VALUES($1,$2,$3,$4)', [
+      id,
+      refreshEmail,
+      '后台刷新验收',
+      await hash(password),
+    ]);
+    await page.clock.install();
+    await page.goto(`${base}/#account/profile`);
+    await page.getByLabel('邮箱', { exact: true }).fill(refreshEmail);
+    await page.getByLabel('密码', { exact: true }).fill(password);
+    await page.getByRole('button', { name: '登录并继续' }).click();
+    await page.getByLabel('名称', { exact: true }).fill('未保存的刷新草稿');
+    await page.getByLabel('手机号', { exact: true }).fill('refresh-draft-phone');
+    let profileFailures = 0;
+    await page.route('**/api/v1/me/profile', async (route) => {
+      if (route.request().method() !== 'GET') return route.continue();
+      profileFailures++;
+      await route.fulfill({
+        status: 503,
+        json: { error: { code: 'OFFLINE', message: '合成资料刷新失败' } },
+      });
+    });
+    await page.clock.fastForward(31000);
+    await expect.poll(() => profileFailures).toBeGreaterThan(0);
+    await expect(page.getByRole('alert')).toContainText('任务看板服务器暂时不可用');
+    await expect(page.getByLabel('名称', { exact: true })).toHaveValue('未保存的刷新草稿');
+    await expect(page.getByLabel('手机号', { exact: true })).toHaveValue('refresh-draft-phone');
+    await page.unroute('**/api/v1/me/profile');
+    await page.getByRole('button', { name: '重新读取资料', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(page.getByLabel('手机号', { exact: true })).toHaveValue('refresh-draft-phone');
+    await page.getByRole('button', { name: '保存资料', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('个人资料已保存');
+    await page.getByRole('button', { name: '账号安全', exact: true }).click();
+    const passwordForm = page
+      .locator('form')
+      .filter({ has: page.getByRole('button', { name: '修改密码', exact: true }) });
+    await passwordForm
+      .getByLabel('新密码（至少 12 个字符）', { exact: true })
+      .fill('refresh-secret-password');
+    let securityFailures = 0;
+    await page.route('**/api/v1/me/profile', async (route) => {
+      securityFailures++;
+      await route.fulfill({
+        status: 500,
+        json: { error: { code: 'OFFLINE', message: '合成安全资料刷新失败' } },
+      });
+    });
+    await page.clock.fastForward(31000);
+    await expect.poll(() => securityFailures).toBeGreaterThan(0);
+    await expect(page.getByRole('alert')).toContainText('合成安全资料刷新失败');
+    await expect(passwordForm.getByLabel('新密码（至少 12 个字符）', { exact: true })).toHaveValue(
+      'refresh-secret-password',
+    );
+    await page.unroute('**/api/v1/me/profile');
+    await page.getByRole('button', { name: '重新读取资料', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(passwordForm.getByLabel('新密码（至少 12 个字符）', { exact: true })).toHaveValue(
+      'refresh-secret-password',
+    );
+    await page.route('**/api/v1/me/profile', async (route) => {
+      await route.fulfill({
+        status: 403,
+        json: { error: { code: 'FORBIDDEN', message: '合成资料权限已失效' } },
+      });
+    });
+    await page.clock.fastForward(31000);
+    await expect(page.getByRole('alert')).toContainText('合成资料权限已失效');
+    await expect(page.getByLabel('新密码（至少 12 个字符）', { exact: true })).toHaveCount(0);
+    const persisted = await page.evaluate(() => Object.values(localStorage).join('\n'));
+    expect(persisted).not.toContain('refresh-draft-phone');
+    expect(persisted).not.toContain('refresh-secret-password');
+  });
 });

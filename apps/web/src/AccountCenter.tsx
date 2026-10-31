@@ -42,6 +42,12 @@ import type { AppearanceController } from './useAppearance';
 import './accountCenter.css';
 
 const failure = (error: unknown) => (error instanceof Error ? error.message : '操作失败，请重试');
+function blocksAccountRead(error: unknown, loaded: unknown): boolean {
+  if (!error) return false;
+  // Keep an already mounted editor during transient reads. Authorization and
+  // identity failures must still remove its sensitive inputs immediately.
+  return !loaded || (error instanceof ApiError && error.status >= 400 && error.status < 500);
+}
 const DirtyForms = createContext<(id: string, dirty: boolean) => void>(() => undefined);
 const ExpectedAccount = createContext<AccountIdentity | undefined>(undefined);
 function useAccountRequest() {
@@ -315,6 +321,9 @@ export function AccountCenter({
     refetchInterval: 30000,
     retry: false,
   });
+  const connectionBlocked =
+    blocksAccountRead(server.error, server.data) ||
+    blocksAccountRead(capability.error, capability.data);
   const changed = async () => {
     await profile.refetch();
   };
@@ -423,6 +432,31 @@ export function AccountCenter({
                   {failure(server.error || capability.error)}
                 </p>
               )}
+              {!connectionBlocked &&
+                section !== 'appearance' &&
+                (server.error || capability.error) && (
+                  <button
+                    className="button"
+                    onClick={() => {
+                      void server.refetch();
+                      void capability.refetch();
+                    }}
+                  >
+                    重新检查账号服务
+                  </button>
+                )}
+              {section !== 'appearance' &&
+                profile.error &&
+                !blocksAccountRead(profile.error, profile.data) && (
+                  <div>
+                    <p className="form-error" role="alert">
+                      {failure(profile.error)}
+                    </p>
+                    <button className="button" onClick={() => profile.refetch()}>
+                      重新读取资料
+                    </button>
+                  </div>
+                )}
               {section === 'appearance' ? (
                 <AppearanceSettings controller={appearance} />
               ) : demo ? (
@@ -435,7 +469,7 @@ export function AccountCenter({
                     预览外观与主题
                   </button>
                 </div>
-              ) : server.error || capability.error ? (
+              ) : connectionBlocked ? (
                 <button
                   className="button"
                   onClick={() => {
@@ -449,7 +483,7 @@ export function AccountCenter({
                 <p role="status">正在检查账号服务…</p>
               ) : capability.data?.capabilities?.accountCenter !== 1 ? (
                 <p role="status">此服务器尚未支持用户中心，请升级服务器。现有主题设置仍可使用。</p>
-              ) : profile.error ? (
+              ) : blocksAccountRead(profile.error, profile.data) ? (
                 <div>
                   <p role="alert" className="form-error">
                     {failure(profile.error)}
