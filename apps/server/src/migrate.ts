@@ -78,5 +78,21 @@ export async function migrate(db: Database): Promise<void> {
     await migrateRunPermissions(client);
     await migrateActiveWorkflowIntervals(client);
     await migrateAccounts(client);
+    if (
+      !(
+        await client.query(
+          "SELECT 1 FROM schema_migrations WHERE id='0011_account_recovery_hardening'",
+        )
+      ).rowCount
+    ) {
+      // Retire plaintext web recovery responses without disturbing invitation
+      // links, other cached writes, or already issued hashed recovery tokens.
+      await client.query(
+        "DELETE FROM idempotency_keys WHERE response->>'url' LIKE '%/#recovery=%'",
+      );
+      await client.query(
+        "INSERT INTO schema_migrations(id) VALUES ('0011_account_recovery_hardening')",
+      );
+    }
   });
 }

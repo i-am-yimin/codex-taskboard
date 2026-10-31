@@ -42,6 +42,7 @@ jobs:
           path: |
             .impeccable/review/*.png
             .artifacts/acceptance-0.1.11/*.png
+            test-results/**/account-menu-*.png
           if-no-files-found: ignore
           include-hidden-files: true
       - run: pnpm test:offline

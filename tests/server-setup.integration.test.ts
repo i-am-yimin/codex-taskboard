@@ -232,6 +232,7 @@ describe.skipIf(!databaseUrl)('browser server initialization and administration'
       '0008_run_permissions',
       '0009_active_workflow_intervals',
       '0010_account_center',
+      '0011_account_recovery_hardening',
     ]);
   });
 });

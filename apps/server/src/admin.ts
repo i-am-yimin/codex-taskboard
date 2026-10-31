@@ -63,7 +63,7 @@ export async function runAdmin(
     if (!user.rowCount) throw new Error('User not found');
     const token = `tb_recovery_${randomUUID()}${randomUUID()}`;
     await db.query(
-      "INSERT INTO recovery_links (id,user_id,token_hash,expires_at) VALUES ($1,$2,$3,now()+interval '24 hours')",
+      "INSERT INTO recovery_links (id,user_id,token_hash,expires_at) VALUES ($1,$2,$3,now()+interval '30 minutes')",
       [randomUUID(), user.rows[0].id, createHash('sha256').update(token).digest('hex')],
     );
     const origin = (

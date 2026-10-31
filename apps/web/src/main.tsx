@@ -698,6 +698,7 @@ function App() {
           <div className="server-management-shortcut">
             <AccountMenu
               user={user}
+              demo={isDemo}
               onAccount={() => {
                 setAccountOpen(true);
                 history.replaceState(null, '', '#account/profile');
@@ -836,6 +837,7 @@ function App() {
           <div className="topbar-right">
             <AccountMenu
               user={user!}
+              demo={isDemo}
               onAccount={() => {
                 setAccountOpen(true);
                 history.replaceState(null, '', '#account/profile');

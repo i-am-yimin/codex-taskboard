@@ -65,6 +65,7 @@ try {
       '0008_run_permissions',
       '0009_active_workflow_intervals',
       '0010_account_center',
+      '0011_account_recovery_hardening',
     ];
     if (migrations.rows.map((row) => row.id).join(',') !== expected.join(','))
       throw new Error('Unexpected migration state');

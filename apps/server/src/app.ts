@@ -874,27 +874,14 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     recheckSubscriptions();
     return ok(p, data);
   });
-  app.post('/api/v1/admin/recovery', async (r, p) => {
+  app.post('/api/v1/admin/recovery', async (r) => {
     if (!r.auth!.instanceAdmin)
-      throw new BoardError('FORBIDDEN', '仅实例管理员可以签发恢复链接', 403);
-    const input = body(
-      r,
-      z.object({ email: z.email().transform((v) => v.toLowerCase()) }).strict(),
+      throw new BoardError('FORBIDDEN', '仅实例管理员可以管理账号恢复', 403);
+    throw new BoardError(
+      'EMAIL_RECOVERY_REQUIRED',
+      '请在用户管理中发送密码恢复邮件；邮件不可用时由服务器控制台执行 admin recovery',
+      409,
     );
-    const c = await stored(r);
-    if (c.cached) return ok(p, c.cached.response);
-    const user = await db.query('SELECT id FROM users WHERE email=$1 AND archived_at IS NULL', [
-      input.email,
-    ]);
-    if (!user.rowCount) throw new BoardError('NOT_FOUND', '账号不存在', 404);
-    const token = `tb_recovery_${id()}${id()}`;
-    await db.query(
-      "INSERT INTO recovery_links(id,user_id,token_hash,expires_at) VALUES ($1,$2,$3,now()+interval '24 hours')",
-      [id(), user.rows[0].id, sha(token)],
-    );
-    const data = { url: `${origin ?? ''}/#recovery=${encodeURIComponent(token)}` };
-    await saveIdempotency(r, c.key, data, 201);
-    return ok(p, data, 201);
   });
 
   app.get('/api/v1/spaces', async (request, reply) => {

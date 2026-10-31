@@ -3,6 +3,7 @@ import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { hash, Algorithm } from '@node-rs/argon2';
 import sharp from 'sharp';
+import { runAdmin } from '../apps/server/src/admin.ts';
 import { createDatabase, type Database } from '../apps/server/src/db.ts';
 import { migrate } from '../apps/server/src/migrate.ts';
 import { buildApp } from '../apps/server/src/app.ts';
@@ -655,14 +656,53 @@ suite('account center with real PostgreSQL', () => {
       await pending;
     }
   });
+  it('keeps web recovery behind email verification while console recovery remains available without SMTP', async () => {
+    const email = (await request('GET', '/me')).json().data.email;
+    const legacy = await request('POST', '/admin/recovery', { email });
+    expect(legacy.statusCode).toBe(409);
+    expect(legacy.json().error.code).toBe('EMAIL_RECOVERY_REQUIRED');
+    expect((await db.query('SELECT count(*) FROM recovery_links')).rows[0].count).toBe('0');
+    const link = await runAdmin(['recovery', '--email', email], db);
+    const token = new URLSearchParams(new URL(link).hash.slice(1)).get('recovery');
+    expect(token).toBeTruthy();
+    const row = (
+      await db.query(
+        'SELECT token_hash,extract(epoch FROM expires_at-created_at) lifetime FROM recovery_links',
+      )
+    ).rows[0];
+    expect(row.token_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(row.token_hash).not.toBe(token);
+    expect(Number(row.lifetime)).toBeLessThanOrEqual(1800);
+    const resetPassword = 'console-reset-account-test-2026';
+    expect(
+      (await request('POST', '/auth/recovery/complete', { token, password: resetPassword }, ''))
+        .statusCode,
+    ).toBe(200);
+    expect((await request('GET', '/me')).statusCode).toBe(401);
+    expect(
+      (await request('POST', '/auth/login', { email, password: resetPassword }, '')).statusCode,
+    ).toBe(200);
+  });
   it('upgrades an old schema without changing account identity, password or active session', async () => {
     const prior = (await request('GET', '/me')).json().data;
     await db.query(`DROP TABLE account_audit,space_takeovers,mail_outbox,smtp_settings,account_verifications,user_avatars;
       ALTER TABLE users DROP COLUMN profile_version,DROP COLUMN contacts,DROP COLUMN email_verified_at,DROP COLUMN avatar_version;
       ALTER TABLE devices DROP COLUMN last_active_at;ALTER TABLE invitations DROP COLUMN revoked_at;
-      DELETE FROM schema_migrations WHERE id='0010_account_center';`);
+      DELETE FROM schema_migrations WHERE id IN ('0010_account_center','0011_account_recovery_hardening');`);
+    await db.query(
+      `INSERT INTO idempotency_keys (user_id,key,request_hash,response,status_code)
+       VALUES ($1,'legacy-recovery-cache','test',$2,201),($1,'preserved-invitation-cache','test',$3,201)`,
+      [
+        prior.id,
+        { url: 'https://board.example.test/#recovery=synthetic-legacy-link' },
+        { url: 'https://board.example.test/#invite=synthetic-invitation' },
+      ],
+    );
     await migrate(db);
     await migrate(db);
+    expect((await db.query('SELECT key FROM idempotency_keys ORDER BY key')).rows).toEqual([
+      { key: 'preserved-invitation-cache' },
+    ]);
     expect((await request('GET', '/me')).json().data.id).toBe(prior.id);
     expect((await request('GET', '/me/profile')).json().data).toMatchObject({
       id: prior.id,

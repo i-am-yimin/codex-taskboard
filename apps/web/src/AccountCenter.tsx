@@ -8,9 +8,11 @@ import {
   createContext,
   type ReactNode,
   type FormEvent,
+  type ComponentProps,
 } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Dialog from '@radix-ui/react-dialog';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   ArrowLeft,
   Check,
@@ -49,11 +51,12 @@ function useAccountRequest() {
 }
 const contactNames: Record<keyof Contacts, string> = { phone: '手机号', wechat: '微信', qq: 'QQ' };
 const date = (value: string | null) => (value ? new Date(value).toLocaleString() : '尚无记录');
-function useServer(userId: string) {
+function useServer(userId: string, enabled = true) {
   return useQuery({
     queryKey: ['account-server', userId],
     queryFn: () => accountServerIdentity(userId),
     gcTime: 0,
+    enabled,
     refetchOnWindowFocus: true,
   });
 }
@@ -76,7 +79,7 @@ export function UserAvatar({
   const server = useQuery({
     queryKey: ['avatar-server', viewer?.id],
     queryFn: () => accountServerIdentity(viewer!.id),
-    enabled: !!viewer,
+    enabled: !!viewer && !!user.hasAvatar,
     gcTime: 0,
   });
   const picture = useQuery({
@@ -100,8 +103,9 @@ export function UserAvatar({
 export function ServerWebsiteLink({
   children,
   hash = 'admin',
-}: {
-  children: ReactNode;
+  className = 'button ghost',
+  ...anchorProps
+}: Omit<ComponentProps<'a'>, 'href'> & {
   hash?: string;
 }) {
   const target = useQuery({
@@ -127,7 +131,8 @@ export function ServerWebsiteLink({
     return <span role="status">{target.error ? '无法读取服务器地址' : '正在读取服务器地址…'}</span>;
   return (
     <a
-      className="button ghost"
+      {...anchorProps}
+      className={className}
       href={`${target.data}/#${hash}`}
       target="_blank"
       rel="noopener noreferrer"
@@ -138,47 +143,64 @@ export function ServerWebsiteLink({
 }
 export function AccountMenu({
   user,
+  demo = false,
   onAccount,
   onAdmin,
   onLogout,
 }: {
   user: User;
+  demo?: boolean;
   onAccount: () => void;
   onAdmin: () => void;
   onLogout: () => void;
 }) {
-  const details = useRef<HTMLDetailsElement>(null);
-  const action = (fn: () => void) => () => {
-    if (details.current) details.current.open = false;
-    fn();
-  };
   return (
-    <details className="account-menu" ref={details}>
-      <summary aria-label="账号菜单">
-        <UserAvatar user={user} />
-        <span className="account-menu-name">{user.name}</span>
-      </summary>
-      <div className="account-menu-content">
-        <p>{user.email}</p>
-        <button onClick={action(onAccount)}>
-          <UserRound size={16} />
-          个人设置
-        </button>
-        {user.instanceAdmin &&
-          (hasLocalCompanion() ? (
-            <ServerWebsiteLink>服务器管理</ServerWebsiteLink>
-          ) : (
-            <button onClick={action(onAdmin)}>
-              <ShieldCheck size={16} />
-              服务器管理
-            </button>
-          ))}
-        <button onClick={action(onLogout)}>
-          <LogOut size={16} />
-          退出登录
-        </button>
-      </div>
-    </details>
+    <div className="account-menu">
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button type="button" className="account-menu-trigger" aria-label="账号菜单">
+            <UserAvatar user={user} />
+            <span className="account-menu-name">{user.name}</span>
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            className="account-menu-content"
+            align="end"
+            sideOffset={8}
+            collisionPadding={16}
+          >
+            <p>{user.email}</p>
+            <DropdownMenu.Item asChild onSelect={onAccount}>
+              <button>
+                <UserRound size={16} />
+                个人设置
+              </button>
+            </DropdownMenu.Item>
+            {!demo &&
+              user.instanceAdmin &&
+              (hasLocalCompanion() ? (
+                <DropdownMenu.Item asChild>
+                  <ServerWebsiteLink>服务器管理</ServerWebsiteLink>
+                </DropdownMenu.Item>
+              ) : (
+                <DropdownMenu.Item asChild onSelect={onAdmin}>
+                  <button>
+                    <ShieldCheck size={16} />
+                    服务器管理
+                  </button>
+                </DropdownMenu.Item>
+              ))}
+            <DropdownMenu.Item asChild onSelect={onLogout}>
+              <button>
+                <LogOut size={16} />
+                退出登录
+              </button>
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+    </div>
   );
 }
 export function MemberProfile({ user }: { user: User }) {
@@ -274,7 +296,7 @@ export function AccountCenter({
     else dirtyForms.current.delete(id);
     setDirty(dirtyForms.current.size > 0);
   }, []);
-  const server = useServer(user.id);
+  const server = useServer(user.id, !demo);
   const capability = useQuery({
     queryKey: ['account-capability', server.data],
     enabled: !!server.data && !demo,
@@ -403,6 +425,26 @@ export function AccountCenter({
               )}
               {section === 'appearance' ? (
                 <AppearanceSettings controller={appearance} />
+              ) : demo ? (
+                <div>
+                  <h2>{sections.find(([key]) => key === section)?.[1]}</h2>
+                  <p role="status">
+                    演示账号未连接服务器。登录后可维护个人资料、邮箱与设备；现在可以预览外观与主题。
+                  </p>
+                  <button className="button" onClick={() => choose('appearance')}>
+                    预览外观与主题
+                  </button>
+                </div>
+              ) : server.error || capability.error ? (
+                <button
+                  className="button"
+                  onClick={() => {
+                    void server.refetch();
+                    void capability.refetch();
+                  }}
+                >
+                  重新检查账号服务
+                </button>
               ) : capability.isPending ? (
                 <p role="status">正在检查账号服务…</p>
               ) : capability.data?.capabilities?.accountCenter !== 1 ? (

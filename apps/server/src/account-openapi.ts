@@ -197,6 +197,17 @@ for (const [path, method, description, schema, isPublic, version] of routes) {
   accountPaths[path] ??= {};
   accountPaths[path][method] = operation(path, method, description, schema, isPublic, version);
 }
+accountPaths['/admin/recovery'] = {
+  post: {
+    ...operation(
+      '/admin/recovery',
+      'post',
+      'Retired: always returns EMAIL_RECOVERY_REQUIRED (409) for administrators. Use user recovery email or trusted server CLI; never returns a recovery link.',
+    ),
+    deprecated: true,
+    responses: { '403': json(object), '409': json(object) },
+  },
+};
 accountPaths['/me/avatar'].post = {
   ...operation(
     '/me/avatar',

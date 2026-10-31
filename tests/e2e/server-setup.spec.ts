@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
+import { hash } from '@node-rs/argon2';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { startAccountTestServer } from '../fixtures/account-server';
@@ -65,7 +66,7 @@ test.describe('first-run server administration with PostgreSQL', () => {
     await page.getByLabel('确认密码', { exact: true }).fill(password);
     await page.getByRole('button', { name: '创建管理员并登录' }).click();
     await page.getByLabel('账号菜单').click();
-    await page.getByRole('button', { name: '服务器管理', exact: true }).click();
+    await page.getByRole('menuitem', { name: '服务器管理', exact: true }).click();
     await expect(page.getByRole('heading', { name: '服务器管理' })).toBeVisible();
     await expect(page.getByLabel('对外访问地址', { exact: true })).toHaveValue(base);
     if (test.info().project.name === 'desktop') {
@@ -106,6 +107,15 @@ test.describe('first-run server administration with PostgreSQL', () => {
   test('keeps governance unavailable when the server does not declare the account capability', async ({
     page,
   }) => {
+    await db.query(
+      'INSERT INTO users(id,email,name,password_hash,instance_admin) VALUES($1,$2,$3,$4,true) ON CONFLICT(email) DO NOTHING',
+      [
+        randomUUID(),
+        'browser-owner@example.test',
+        'Compatibility test administrator',
+        await hash(password),
+      ],
+    );
     const health = await page.request.get(`${base}/api/v1/health`);
     const value = await health.json();
     delete value.data.capabilities.accountCenter;
