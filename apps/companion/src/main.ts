@@ -382,7 +382,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     reply
       .header(
         'access-control-allow-headers',
-        'content-type,x-taskboard-companion-key,if-match,idempotency-key',
+        'content-type,x-taskboard-companion-key,x-taskboard-account-id,x-taskboard-account-origin,if-match,idempotency-key',
       )
       .header('access-control-allow-methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
     if (request.method === 'OPTIONS') return reply.code(204).send();
