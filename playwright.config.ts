@@ -1,4 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
+// Readiness probes must reach the owned loopback servers directly even when
+// the developer's internet traffic uses an authenticated proxy.
+process.env.NO_PROXY = [
+  ...new Set([
+    ...(process.env.NO_PROXY ?? process.env.no_proxy ?? '').split(',').filter(Boolean),
+    '127.0.0.1',
+    'localhost',
+    '::1',
+  ]),
+].join(',');
 export default defineConfig({
   testDir: 'tests/e2e',
   fullyParallel: false,

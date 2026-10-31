@@ -33,6 +33,84 @@ function endpoint(value: string): URL {
 }
 
 export class RemoteTransport implements TaskTransport {
+  async avatar(
+    path: string,
+    options: { body?: Buffer; version?: number; idempotencyKey?: string } = {},
+  ) {
+    if (
+      this.credentialKind !== 'cookie' ||
+      this.clientKind !== 'browser' ||
+      !(
+        (path === '/me/avatar' && options.body) ||
+        (/^\/users\/[0-9a-f-]{36}\/avatar$/.test(path) && !options.body)
+      )
+    )
+      throw new CompanionError('PATH_DENIED', '不允许的头像接口', 403);
+    const cookie = await this.credential();
+    if (!cookie) throw new CompanionError('AUTH_REQUIRED', '请先登录', 401);
+    if (options.body && options.body.length > 2097152)
+      throw new CompanionError('PAYLOAD_TOO_LARGE', '头像不能超过 2 MiB', 413);
+    const response = await fetch(new URL(this.base.toString() + path), {
+      method: options.body ? 'POST' : 'GET',
+      headers: {
+        cookie,
+        'x-taskboard-client': 'browser',
+        ...(options.body
+          ? {
+              'content-type': 'image/webp',
+              'if-match': String(options.version),
+              'idempotency-key': options.idempotencyKey ?? '',
+            }
+          : {}),
+      },
+      body: options.body ? new Uint8Array(options.body) : undefined,
+      redirect: 'error',
+      signal: AbortSignal.timeout(12000),
+    }).catch(() => {
+      throw new CompanionError('OFFLINE', '无法连接任务看板服务', 503);
+    });
+    const reader = response.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let length = 0;
+    if (reader)
+      try {
+        while (true) {
+          const part = await reader.read();
+          if (part.done) break;
+          length += part.value.length;
+          if (length > 2097152) {
+            await reader.cancel();
+            throw new CompanionError('PAYLOAD_TOO_LARGE', '头像响应过大', 413);
+          }
+          chunks.push(part.value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    const bytes = Buffer.concat(chunks);
+    if (!response.ok) {
+      const error = JSON.parse(bytes.toString('utf8') || '{}').error ?? {};
+      throw new CompanionError(
+        error.code ?? 'REMOTE_ERROR',
+        error.message ?? '头像请求失败',
+        response.status,
+      );
+    }
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!options.body && !contentType.startsWith('image/webp'))
+      throw new CompanionError('INVALID_AVATAR', '服务器返回了无效头像', 502);
+    if (options.body) {
+      let saved = false;
+      try {
+        saved = JSON.parse(bytes.toString('utf8')).data?.saved === true;
+      } catch {
+        /* Reject non-JSON success pages. */
+      }
+      if (!contentType.startsWith('application/json') || !saved)
+        throw new CompanionError('INVALID_AVATAR', '服务器未确认头像保存', 502);
+    }
+    return { bytes, contentType };
+  }
   private readonly base: URL;
   constructor(
     upstream: string,

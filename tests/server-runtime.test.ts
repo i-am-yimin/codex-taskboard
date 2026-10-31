@@ -18,7 +18,7 @@ describe('managed server runtime', () => {
     const directory = mkdtempSync(join(tmpdir(), 'taskboard-runtime-'));
     directories.push(directory);
     const first = initializeRuntimeSecrets(directory);
-    expect(new Set(Object.values(first)).size).toBe(3);
+    expect(new Set(Object.values(first)).size).toBe(4);
     for (const value of Object.values(first)) expect(value).toMatch(/^[a-f0-9]{64}$/);
     expect(initializeRuntimeSecrets(directory)).toEqual(first);
     expect(readFileSync(join(directory, 'postgres-password'), 'utf8')).toBe(first.databasePassword);

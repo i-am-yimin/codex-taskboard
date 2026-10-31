@@ -2,16 +2,15 @@ import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { buildApp } from '../../apps/server/src/app';
+import { startAccountTestServer } from '../fixtures/account-server';
 import { migrate } from '../../apps/server/src/migrate';
 import { createDatabase, type Database } from '../../apps/server/src/db';
-import { RuntimeLogs } from '../../apps/server/src/runtime';
 
 test.describe('first-run server administration with PostgreSQL', () => {
   test.skip(!process.env.TEST_DATABASE_URL, 'Requires isolated PostgreSQL and built web assets');
   let db: Database;
   let control: Database;
-  let app: ReturnType<typeof buildApp>;
+  let app: Awaited<ReturnType<typeof startAccountTestServer>>;
   let base: string;
   const schema = `browser_setup_${randomUUID().replaceAll('-', '')}`;
   const token = 'e'.repeat(64);
@@ -24,16 +23,13 @@ test.describe('first-run server administration with PostgreSQL', () => {
     url.searchParams.set('options', `-csearch_path=${schema}`);
     db = createDatabase(url.toString());
     await migrate(db);
-    app = buildApp({
-      db,
+    app = await startAccountTestServer({
       setupToken: token,
       sessionSecret: 'f'.repeat(64),
-      logger: true,
       databaseUrl: url.toString(),
-      runtimeLogs: new RuntimeLogs([token], false),
       managedSecrets: true,
     });
-    base = await app.listen({ host: '127.0.0.1', port: 0 });
+    base = app.base;
   });
   test.afterAll(async () => {
     await app?.close();
@@ -68,6 +64,7 @@ test.describe('first-run server administration with PostgreSQL', () => {
     await page.getByLabel('密码', { exact: true }).fill(password);
     await page.getByLabel('确认密码', { exact: true }).fill(password);
     await page.getByRole('button', { name: '创建管理员并登录' }).click();
+    await page.getByLabel('账号菜单').click();
     await page.getByRole('button', { name: '服务器管理', exact: true }).click();
     await expect(page.getByRole('heading', { name: '服务器管理' })).toBeVisible();
     await expect(page.getByLabel('对外访问地址', { exact: true })).toHaveValue(base);
@@ -94,16 +91,35 @@ test.describe('first-run server administration with PostgreSQL', () => {
     await expect(page.getByLabel('会话密钥明文')).toHaveValue('f'.repeat(64));
     await page.getByRole('button', { name: '立即隐藏' }).click();
     await expect(page.getByLabel('会话密钥明文')).toHaveCount(0);
-    await page.getByRole('button', { name: '管理员账号', exact: true }).click();
+    await page.getByRole('button', { name: '个人设置', exact: true }).click();
     await page.getByLabel('名称', { exact: true }).fill('更新后的管理员');
-    await page.getByLabel('当前密码', { exact: true }).fill(password);
-    await page.getByRole('button', { name: '保存管理员账号' }).click();
-    await expect(page.getByRole('status')).toHaveText('管理员账号已更新。');
+    await page.getByRole('button', { name: '保存资料' }).click();
+    await expect(page.getByRole('status')).toContainText('个人资料已保存。');
+    await page.goto(`${base}/#admin`);
     await page.getByRole('button', { name: '运行日志', exact: true }).click();
-    await expect(page.getByRole('log')).toContainText('Instance administrator account updated');
+    await expect(page.getByRole('log')).toBeVisible();
     await page.goto(`${base}/#admin`);
     await expect(page.getByRole('heading', { name: '服务器管理' })).toBeVisible();
     await expect(page.getByText('更新后的管理员', { exact: true })).toBeVisible();
     expect(errors).toEqual([]);
+  });
+  test('keeps governance unavailable when the server does not declare the account capability', async ({
+    page,
+  }) => {
+    const health = await page.request.get(`${base}/api/v1/health`);
+    const value = await health.json();
+    delete value.data.capabilities.accountCenter;
+    await page.route('**/api/v1/health', (route) => route.fulfill({ json: value }));
+    await page.goto(`${base}/#admin`);
+    await page.getByLabel('邮箱', { exact: true }).fill('browser-owner@example.test');
+    await page.getByLabel('密码', { exact: true }).fill(password);
+    await page.getByRole('button', { name: '登录并继续', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '服务器管理', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('status').filter({ hasText: '尚未声明用户中心能力' }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: '邮件服务', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '空间治理', exact: true })).toHaveCount(0);
+    await page.unrouteAll({ behavior: 'wait' });
   });
 });

@@ -46,7 +46,9 @@ export function saveOfflineSnapshot(
   board: Board,
   storage = browserStorage(),
 ) {
+  if (board.takeover) return;
   if (!storage) return;
+  spaces = spaces.filter((space) => !space.takeover);
   const current = readOfflineSnapshot(storage);
   const permitted = new Set(spaces.map((space) => space.id));
   const boards =

@@ -13,9 +13,7 @@ import {
   type TaskClaim,
 } from '@taskboard/core';
 import { LocalAgentRunner } from './runners.ts';
-import {
-  CodexDesktopAdapter,
-} from '@taskboard/adapter-codex';
+import { CodexDesktopAdapter } from '@taskboard/adapter-codex';
 import type { AdapterCapabilities, AgentAdapter, DraftRequest } from '@taskboard/core';
 import { CompanionStore, defaultDataDirectory, normalizeUpstream } from './store.ts';
 import { SecretStore } from './secret.ts';
@@ -660,8 +658,14 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     const current = await currentAdapter();
     return {
       data: retirementError
-        ? { embedded: false, projects: false, draft: false, thread: false, reason: retirementError,
-            sidebar: { state: 'restoration-unconfirmed' } }
+        ? {
+            embedded: false,
+            projects: false,
+            draft: false,
+            thread: false,
+            reason: retirementError,
+            sidebar: { state: 'restoration-unconfirmed' },
+          }
         : current
           ? await current.probe()
           : {
@@ -681,11 +685,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     const current = await currentAdapter();
     if (retirementError) throw new CompanionError('RESTORATION_UNCONFIRMED', retirementError, 409);
     if (!(current instanceof CodexDesktopAdapter))
-      throw new CompanionError(
-        'ADAPTER_UNAVAILABLE',
-        '当前设备没有可安装的 Codex 适配器',
-        409,
-      );
+      throw new CompanionError('ADAPTER_UNAVAILABLE', '当前设备没有可安装的 Codex 适配器', 409);
     if (sidebarInstallation?.adapter === current) return sidebarInstallation.task;
     const task = (async () => {
       try {
@@ -761,7 +761,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     request: import('fastify').FastifyRequest,
     reply: import('fastify').FastifyReply,
   ) => {
-    const suffix = (request.params as { '*': string })['*'];
+    const suffix = (request.params as { '*': string })['*'] ?? 'me/avatar';
     const query = request.raw.url?.includes('?')
       ? request.raw.url.slice(request.raw.url.indexOf('?'))
       : '';
@@ -769,7 +769,7 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     const pathOnly = path.split('?', 1)[0];
     const remoteHealthRead = request.method === 'GET' && path === '/health';
     if (remoteHealthRead) reply.header('cache-control', 'no-store');
-    const browserRequest = request.routeOptions.url === '/api/v1/*';
+    const browserRequest = request.routeOptions.url?.startsWith('/api/v1/') ?? false;
     const personalId =
       '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
     const personalList =
@@ -788,9 +788,19 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
           request.method === 'PUT'));
     const personalPath = browserRequest && (personalList || personalExact);
     const appearancePath = /^\/me\/(appearance|themes(?:\/[a-f0-9]{64})?)$/.test(pathOnly);
+    const accountPath =
+      browserRequest &&
+      path === pathOnly &&
+      ((path === '/me/profile' && ['GET', 'PATCH'].includes(request.method)) ||
+        (path === '/me/avatar' && ['POST', 'DELETE'].includes(request.method)) ||
+        (['/me/password', '/me/email/request', '/devices/revoke-others'].includes(path) &&
+          request.method === 'POST') ||
+        (new RegExp(`^/users/${personalId}/(profile|avatar)$`).test(path) &&
+          request.method === 'GET'));
     if (!(
       remoteHealthRead ||
       personalPath ||
+      accountPath ||
       /^\/me$/.test(pathOnly) ||
       appearancePath ||
       /^\/(spaces|tasks|statuses|devices)(?:\/|$)/.test(pathOnly)
@@ -811,11 +821,42 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
       throw new CompanionError('VALIDATION', 'If-Match 必须为正整数', 400);
     assertStableAuth();
     const requestSession = session();
+    if (
+      accountPath &&
+      (request.headers['x-taskboard-account-id'] || request.headers['x-taskboard-account-origin'])
+    ) {
+      const expectedId = request.headers['x-taskboard-account-id'];
+      const expectedOrigin = request.headers['x-taskboard-account-origin'];
+      if (
+        expectedId !== store.activeIdentity()?.userId ||
+        expectedOrigin !== new URL(upstream).origin
+      )
+        throw new CompanionError('ACCOUNT_CHANGED', '服务器或账号已变更，请重新打开个人设置', 409);
+    }
     if (!requestSession.identity)
       throw new CompanionError('AUTH_REQUIRED', '请先在伴随服务中登录', 401);
     const hadCredential = browserRequest ? Boolean(browserSession) : Boolean(agentToken);
+    const privatePath = accountPath || /^\/(users|devices)(\/|$)/.test(pathOnly);
     try {
-      const transport = request.routeOptions.url === '/api/v1/*' ? browserRemote : remote;
+      const transport = browserRequest ? browserRemote : remote;
+      if (
+        accountPath &&
+        ((path === '/me/avatar' && method === 'POST') ||
+          (/\/avatar$/.test(path) && method === 'GET'))
+      ) {
+        const result = await browserRemote.avatar(path, {
+          body: method === 'POST' && Buffer.isBuffer(request.body) ? request.body : undefined,
+          version,
+          idempotencyKey,
+        });
+        if (!isCurrentSession(requestSession))
+          throw new CompanionError('AUTH_SUPERSEDED', '认证状态已变更，请重试请求', 409);
+        return reply
+          .header('cache-control', 'no-store')
+          .header('x-content-type-options', 'nosniff')
+          .type(result.contentType)
+          .send(result.bytes);
+      }
       const data = await transport.request<unknown>(path, {
         method,
         body: browserRequest ? request.body : parsed?.body,
@@ -824,13 +865,15 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
       });
       if (!isCurrentSession(requestSession))
         throw new CompanionError('AUTH_SUPERSEDED', '认证状态已变更，请重试请求', 409);
-      if (method === 'GET' && !remoteHealthRead) await store.cachePut(cacheKey(path), data);
+      if (privatePath) reply.header('cache-control', 'no-store');
+      if (method === 'GET' && !remoteHealthRead && !privatePath)
+        await store.cachePut(cacheKey(path), data);
       return { data, meta: { source: 'remote' } };
     } catch (error) {
       if (!isCurrentSession(requestSession))
         throw new CompanionError('AUTH_SUPERSEDED', '认证状态已变更，请重试请求', 409);
       if (error instanceof CompanionError && error.code === 'OFFLINE') {
-        if (method === 'GET' && !remoteHealthRead) {
+        if (method === 'GET' && !remoteHealthRead && !privatePath) {
           const cached = store.cacheGet<unknown>(cacheKey(path));
           if (cached !== undefined)
             return { data: cached, meta: { source: 'cache', offline: true } };
@@ -865,6 +908,12 @@ export async function createCompanion(options: CompanionOptions = {}): Promise<C
     }
   };
   // `/api/v1` is the UI-facing proxy; `/v1/api` is retained for taskctl.
+  app.addContentTypeParser(
+    ['image/webp', 'image/png', 'image/jpeg'],
+    { parseAs: 'buffer', bodyLimit: 2097152 },
+    (_request, body, done) => done(null, body),
+  );
+  app.post('/api/v1/me/avatar', { bodyLimit: 2097152 }, proxy);
   // Both still require the local bridge capability and never expose the remote token.
   app.route({ method: ['GET', 'POST', 'PATCH', 'DELETE'], url: '/v1/api/*', handler: proxy });
   app.route({

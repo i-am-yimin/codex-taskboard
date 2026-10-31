@@ -1,4 +1,5 @@
 import { migrateActiveWorkflowIntervals } from './workflow-interval-migration.ts';
+import { migrateAccounts } from './account-migration.ts';
 import { migrateWorkflowServices } from './workflow-migration.ts';
 import { migrateRunRecovery } from './run-recovery-migration.ts';
 import { migrateRunPermissions } from './run-permissions-migration.ts';
@@ -76,5 +77,6 @@ export async function migrate(db: Database): Promise<void> {
     await migrateRunRecovery(client);
     await migrateRunPermissions(client);
     await migrateActiveWorkflowIntervals(client);
+    await migrateAccounts(client);
   });
 }

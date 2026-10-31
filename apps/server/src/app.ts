@@ -14,6 +14,8 @@ import {
   BoardError,
   COLLABORATION_PROTOCOL,
   COLLABORATION_MIGRATIONS,
+  ACCOUNT_CENTER_MIGRATION,
+  ACCOUNT_CENTER_PROTOCOL,
   requireRole,
   roles,
   spaceSchema,
@@ -27,6 +29,9 @@ import { createDatabase, type Database, withTransaction, afterCommit } from './d
 import type pg from 'pg';
 import { readInstanceSettings, registerInstanceRoutes } from './instance.ts';
 import { RuntimeLogs } from './runtime.ts';
+import { registerAccountRoutes } from './accounts.ts';
+import { withAccountAccess, spaceRole, activeTakeover, audit } from './account-access.ts';
+import type { MailOptions } from './account-mail.ts';
 import { registerAppearanceRoutes } from './appearance.ts';
 import { createCollaboration } from './collaboration.ts';
 import { registerRuns } from './runs.ts';
@@ -45,6 +50,7 @@ type Auth = {
 declare module 'fastify' {
   interface FastifyInstance {
     runWorkflowAutomation(): Promise<void>;
+    runAccountMail(): Promise<void>;
   }
   interface FastifyRequest {
     auth?: Auth;
@@ -60,6 +66,7 @@ type AppOptions = {
   databaseUrl?: string;
   managedSecrets?: boolean;
   automation?: AutomationOptions;
+  mail?: MailOptions;
 };
 const id = () => randomUUID();
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -69,6 +76,8 @@ const publicPaths = new Set([
   '/api/v1/auth/login',
   '/api/v1/auth/invitations/accept',
   '/api/v1/auth/recovery/complete',
+  '/api/v1/auth/recovery/request',
+  '/api/v1/auth/email/complete',
   '/api/v1/setup',
 ]);
 const defaultStatuses = [
@@ -88,6 +97,8 @@ function rowUser(row: any) {
     name: row.name,
     email: row.email,
     instanceAdmin: row.instance_admin,
+    avatarVersion: row.avatar_version ?? 0,
+    hasAvatar: Boolean(row.has_avatar),
   };
 }
 function rowSpace(row: any, role?: Role) {
@@ -100,6 +111,7 @@ function rowSpace(row: any, role?: Role) {
     version: row.version,
     archived: Boolean(row.archived_at),
     role: role ?? row.role,
+    ...(row.takeover ? { takeover: true } : {}),
   };
 }
 function rowStatus(row: any) {
@@ -247,32 +259,127 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     const methods = Array.isArray(route.method) ? route.method : [route.method];
     if (
       !route.url.startsWith('/api/v1') ||
-      methods.every((method) => ['GET', 'HEAD', 'OPTIONS'].includes(method))
+      methods.every((method) => ['HEAD', 'OPTIONS'].includes(method))
     )
       return;
     const handler = route.handler;
     route.handler = async function (request, reply) {
-      return withTransaction(db, async () => {
-        const params = request.params as Record<string, string>;
-        let spaceId = params?.spaceId;
-        if (!spaceId && params?.taskId)
-          spaceId = (await db.query('SELECT space_id FROM tasks WHERE id=$1', [params.taskId]))
-            .rows[0]?.space_id;
-        if (!spaceId && params?.statusId)
-          spaceId = (await db.query('SELECT space_id FROM statuses WHERE id=$1', [params.statusId]))
-            .rows[0]?.space_id;
-        // Small trusted teams favor deterministic space mutations over parallel
-        // writes racing permission changes, state migration and task claims.
-        if (spaceId) {
-          const space = await db.query('SELECT id,archived_at FROM spaces WHERE id=$1 FOR UPDATE', [
-            spaceId,
-          ]);
-          if (space.rows[0]?.archived_at && !request.url.split('?')[0].endsWith('/restore'))
-            throw new BoardError('SPACE_ARCHIVED', '归档空间不能修改', 409);
-        }
-        return handler.call(this, request, reply);
-      });
+      const execute = () =>
+        withAccountAccess(request.auth, async () => {
+          if (
+            request.headers['x-taskboard-account-id'] &&
+            request.headers['x-taskboard-account-id'] !== request.auth?.id
+          )
+            throw new BoardError('ACCOUNT_CHANGED', '账号已变更，请重新打开个人设置', 409);
+          if (request.method === 'GET') {
+            const result = await handler.call(this, request, reply);
+            const params = request.params as Record<string, string>;
+            const readSpaceId =
+              params?.spaceId ??
+              (params?.taskId
+                ? (await db.query('SELECT space_id FROM tasks WHERE id=$1', [params.taskId]))
+                    .rows[0]?.space_id
+                : undefined);
+            if (
+              readSpaceId &&
+              request.auth &&
+              (await activeTakeover(db, readSpaceId, request.auth.id))
+            ) {
+              reply.header('cache-control', 'no-store');
+              await audit(db, request.auth.id, 'space.takeover_read', readSpaceId, route.url);
+            }
+            return result;
+          }
+          return withTransaction(db, async () => {
+            if (
+              request.url.startsWith('/api/v1/admin/') ||
+              /\/transfer-owner$/.test(request.url.split('?')[0]) ||
+              (request.method === 'POST' && request.url === '/api/v1/spaces')
+            )
+              await db.query(
+                "SELECT pg_advisory_xact_lock(hashtext('taskboard:account-governance'))",
+              );
+            const creatingSpace = request.method === 'POST' && request.url === '/api/v1/spaces';
+            if (request.auth && (request.url.startsWith('/api/v1/admin/') || creatingSpace)) {
+              const current = await db.query(
+                'SELECT 1 FROM users u JOIN sessions s ON s.user_id=u.id JOIN devices d ON d.id=s.device_id WHERE u.id=$1 AND ($3::boolean OR u.instance_admin) AND u.archived_at IS NULL AND s.id=$2 AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND d.revoked_at IS NULL',
+                [
+                  request.auth.id,
+                  request.auth.agent ? null : (request.auth.sessionId ?? null),
+                  creatingSpace,
+                ],
+              );
+              if (!current.rowCount)
+                throw creatingSpace
+                  ? new BoardError('UNAUTHENTICATED', '会话已失效，请重新登录', 401)
+                  : new BoardError('FORBIDDEN', '此操作需要有效的最高管理员网页登录会话', 403);
+            }
+            const params = request.params as Record<string, string>;
+            let spaceId = params?.spaceId;
+            if (!spaceId && params?.taskId)
+              spaceId = (await db.query('SELECT space_id FROM tasks WHERE id=$1', [params.taskId]))
+                .rows[0]?.space_id;
+            if (!spaceId && params?.statusId)
+              spaceId = (
+                await db.query('SELECT space_id FROM statuses WHERE id=$1', [params.statusId])
+              ).rows[0]?.space_id;
+            // Small trusted teams favor deterministic space mutations over parallel
+            // writes racing permission changes, state migration and task claims.
+            if (spaceId) {
+              const space = await db.query(
+                'SELECT id,archived_at FROM spaces WHERE id=$1 FOR UPDATE',
+                [spaceId],
+              );
+              if (
+                space.rows[0]?.archived_at &&
+                !/\/(restore|takeover|transfer-owner)$/.test(request.url.split('?')[0])
+              )
+                throw new BoardError('SPACE_ARCHIVED', '归档空间不能修改', 409);
+            }
+            const result = await handler.call(this, request, reply);
+            if (
+              request.auth &&
+              /^\/api\/v1\/admin\/(instance|account|secrets\/reveal|recovery)$/.test(
+                request.url.split('?')[0],
+              )
+            )
+              await audit(
+                db,
+                request.auth.id,
+                route.url.endsWith('/secrets/reveal')
+                  ? 'instance.secrets_revealed'
+                  : route.url.endsWith('/recovery')
+                    ? 'recovery.link_issued'
+                    : route.url.endsWith('/account')
+                      ? 'account.legacy_updated'
+                      : 'instance.settings_updated',
+                'instance',
+                route.url,
+              );
+            if (spaceId && request.auth && (await activeTakeover(db, spaceId, request.auth.id)))
+              await audit(
+                db,
+                request.auth.id,
+                'space.takeover_write',
+                spaceId,
+                request.method + ' ' + route.url,
+              );
+            return result;
+          });
+        });
+      return execute();
     };
+  });
+  app.addHook('onError', async (request, _reply, error) => {
+    if (request.auth && request.url.startsWith('/api/v1/admin/'))
+      await audit(
+        db,
+        request.auth.id,
+        'admin.request_failed',
+        request.url.split('?')[0],
+        error instanceof BoardError ? error.code : 'REQUEST_FAILED',
+        'denied',
+      ).catch(() => app.log.error('Could not persist failed administrator request audit'));
   });
   app.register(cookie, { secret, hook: 'onRequest' });
   app.register(rateLimit, { global: true, max: 300, timeWindow: '1 minute' });
@@ -291,6 +398,10 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
       if (found.rowCount) {
         const u = found.rows[0];
         request.auth = { ...rowUser(u), deviceId: u.device_id, agent: true };
+        await db.query(
+          "UPDATE devices SET last_active_at=now() WHERE id=$1 AND (last_active_at IS NULL OR last_active_at<now()-interval '1 minute')",
+          [u.device_id],
+        );
         return;
       }
     }
@@ -310,6 +421,10 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
             agent: false,
             sessionId: unsigned.value,
           };
+          await db.query(
+            "UPDATE devices SET last_active_at=now() WHERE id=$1 AND (last_active_at IS NULL OR last_active_at<now()-interval '1 minute')",
+            [u.device_id],
+          );
           return;
         }
       }
@@ -363,20 +478,17 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     return { data };
   }
   async function member(spaceId: string, userId: string) {
-    const found = await db.query(
-      'SELECT role FROM space_members WHERE space_id=$1 AND user_id=$2',
-      [spaceId, userId],
-    );
-    if (!found.rowCount) throw new BoardError('FORBIDDEN', '没有此空间的访问权限', 403);
-    return found.rows[0].role as Role;
+    return spaceRole(db, spaceId, userId);
   }
   async function taskAndRole(taskId: string, userId: string) {
-    const result = await db.query(
-      `SELECT t.*, m.role FROM tasks t JOIN space_members m ON m.space_id=t.space_id AND m.user_id=$2 WHERE t.id=$1`,
-      [taskId, userId],
-    );
+    const result = await db.query('SELECT t.* FROM tasks t WHERE t.id=$1', [taskId]);
     if (!result.rowCount) throw new BoardError('NOT_FOUND', '任务不存在或无权访问', 404);
-    return result.rows[0];
+    const role = await member(result.rows[0].space_id, userId).catch((error: unknown) => {
+      if (error instanceof BoardError && error.code === 'FORBIDDEN')
+        throw new BoardError('NOT_FOUND', '任务不存在或无权访问', 404);
+      throw error;
+    });
+    return { ...result.rows[0], role };
   }
   function assertWrite(request: FastifyRequest) {
     const key = request.headers['idempotency-key'];
@@ -488,6 +600,25 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   automation.register(app);
   app.decorate('runWorkflowAutomation', automation.runOnce);
   registerAppearanceRoutes(app, { db, stored, saveIdempotency });
+  registerAccountRoutes(app, {
+    db,
+    stored,
+    saveIdempotency,
+    origin: effectiveOrigin,
+    mail: options.mail,
+    recheck: recheckSubscriptions,
+    changed: (userId) =>
+      afterCommit(() => {
+        void db
+          .query('SELECT space_id FROM space_members WHERE user_id=$1', [userId])
+          .then((result) =>
+            result.rows.forEach((row) =>
+              emit(row.space_id, { type: 'member.profile_changed', userId }),
+            ),
+          )
+          .catch(() => app.log.error('Could not publish profile invalidation'));
+      }),
+  });
   registerInstanceRoutes(app, {
     db,
     setupToken: options.setupToken,
@@ -519,7 +650,14 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
       database: 'ok',
       serverVersion: serverManifest.version,
       apiVersion: 1,
-      capabilities: { collaborativeWorkflows: ready ? COLLABORATION_PROTOCOL : 0 },
+      capabilities: {
+        collaborativeWorkflows: ready ? COLLABORATION_PROTOCOL : 0,
+        accountCenter: (
+          await db.query('SELECT 1 FROM schema_migrations WHERE id=$1', [ACCOUNT_CENTER_MIGRATION])
+        ).rowCount
+          ? ACCOUNT_CENTER_PROTOCOL
+          : 0,
+      },
       migrationRequired: !ready,
     });
   });
@@ -548,12 +686,10 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     const user = found.rows[0];
     const deviceId = id();
     const rawToken = input.tokenKind === 'agent' ? `${randomUUID()}${randomUUID()}` : null;
-    await db.query('INSERT INTO devices (id,user_id,name,token_hash) VALUES ($1,$2,$3,$4)', [
-      deviceId,
-      user.id,
-      input.deviceName,
-      rawToken ? sha(rawToken) : null,
-    ]);
+    await db.query(
+      'INSERT INTO devices (id,user_id,name,token_hash,last_active_at) VALUES ($1,$2,$3,$4,now())',
+      [deviceId, user.id, input.deviceName, rawToken ? sha(rawToken) : null],
+    );
     if (input.tokenKind === 'browser') {
       const sessionId = id();
       await db.query(
@@ -594,6 +730,12 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
       name: request.auth!.name,
       email: request.auth!.email,
       instanceAdmin: request.auth!.instanceAdmin,
+      ...(
+        await db.query(
+          'SELECT avatar_version,EXISTS(SELECT 1 FROM user_avatars WHERE user_id=$1) has_avatar FROM users WHERE id=$1',
+          [request.auth!.id],
+        )
+      ).rows.map((row) => ({ avatarVersion: row.avatar_version, hasAvatar: row.has_avatar }))[0],
     }),
   );
   app.post('/api/v1/auth/invitations/accept', async (request, reply) => {
@@ -614,7 +756,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     );
     const userId = await withTransaction(db, async (client) => {
       const invitation = await client.query(
-        'SELECT * FROM invitations WHERE token_hash=$1 AND used_at IS NULL AND expires_at>now() FOR UPDATE',
+        'SELECT * FROM invitations WHERE token_hash=$1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at>now() FOR UPDATE',
         [sha(input.token)],
       );
       if (
@@ -667,6 +809,26 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
         await hash(input.password, { algorithm: Algorithm.Argon2id }),
         found.rows[0].user_id,
       ]);
+      if (
+        !(
+          await c.query('SELECT 1 FROM users WHERE id=$1 AND archived_at IS NULL', [
+            found.rows[0].user_id,
+          ])
+        ).rowCount
+      )
+        throw new BoardError('INVALID_RECOVERY', '恢复链接无效或已过期', 400);
+      await c.query(
+        'UPDATE account_verifications SET used_at=now() WHERE user_id=$1 AND used_at IS NULL',
+        [found.rows[0].user_id],
+      );
+      await c.query(
+        'UPDATE recovery_links SET used_at=now() WHERE user_id=$1 AND used_at IS NULL',
+        [found.rows[0].user_id],
+      );
+      await c.query('UPDATE space_takeovers SET revoked_at=now() WHERE user_id=$1', [
+        found.rows[0].user_id,
+      ]);
+      await audit(db, found.rows[0].user_id, 'password.recovered', found.rows[0].user_id);
       await c.query('UPDATE recovery_links SET used_at=now() WHERE id=$1', [found.rows[0].id]);
       await c.query('UPDATE sessions SET revoked_at=now() WHERE user_id=$1', [
         found.rows[0].user_id,
@@ -680,8 +842,9 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   });
 
   app.get('/api/v1/devices', async (r, p) => {
+    if (r.auth!.agent) throw new BoardError('FORBIDDEN', '设备会话仅供用户界面访问', 403);
     const devices = await db.query(
-      'SELECT id,name,created_at,revoked_at FROM devices WHERE user_id=$1 ORDER BY created_at DESC',
+      'SELECT id,name,created_at,revoked_at,last_active_at FROM devices WHERE user_id=$1 ORDER BY created_at DESC',
       [r.auth!.id],
     );
     return ok(
@@ -691,6 +854,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
         name: d.name,
         createdAt: d.created_at,
         revokedAt: d.revoked_at,
+        lastActiveAt: d.last_active_at,
         current: d.id === r.auth!.deviceId,
       })),
     );
@@ -735,8 +899,16 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
 
   app.get('/api/v1/spaces', async (request, reply) => {
     const result = await db.query(
-      `SELECT s.*,m.role FROM spaces s JOIN space_members m ON m.space_id=s.id WHERE m.user_id=$1 AND ($2::boolean OR s.archived_at IS NULL) ORDER BY s.updated_at DESC`,
-      [request.auth!.id, (request.query as { archived?: string }).archived === 'true'],
+      `SELECT s.*,(g.id IS NOT NULL) takeover,CASE WHEN m.role='owner' THEN 'owner' WHEN g.id IS NOT NULL THEN 'admin' ELSE m.role END role
+       FROM spaces s LEFT JOIN space_members m ON m.space_id=s.id AND m.user_id=$1
+       LEFT JOIN LATERAL (SELECT g.id FROM space_takeovers g JOIN users u ON u.id=g.user_id
+         WHERE g.space_id=s.id AND g.user_id=$1 AND g.session_id=$3 AND g.revoked_at IS NULL AND g.expires_at>clock_timestamp() AND u.instance_admin AND u.archived_at IS NULL LIMIT 1) g ON true
+       WHERE (m.user_id IS NOT NULL OR g.id IS NOT NULL) AND ($2::boolean OR s.archived_at IS NULL) ORDER BY s.updated_at DESC`,
+      [
+        request.auth!.id,
+        (request.query as { archived?: string }).archived === 'true',
+        request.auth!.agent ? null : (request.auth!.sessionId ?? null),
+      ],
     );
     return ok(
       reply,
@@ -783,13 +955,16 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
         spaceId,
       ]),
       db.query(
-        'SELECT u.id,u.name,u.email,sm.role FROM space_members sm JOIN users u ON u.id=sm.user_id WHERE sm.space_id=$1 ORDER BY u.name',
+        'SELECT u.id,u.name,u.email,u.avatar_version,EXISTS(SELECT 1 FROM user_avatars a WHERE a.user_id=u.id) has_avatar,sm.role FROM space_members sm JOIN users u ON u.id=sm.user_id WHERE sm.space_id=$1 ORDER BY u.name',
         [spaceId],
       ),
     ]);
     if (!s.rowCount) throw new BoardError('NOT_FOUND', '空间不存在', 404);
     return ok(reply, {
       space: rowSpace(s.rows[0], role),
+      takeover: await activeTakeover(db, spaceId, request.auth!.id).then((grant) =>
+        grant ? { id: grant.id, spaceId, expiresAt: grant.expires_at.toISOString() } : null,
+      ),
       statuses: st.rows.map(rowStatus),
       tasks: t.rows.map(rowTask),
       members: m.rows.map((x: any) => ({ ...rowUser(x), role: x.role })),
@@ -849,7 +1024,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     const { spaceId } = r.params as any;
     await member(spaceId, r.auth!.id);
     const found = await db.query(
-      'SELECT u.id,u.name,u.email,u.instance_admin,sm.role FROM space_members sm JOIN users u ON u.id=sm.user_id WHERE sm.space_id=$1',
+      'SELECT u.id,u.name,u.email,u.instance_admin,u.avatar_version,EXISTS(SELECT 1 FROM user_avatars a WHERE a.user_id=u.id) has_avatar,sm.role FROM space_members sm JOIN users u ON u.id=sm.user_id WHERE sm.space_id=$1',
       [spaceId],
     );
     return ok(
@@ -941,10 +1116,10 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     const input = body(r, z.object({ userId: z.string().uuid() }).strict());
     await withTransaction(db, async (client) => {
       const target = await client.query(
-        'SELECT 1 FROM space_members WHERE space_id=$1 AND user_id=$2',
+        'SELECT 1 FROM space_members m JOIN users u ON u.id=m.user_id WHERE m.space_id=$1 AND m.user_id=$2 AND u.archived_at IS NULL',
         [spaceId, input.userId],
       );
-      if (!target.rowCount) throw new BoardError('NOT_FOUND', '目标成员不存在', 404);
+      if (!target.rowCount) throw new BoardError('NOT_FOUND', '目标成员不存在或已停用', 404);
       await client.query("UPDATE space_members SET role='admin' WHERE space_id=$1 AND user_id=$2", [
         spaceId,
         r.auth!.id,
@@ -1354,7 +1529,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
         'SELECT 1 FROM space_members WHERE space_id=$1 AND user_id=$2',
         [spaceId, auth.id],
       );
-      return Boolean(membership.rowCount);
+      return Boolean(membership.rowCount || (await activeTakeover(db, spaceId, auth.id, auth)));
     };
     let queue = Promise.resolve();
     const send = (event: unknown) => {

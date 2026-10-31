@@ -12,5 +12,6 @@
 | [0006 · 同级工作区视图](0006-peer-workspace-views.md) | 看板与完整会话工作区互斥呈现 |
 | [0007 · 协作任务与运行分离](0007-collaborative-task-workflows.md) | 多人责任、人类验收、父子依赖、领取/运行分离和持久通知 |
 | [0008 · Codex 结构兼容](0008-codex-structure-compatibility.md) | 原生身份后按有限结构契约自检，侧栏与草稿分开授权 |
+| [0009 · 账号中心](0009-account-center.md) | 资料隐私、邮件安全、最高权限与限时空间接管 |
 
 [返回文档索引](../README.md)

@@ -179,7 +179,7 @@ describe.skipIf(!databaseUrl)('browser server initialization and administration'
     const otherCookie = String(otherLogin.headers['set-cookie']).split(';')[0];
     const updated = {
       name: 'Updated Owner',
-      email: 'updated@example.test',
+      email,
       currentPassword: password,
       newPassword: nextPassword,
     };
@@ -231,6 +231,7 @@ describe.skipIf(!databaseUrl)('browser server initialization and administration'
       '0007_run_recovery',
       '0008_run_permissions',
       '0009_active_workflow_intervals',
+      '0010_account_center',
     ]);
   });
 });

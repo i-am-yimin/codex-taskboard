@@ -92,8 +92,16 @@ import './collaboration.css';
 import './workflow.css';
 import './glass.css';
 import './themes.css';
-import { AppearanceSettings } from './AppearanceSettings';
-import { useAppearance, type AppearanceController } from './useAppearance';
+import {
+  AccountCenter,
+  AccountMenu,
+  ForgotPassword,
+  VerifyEmail,
+  MemberProfile,
+  UserAvatar,
+} from './AccountCenter';
+import { request } from './api';
+import { useAppearance } from './useAppearance';
 
 const query = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -136,7 +144,6 @@ const semanticName: Record<Semantic, string> = {
   cancelled: '已取消',
 };
 const priorityName = ['无优先级', '紧急', '高', '普通'];
-const initials = (name: string) => name.slice(0, 1);
 
 function App() {
   useEmbeddedReadyResponder();
@@ -150,6 +157,23 @@ function App() {
   const [inboxOpen, setInboxOpen] = useState(false);
   const [automationOpen, setAutomationOpen] = useState(false);
   const [serverAdmin, setServerAdmin] = useState(location.hash === '#admin');
+  const [accountOpen, setAccountOpen] = useState(location.hash.startsWith('#account'));
+  const [routeHash, setRouteHash] = useState(location.hash);
+  useEffect(() => {
+    const navigate = () => {
+      if (!window.dispatchEvent(new Event('taskboard:account-navigation', { cancelable: true })))
+        return;
+      setRouteHash(location.hash);
+      setServerAdmin(location.hash === '#admin');
+      setAccountOpen(location.hash.startsWith('#account'));
+    };
+    window.addEventListener('hashchange', navigate);
+    window.addEventListener('popstate', navigate);
+    return () => {
+      window.removeEventListener('hashchange', navigate);
+      window.removeEventListener('popstate', navigate);
+    };
+  }, []);
   const [newTask, setNewTask] = useState(false);
   const [newSpace, setNewSpace] = useState(false);
   const [drawer, setDrawer] = useState<string | null>(
@@ -184,6 +208,8 @@ function App() {
   const userQuery = useQuery({
     queryKey: ['me'],
     networkMode: 'always',
+    refetchInterval: (query) => (!isDemo && query.state.data ? 30000 : false),
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       if (isDemo) return demoUser;
       try {
@@ -276,7 +302,7 @@ function App() {
       if (isDemo) return makeDemoBoard();
       try {
         const board = await api.board(spaceId);
-        if (user) cacheBoard(user.id, board);
+        if (user && !board.takeover) cacheBoard(user.id, board);
         setShowingCached(false);
         return board;
       } catch (err) {
@@ -330,11 +356,37 @@ function App() {
     }
   }, [offlineSession, user]);
   useEffect(() => {
-    if (!isDemo && user && spacesQuery.data && board && !boardQuery.error && !showingCached) {
+    if (
+      !isDemo &&
+      user &&
+      spacesQuery.data &&
+      board &&
+      !board.takeover &&
+      !boardQuery.error &&
+      !showingCached
+    ) {
       saveOfflineSnapshot(user, spacesQuery.data, board);
       setOfflineSession(readOfflineSnapshot());
     }
   }, [board, showingCached, spacesQuery.data, user]);
+  useEffect(() => {
+    if (!board?.takeover) return;
+    const grant = board.takeover;
+    const cleanup = () => {
+      setDrawer(null);
+      setSpaceId('');
+      setServerAdmin(true);
+      client.removeQueries({ queryKey: ['task'] });
+      client.removeQueries({ queryKey: ['board', user?.id, grant.spaceId] });
+      void client.invalidateQueries({ queryKey: ['spaces', user?.id] });
+      void client.invalidateQueries({ queryKey: ['me'] });
+    };
+    const timer = setTimeout(
+      cleanup,
+      Math.max(0, new Date(grant.expiresAt).getTime() - Date.now()) + 50,
+    );
+    return () => clearTimeout(timer);
+  }, [board?.takeover?.id, board?.takeover?.expiresAt, client, user?.id]);
   useEffect(() => {
     if (
       !isDemo &&
@@ -570,6 +622,29 @@ function App() {
     }
     location.href = location.pathname;
   };
+  if (routeHash.startsWith('#verify='))
+    return <VerifyEmail token={new URLSearchParams(location.hash.slice(1)).get('verify') ?? ''} />;
+  if (routeHash === '#forgot')
+    return (
+      <ForgotPassword
+        onBack={() => {
+          location.hash = '';
+          location.reload();
+        }}
+      />
+    );
+  if (user && !userQuery.error && accountOpen)
+    return (
+      <AccountCenter
+        user={user}
+        appearance={appearance}
+        demo={isDemo}
+        onClose={() => {
+          setAccountOpen(false);
+          history.replaceState(null, '', location.pathname + location.search);
+        }}
+      />
+    );
   if (
     userQuery.isLoading ||
     (user && spacesQuery.isLoading) ||
@@ -596,7 +671,20 @@ function App() {
   if (user?.instanceAdmin && !isDemo && !hasLocalCompanion() && serverAdmin)
     return (
       <ServerAdministration
+        key={user.id}
         user={user}
+        onAccount={() => {
+          setServerAdmin(false);
+          setAccountOpen(true);
+          history.replaceState(null, '', '#account/profile');
+        }}
+        onOpenSpace={(grant) => {
+          setServerAdmin(false);
+          setSpaceId(grant.spaceId);
+          client.invalidateQueries({ queryKey: ['spaces', user.id] });
+          client.invalidateQueries({ queryKey: ['board', user.id, grant.spaceId] });
+          history.replaceState(null, '', `?space=${grant.spaceId}`);
+        }}
         onClose={() => {
           setServerAdmin(false);
           history.replaceState(null, '', location.pathname + location.search);
@@ -606,14 +694,18 @@ function App() {
   if (!isDemo && spacesQuery.data?.length === 0)
     return (
       <>
-        {user?.instanceAdmin && !hasLocalCompanion() && (
-          <button
-            className="button ghost server-management-shortcut"
-            onClick={() => setServerAdmin(true)}
-          >
-            <Settings size={16} />
-            服务器管理
-          </button>
+        {user && (
+          <div className="server-management-shortcut">
+            <AccountMenu
+              user={user}
+              onAccount={() => {
+                setAccountOpen(true);
+                history.replaceState(null, '', '#account/profile');
+              }}
+              onAdmin={() => setServerAdmin(true)}
+              onLogout={logout}
+            />
+          </div>
         )}
         {compatibilityNotice}
         <EmptySpace
@@ -677,8 +769,15 @@ function App() {
           <Settings size={19} />
         </button>
         <div className="rail-fill" />
-        <button className="avatar mine" title={user?.name}>
-          {initials(user?.name ?? '我')}
+        <button
+          className="avatar mine"
+          title="个人设置"
+          onClick={() => {
+            setAccountOpen(true);
+            history.replaceState(null, '', '#account/profile');
+          }}
+        >
+          <UserAvatar user={user!} />
         </button>
       </aside>
       <section className="workspace">
@@ -735,6 +834,18 @@ function App() {
             )}
           </div>
           <div className="topbar-right">
+            <AccountMenu
+              user={user!}
+              onAccount={() => {
+                setAccountOpen(true);
+                history.replaceState(null, '', '#account/profile');
+              }}
+              onAdmin={() => {
+                setServerAdmin(true);
+                history.replaceState(null, '', '#admin');
+              }}
+              onLogout={logout}
+            />
             <button
               className="button ghost"
               aria-label={`收件箱${unreadNotifications ? `，已加载 ${unreadNotifications} 条未读` : ''}`}
@@ -769,6 +880,32 @@ function App() {
             </button>
           </div>
         </header>
+        {board.takeover && (
+          <div className="takeover-banner" role="status">
+            <span>
+              正在接管此空间 · {new Date(board.takeover.expiresAt).toLocaleTimeString()} 到期 ·
+              内容不作离线保存
+            </span>
+            <button
+              className="button ghost"
+              onClick={async () => {
+                try {
+                  await request(`/admin/spaces/${board.space.id}/takeover`, { method: 'DELETE' });
+                  client.removeQueries({ queryKey: ['task'] });
+                  setDrawer(null);
+                  client.removeQueries({ queryKey: ['board', user!.id, board.space.id] });
+                  setSpaceId('');
+                  setServerAdmin(true);
+                  await client.invalidateQueries({ queryKey: ['spaces', user!.id] });
+                } catch (error) {
+                  setNotice(error instanceof Error ? error.message : '退出接管失败');
+                }
+              }}
+            >
+              退出接管
+            </button>
+          </div>
+        )}
         <div className="page-head">
           <div>
             <p className="eyebrow">
@@ -971,6 +1108,11 @@ function App() {
       )}
       {settings && (
         <SettingsPanel
+          onAccountAppearance={() => {
+            setSettings(false);
+            setAccountOpen(true);
+            history.replaceState(null, '', '#account/appearance');
+          }}
           onServerAdmin={
             user?.instanceAdmin && !isDemo && !hasLocalCompanion()
               ? () => setServerAdmin(true)
@@ -979,7 +1121,6 @@ function App() {
           board={board}
           demo={isDemo}
           offline={taskReadOnly}
-          appearance={appearance}
           onClose={() => {
             appearance.cancel();
             setSettings(false);
@@ -1372,7 +1513,7 @@ function TaskCardContent({ task, members }: { task: Task; members: Member[] }) {
           <i /> {priorityName[task.priority]}
         </span>
         <span className="task-no">TB-{task.number}</span>
-        {assignee && <span className="avatar small">{initials(assignee.name)}</span>}
+        {assignee && <UserAvatar user={assignee} className="small" />}
       </span>
     </>
   );
@@ -1411,7 +1552,7 @@ function ListView({
             <span>
               {member ? (
                 <>
-                  <i className="avatar small">{initials(member.name)}</i>
+                  <UserAvatar user={member} className="small" />
                   {member.name}
                 </>
               ) : (
@@ -1530,29 +1671,27 @@ function NewTask({
 }
 
 function SettingsPanel({
+  onAccountAppearance,
   onServerAdmin,
   board,
   demo,
   offline,
-  appearance,
   onClose,
   onRefresh,
   onNotice,
   onLogout,
 }: {
+  onAccountAppearance: () => void;
   onServerAdmin?: () => void;
   board: Board;
   demo: boolean;
   offline: boolean;
-  appearance: AppearanceController;
   onClose: () => void;
   onRefresh: () => void;
   onNotice: (s: string) => void;
   onLogout: () => void;
 }) {
-  const [section, setSection] = useState<
-    'space' | 'members' | 'statuses' | 'connection' | 'appearance'
-  >('space');
+  const [section, setSection] = useState<'space' | 'members' | 'statuses' | 'connection'>('space');
   const [name, setName] = useState(board.space.name);
   const [icon, setIcon] = useState(board.space.icon);
   const [color, setColor] = useState(board.space.color);
@@ -1584,10 +1723,7 @@ function SettingsPanel({
         </header>
         <div className="settings-body">
           <nav className="settings-nav">
-            <button
-              className={section === 'appearance' ? 'active' : ''}
-              onClick={() => setSection('appearance')}
-            >
+            <button onClick={onAccountAppearance}>
               <Sparkles size={16} />
               外观与主题
             </button>
@@ -1627,7 +1763,6 @@ function SettingsPanel({
             </button>
           </nav>
           <div className="settings-content">
-            {section === 'appearance' && <AppearanceSettings controller={appearance} />}
             {section === 'space' && (
               <>
                 <h3>空间信息</h3>
@@ -1794,7 +1929,7 @@ function Members({
       <div className="members">
         {members.map((m) => (
           <div className="member" key={m.id}>
-            <span className="avatar">{initials(m.name)}</span>
+            <MemberProfile user={m} />
             <div>
               <b>{m.name}</b>
               <small>{m.email}</small>
@@ -2082,6 +2217,15 @@ function Onboarding({ error }: { error?: string }) {
               {busy && <LoaderCircle className="spin" size={15} />}登录并继续
             </button>
           </form>
+          <button
+            className="button ghost"
+            onClick={() => {
+              location.hash = 'forgot';
+              location.reload();
+            }}
+          >
+            忘记密码
+          </button>
           <button
             className="demo-link"
             onClick={() => (location.href = `${location.pathname}?demo=1`)}
