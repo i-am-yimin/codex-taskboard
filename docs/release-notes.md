@@ -1,8 +1,10 @@
 # 发布记录
 
-## Codex Taskboard 客户端 0.1.11（待发布）
+## Codex Taskboard 客户端 0.1.11（未签名预发布）
 
-准备日期：2026-10-31。用户中心、服务器治理与已准备的 Codex 窗口恢复修复统一归入 0.1.11。修复后 CI、实际安装及原账号恢复通过，现按授权进入固定标签发布流程；发布日期和下载地址按实际发布填写。
+发布日期：2026-11-01。Windows x64 未签名预发布，用户中心、服务器治理与 Codex 窗口恢复修复统一归入本版。
+
+[下载安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.11/Codex.Taskboard_0.1.11_x64-setup.exe) · [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.11/SHA256SUMS) · [公开 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.11)
 
 ### 用户中心
 
@@ -31,7 +33,7 @@
 
 ### 兼容、部署与备份
 
-配套服务器候选为 `0.1.5-preview.1`，需要 `accountCenter: 1` 及 `0010_account_center`、`0011_account_recovery_hardening` 增量迁移。升级保留原账号、权限、任务、主题和有效会话；历史邮箱标记待验证，不强制阻断已有用户登录。网页恢复只发送邮件，旧明文链接入口停用并清理旧幂等响应；服务器 CLI 应急恢复保留，新链接 30 分钟有效。旧服务端禁用不支持的新能力并提示升级，原主题设置保留。客户端安装不会自动升级服务器或生产数据库。
+配套服务器已独立发布为 `0.1.5-preview.1`，需要 `accountCenter: 1` 及 `0010_account_center`、`0011_account_recovery_hardening` 增量迁移。升级保留原账号、权限、任务、主题和有效会话；历史邮箱标记待验证，不强制阻断已有用户登录。网页恢复只发送邮件，旧明文链接入口停用并清理旧幂等响应；服务器 CLI 应急恢复保留，新链接 30 分钟有效。旧服务端禁用不支持的新能力并提示升级，原主题设置保留。客户端安装不会自动升级服务器或生产数据库。
 
 邮件服务新增独立 `TASKBOARD_ENCRYPTION_KEY`；托管初始化生成并持久保留 `encryption-key`。SMTP 密码和待发邮件正文使用 AES-256-GCM 加密，备份必须同时保存数据库和该密钥。密钥丢失后旧密文不可恢复，重新配置 SMTP 需显式替换或清除密码。SMTP 未配置或不可用时，已有登录和管理员 CLI 恢复继续可用。操作见[用户中心与部署说明](account-center.md)。
 
@@ -41,7 +43,9 @@
 
 窗口恢复的原生窗口/进程模块独立复验 12 项通过、2 项辅助入口忽略；完整 Cargo/Tauri、只读诊断及最终安装包分别记录。按既有安排，安装版功能复测留到 0.1.11 发布后，覆盖可见/最小化/最大化恢复、隐藏窗口不显示、重复连接、歧义与归属变化拒绝。镜像、原生包、真实 SMTP 投递和生产部署不得用用户中心源码结果代替；发布仍执行既有 CI 与审批门禁。
 
-官方 global/thread UI 合成原型继续作为开发工具，不纳入产品运行时。CI 与本机候选通过后，固定标签发布包与公开下载仍遵守既有发布工作流及维护者审批。
+固定来源 `e13d7b341f1a1ce3d990276a4485a67066b27b87`；安装器 SHA-256 `4b41e735ec8ffbe5db2ff3af978b280cc32e5715de0917e21e777555e4ed34d3`。最终固定标签安装器已实装，17 个当前载荷逐项匹配，原账号/凭据保留，普通 WebView 启动成功且无诊断参数。全部五项资产、校验和、严格 GitHub 来源证明和匿名下载通过。Linux 归档逐层摘要与 SPDX 通过；独立 server 镜像索引 `sha256:9bab96d7482d378562fe7b304952cdbffeeeccbb90001e34ff6dfd682417ad72`，公开匿名元数据、版本和附属 provenance/SBOM 已核验。服务端发布工作流通过独立部署演练。
+
+[客户端发布工作流](https://github.com/i-am-yimin/codex-taskboard/actions/runs/41217669135) · [服务器发布工作流](https://github.com/i-am-yimin/codex-taskboard/actions/runs/41217676152)。官方 global/thread UI 合成原型继续作为开发工具，不纳入产品运行时。
 
 [更新日志](../CHANGELOG.md) · [验收记录](acceptance-0.1.11.md) · [窗口诊断与修复范围](acceptance-codex-window-restore.md)
 

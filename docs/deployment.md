@@ -21,9 +21,9 @@ docker compose up -d
 
 管理员密码经标准输入提供，至少 12 字符。初始化只在没有实例管理员时成功。进入域名登录，创建空间，然后生成邀请链接交给可信成员。不要将示例域名或密码用于实际部署。
 
-尚未发布镜像时使用 `docker compose build`；正式发布后可使用固定版本镜像。默认单个 API 实例，不宣称支持多副本水平扩容。SSE 需要代理即时转发，示例 Caddy 已配置。
+本节从源码构建使用 `docker compose build`；使用已发布 `server-0.1.5-preview.1` 镜像的新实例按[OpenResty 手册](deployment-openresty.md)部署。默认单个 API 实例，不宣称支持多副本水平扩容。SSE 需要代理即时转发，示例 Caddy 已配置。
 
-Compose 设置 `TRUST_PROXY=1`，仅信任紧邻应用的一跳 Caddy，并且应用不映射宿主机端口。直接运行 API 时不设置此变量；不要在公开 API 端口前使用这一配置，否则客户端可能伪造来源地址。镜像标签不带 `v`（例如 `0.1.0`），Git 标签带 `v`。
+Compose 设置 `TRUST_PROXY=1`，仅信任紧邻应用的一跳 Caddy，并且应用不映射宿主机端口。直接运行 API 时不设置此变量；不要在公开 API 端口前使用这一配置，否则客户端可能伪造来源地址。独立服务器镜像标签如 `server-0.1.5-preview.1`，Git 标签为 `vserver-0.1.5-preview.1`，客户端标签独立维护。
 
 ## 备份与恢复
 

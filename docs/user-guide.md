@@ -1,26 +1,26 @@
 # 使用手册
 
-**0.1.11 开发候选**新增[用户中心与服务器治理](account-center.md)：右上角账号菜单进入个人设置，维护头像、名称、联系方式、邮箱、密码、主题与设备。配套服务器候选 `0.1.5-preview.1`，验收进度见 [0.1.11 记录](acceptance-0.1.11.md)。此候选尚未发布，下面的固定公开下载保持 0.1.10。
+**0.1.11** 新增[用户中心与服务器治理](account-center.md)：右上角账号菜单进入个人设置，维护头像、名称、联系方式、邮箱、密码、主题与设备。配套服务器 `0.1.5-preview.1` 已独立发布；固定标签产物与实装证据见 [0.1.11 验收](acceptance-0.1.11.md)。
 
-适用客户端 **0.1.10**。公开独立服务端仍为 **0.1.3-preview.1**，新协作需要另行升级到支持协议 1 的服务端。更新日期：2026-10-30。
+适用客户端 **0.1.11 未签名预发布**，配套公开独立服务端 **0.1.5-preview.1**。客户端与服务器分别升级。更新日期：2026-11-01。
 
-[下载](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.10) · [服务端部署](deployment-openresty.md) · [更新日志](../CHANGELOG.md)
+[下载](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.11) · [服务端部署](deployment-openresty.md) · [更新日志](../CHANGELOG.md)
 
 ## 多人协作与服务器兼容
 
-本节适用于已公开的 **0.1.10 客户端**，协作需要协议 1。配套独立 **0.1.4-preview.1 服务端候选**已有授权实例的部署验收，但尚未公开独立镜像。已发布的 0.1.7 安装包及 0.1.3-preview.1 服务端保持原固定来源，后者只覆盖既有能力，不声明支持本节协作协议。协作与安装范围见 [0.1.8 验收](acceptance-0.1.8.md)、[0.1.9 实装记录](acceptance-0.1.9.md)及 [0.1.10 实装记录](acceptance-0.1.10.md)。
+本节适用于 **0.1.11 客户端**。公开服务端 `0.1.5-preview.1` 提供协作协议 1 和用户中心能力；历史客户端及镜像仍保持原固定来源。当前证据与限制见 [0.1.11 验收](acceptance-0.1.11.md)。
 
 **0.1.10**改善 Codex 缓存会话的看板切换与刷新恢复：已识别的编辑器短暂加载时，入口会暂不可用，完整检查恢复后才可打开；隐藏页草稿也会阻止需要重载的操作。本机已完成授权原位安装与原账号恢复，实际产品入口、缓存页、刷新和冷草稿均已核验；诊断方式和配置调查限制见 [0.1.10 记录](acceptance-0.1.10.md)。
 
 ### 先核对服务器兼容性
 
-0.1.10 连接后读取服务器 `/api/v1/health`：保留健康状态，另读取独立 serverVersion、apiVersion 和 `capabilities.collaborativeWorkflows`。服务器仅在 `0005_collaborative_workflows`、`0006_workflow_services`、`0007_run_recovery`、`0008_run_permissions`、`0009_active_workflow_intervals` 齐全后声明协作协议 1；版本字符串本身不算能力证明。
+0.1.11 连接后读取服务器 `/api/v1/health`：保留健康状态，另读取独立 serverVersion、apiVersion 和 `capabilities.collaborativeWorkflows`。服务器仅在 `0005_collaborative_workflows`、`0006_workflow_services`、`0007_run_recovery`、`0008_run_permissions`、`0009_active_workflow_intervals` 齐全后声明协作协议 1；版本字符串本身不算能力证明。用户中心另核对 `capabilities.accountCenter: 1`，需要 `0010_account_center`、`0011_account_recovery_hardening` 迁移。
 
 旧 health 缺少能力、协议不匹配或迁移未齐全时，界面明确显示“服务器需要升级”。基础看板与本机草稿保留，只读浏览仍可用；新的协作写入、通知/自动化等不兼容接口暂停。升级后点“重新检查服务器”恢复，不需要清草稿。网络探测失败显示“暂时无法确认服务器兼容性”，不会把断网诊断成旧版本。任务本身的 404 仍显示任务错误。
 
 浏览器和 taskctl 每次共享写入/新运行启动前重新检查当前服务器，不使用上次成功或离线缓存能力授权。登录、退出、连接配置、CLI configure/probe 保留；兼容探测不额外阻止已有运行的查询/取消，但原有在线成员、领取人、原设备和进程归属校验仍然有效，不能据此承诺断网时取消可用。演示模式使用显式合成状态，不访问真实服务器来取得能力。
 
-管理员升级需先停写并备份当前数据库/密钥，在独立测试副本验证候选迁移，再更新配套客户端与服务器；正常服务启动按顺序自动迁移，不需重新初始化账号。不要将公开的 `server-0.1.3-preview.1` 镜像误写为已包含本地候选。旧客户端对新服务器的直接状态跳转/缺需求修订提交可能被拒绝，不能绕过权限或验收。数据库回退须停写并恢复一致备份，不通过在线删新增表降级。
+管理员升级需先停写并备份当前数据库/密钥，在独立测试副本验证增量迁移，再更新配套客户端与服务器；正常服务启动按顺序自动迁移，不需重新初始化账号。使用已发布的 `server-0.1.5-preview.1` 镜像；邮件配置还需独立持久加密密钥，托管部署先运行 `init`，备份见[用户中心说明](account-center.md#邮件服务)。旧客户端对新服务器的直接状态跳转/缺需求修订提交可能被拒绝，不能绕过权限或验收。数据库回退须停写并恢复一致备份，不通过在线删新增表降级。
 
 ### 分工、拆分与验收
 
@@ -74,11 +74,11 @@ Taskboard 保存共享任务，Codex 保留本机项目和聊天。安装客户�
 - 自己部署：按[部署文档](deployment-openresty.md)启动服务，配置 HTTPS，并在网页创建首个管理员。
 - 只用浏览器：登录同一 HTTPS 地址即可管理任务；浏览器不负责打开或接入本机 Codex。
 
-Windows 包为未签名预发布版。早前本机候选（未含发布阶段三份 CSS 修正）的独立 Codex 精确验收版本为 `26.1021.3705.0`；CI 最终包的独立载荷与随包运行时已核验，未再次原位安装。Taskboard 与 Codex 分别登录，普通使用无需另装 Node.js、pnpm 或 Codex CLI。
+Windows 包为未签名预发布版。0.1.11 固定标签最终安装器已实际安装，原账号和普通 WebView 保留；载荷、随包运行时、来源证明与匿名下载均已核验。账号原生流程与实际 Codex 窗口专项的证据范围见[验收记录](acceptance-0.1.11.md)。Taskboard 与 Codex 分别登录，普通使用无需另装 Node.js、pnpm 或 Codex CLI。
 
 ## 安装与登录
 
-1. 下载 [Windows x64 0.1.10 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.10/Codex.Taskboard_0.1.10_x64-setup.exe)和 [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.10/SHA256SUMS)，核对摘要后安装，无需登录 GitHub。
+1. 下载 [Windows x64 0.1.11 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.11/Codex.Taskboard_0.1.11_x64-setup.exe)和 [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.11/SHA256SUMS)，核对摘要后安装，无需登录 GitHub。
 2. 打开 **Codex Taskboard**，填写服务器根地址，点击 **“保存服务器”**。
 3. 输入 Taskboard 邮箱与密码，点击 **“登录并继续”**。选择或创建空间，确认 **“已同步”** 后再修改任务；团队成员由管理员邀请加入。
 
