@@ -1,6 +1,6 @@
 # 0.1.11 版本验收记录
 
-状态：修复后 CI 与本机候选验收通过，已获授权进入固定标签发布流程，尚未公开发布；客户端 0.1.11，服务器 0.1.5-preview.1。准备与独立验收日期：2026-10-31。
+状态：客户端 0.1.11 未签名预发布与独立服务器 0.1.5-preview.1 已公开。源码/CI、账号原生流程、固定标签最终包实装、原账号保留、来源证明和匿名下载通过。准备验收日期：2026-10-31；公开发布与最终包验收：2026-11-01。
 
 本版合并用户中心/服务器治理提交 `cadd9ff` 与既有窗口恢复准备提交 `5501cc6`，两者基于 `origin/main` 的 `dfe6b50`。远端准备分支统一为 `codex/fix-codex-hidden-window`；账号功能先在 `codex/account-center` 验收。最终功能提交 `03eca8a` 包含资料/邮箱并发补验和后台刷新输入保护，已重新完成 CI、实际安装及原账号恢复。阶段候选 `2f109c1` 已被替代；固定标签发布包另按既有门禁验收。
 
@@ -9,7 +9,7 @@
 - 用户中心、账号安全、设备会话、主题入口迁移；邀请制用户治理、SMTP、限时空间接管和持久审计。
 - Codex 隐藏 Chromium 窗口导致恢复歧义的修复，及原生正负回归用例；只读窗口元数据与身份边界见[专项记录](acceptance-codex-window-restore.md)。
 - 根客户端、网页、桌面包、Tauri、Rust 包及本包锁文件版本统一为 0.1.11；服务器独立为 `0.1.5-preview.1`，新增 `0010_account_center`、`0011_account_recovery_hardening` 增量迁移与 Nodemailer/sharp 依赖。
-- [更新日志](../CHANGELOG.md)与[发布说明](release-notes.md#codex-taskboard-客户端-0111待发布)统一记录两项工作。官方 global/thread UI 合成原型继续留在开发工具中，不纳入产品运行时。
+- [更新日志](../CHANGELOG.md)与[发布说明](release-notes.md#codex-taskboard-客户端-0111未签名预发布)统一记录两项工作。官方 global/thread UI 合成原型继续留在开发工具中，不纳入产品运行时。
 
 ## 验收环境与数据
 
@@ -72,11 +72,29 @@
 
 当前通过范围为源码、真实 PostgreSQL、独立浏览器、编译后生产服务器、真实 TLS/STARTTLS SMTP 协议、容器部署演练及 CI 安装器的本机实装。未执行外部邮件提供商的收件箱投递、生产服务器升级或日常 Codex 内容操作。原生 SMTP 接受与真正收件箱送达分别记录。
 
-此前默认 PATH 未提供 Cargo，后在仓库忽略目录找到便携工具链，只在任务 PowerShell 进程设置环境并补跑两个原生模块。完整 Cargo/Tauri、NSIS 与容器门禁随后在 CI 通过，CI 安装器也已本机实装；固定发布标签产物仍需按发布工作流另验。生产构建保留既有的大 chunk 提示，依赖审计的 high 门槛通过，仍有 12 项较低级别报告。
+此前默认 PATH 未提供 Cargo，后在仓库忽略目录找到便携工具链，只在任务 PowerShell 进程设置环境并补跑两个原生模块。完整 Cargo/Tauri、NSIS 与容器门禁随后在 CI 通过，CI 安装器也已本机实装；固定标签发布产物已另行验收，见下节。生产构建保留既有的大 chunk 提示，依赖审计的 high 门槛通过，仍有 12 项较低级别报告。
 
 原生模块复验使用本机忽略目录中的 `native-window-check.rs`，仅通过 `#[path]` 引入上述两个生产文件，执行 `rustc --test --edition=2021` 后串行运行测试。首次完整 Cargo 尝试因指定了不存在的 linker 路径失败；修正到便携工具链已有的 `link.exe` 后可编译。完整依赖冷构建未在本机作为通过结果，完整 Cargo 门禁交由 CI；诊断、编译和模块结果分别保存在 `.artifacts/acceptance-0.1.11/`。
 
 本机由已验 CI 候选升级为 0.1.11，源码与说明统一更新远端准备分支。公开标签、Release 与服务端发布遵守仓库现有审批，CI 候选与固定标签发布产物分别记录。数据库与独立加密密钥的备份要求见[用户中心说明](account-center.md#邮件服务)。
+
+## 固定标签与公开发布验收（2026-11-01）
+
+[PR #24](https://github.com/i-am-yimin/codex-taskboard/pull/24) 已合并；客户端 `v0.1.11` 与独立服务器 `vserver-0.1.5-preview.1` 均固定于 `e13d7b341f1a1ce3d990276a4485a67066b27b87`。合并源码 [CI](https://github.com/i-am-yimin/codex-taskboard/actions/runs/41217653884) 全部通过。既有 release 环境审核规则保留，仅增加这两个精确标签的部署策略；按维护者明确授权完成两次审批，没有 bypass。旧标签、Release 和资产摘要保持。
+
+| 范围 | 结果与证据 |
+| --- | --- |
+| 客户端发布 | [固定标签工作流](https://github.com/i-am-yimin/codex-taskboard/actions/runs/41217669135) 五项 job 全部成功；[Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.11) 为公开未签名预发布，未改为稳定版。 |
+| 安装器 | `Codex.Taskboard_0.1.11_x64-setup.exe`，24,980,308 字节，SHA-256 `4b41e735ec8ffbe5db2ff3af978b280cc32e5715de0917e21e777555e4ed34d3`；安装器和主程序均 `NotSigned`。官方 artifact ZIP 摘要、发布资产摘要和完整匿名下载逐项匹配。 |
+| 来源证明 | 5 项资产、4 个不同摘要，含两份相同 SPDX；官方 `gh attestation verify` 严格核对源码/签署提交、标签、工作流、OIDC 和 GitHub hosted runner，精确 invocationId 指向本次 run/attempt。全部校验和匹配。 |
+| 最终 Linux 归档 | SHA-256 `912f7644a2b2783e0f61e6d042900266595aa2e10b76ccb8d5a2b0b6fd702506`；逐层 blob/diffId、linux/amd64、node 用户、入口和 package.json 固定源码逐字节核验，SPDX 非空有效。此归档为客户端标签构建，部署使用独立 server 镜像。 |
+| 最终运行时 | NSIS 安全提取的 17 个当前载荷已核验；全部 runtime 文件与已实测 `03eca8a` 候选字节相同，相关 Git 源码树一致。实际用最终随包 Node/companion/CLI 执行中文、空格长路径与 ESM 场景检查通过。原生主程序另外核对版本、摘要及实际安装。 |
+| 最终 NSIS 实装 | 安装前确认 Taskboard 已处于关闭状态；对当前数据/WebView 新做 DPAPI 加密冷备份并验证解密摘要。最终安装一次退出 0，17 项载荷及安装注册匹配。NSIS 保留的旧哈希资源逐项匹配本轮备份且不被新入口引用。原账号/凭据和 WebView 在普通启动前逐字节不变。 |
+| 普通启动 | 用原安装目录、原账号和原 WebView 正常启动；伴随服务身份和回环监听核验通过，未加诊断参数。原账号/凭据字节保留，当前日常 Codex 的路径和创建时间保持。只读观察启动页，不代填或提交真实登录。 |
+| 独立服务器 | [发布工作流](https://github.com/i-am-yimin/codex-taskboard/actions/runs/41217676152) 成功，包含托管首次部署验证。匿名 GHCR 元数据核验版本/提交标签同摘要、平台、node 用户、入口、固定 revision/version 与 provenance/SPDX subject。索引 `sha256:9bab96d7482d378562fe7b304952cdbffeeeccbb90001e34ff6dfd682417ad72`，linux/amd64 manifest `sha256:bd9477b5b637f7a52c80b9491f62b3499443c5372eba9d54a0e9d61c3ef46aef`。未升级生产实例。 |
+| 公开下载 | 不带 Authorization 或 Cookie 访问公开 Release 页面、API、SHA256SUMS 和完整安装器；全部资产元数据、下载大小和 SHA-256 匹配，旧版标签与资产保持。 |
+
+账号故障流程在 `03eca8a` 实际安装候选执行；最终 runtime 字节一致、最终原生程序已另行实装和普通启动，不把来源等价写成新一轮完整原生账号操作。实际 Codex 窗口专项仍按下节发布后复测，未操作日常 Codex 内容；外部收件箱投递不在已验范围。私有备份、原始证据和校验收据留在本机忽略目录。
 
 ## 窗口恢复的安装版复测
 

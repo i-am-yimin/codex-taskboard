@@ -2,14 +2,15 @@
 
 嵌入 Codex 侧栏的任务看板。共享待办、进度和验收，保留原有项目与聊天，适合个人多设备和可信团队协作。
 
-[下载 0.1.10](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.10) · [使用手册](docs/user-guide.md) · [服务端部署](docs/deployment-openresty.md) · [文档索引](docs/README.md) · [更新日志](CHANGELOG.md) · [English](README.en.md)
+[下载 0.1.11](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.11) · [使用手册](docs/user-guide.md) · [服务端部署](docs/deployment-openresty.md) · [文档索引](docs/README.md) · [更新日志](CHANGELOG.md) · [English](README.en.md)
 
 ![看板预览](docs/screenshots/board-0.1.10-synthetic.png)
 
-> 0.1.10 已发布：多人分工、任务拆分与依赖、提交验收、通知和自动规则；采用原创标识、克制动效及窄窗口布局，并改善 Codex 缓存会话的切换与刷新恢复。见[版本验收](docs/acceptance-0.1.10.md)。
+> 0.1.11 已发布：新增用户中心、邮箱安全流程、设备会话、SMTP 与最高管理员治理，并修复 Codex 隐藏窗口造成的恢复歧义。配套服务端 0.1.5-preview.1 已独立发布。见[版本验收](docs/acceptance-0.1.11.md)。
 
 ## 产品功能
 
+- **用户中心**：头像、显示名称、私有联系方式、邮箱与密码、主题、设备会话；最高管理员在服务器网页管理用户、邀请和空间。
 - **任务管理**：工作与个人空间、看板与列表、优先级、检查清单、评论和活动记录。
 - **多人协作**：总负责人、参与者与验收人，父子任务和依赖，人工确认的拆分提案，领取、运行、提交与人工验收。
 - **通知与规则**：个人任务、评论提及、持久收件箱、稍后/静音和系统提醒请求，以及管理员配置的自动规则和等待区间统计。
@@ -17,7 +18,7 @@
 - **任务执行**：日常模式手动复制需求到 Codex；随包 CLI 可另行登录后读取、领取和回写。独立测试环境保留自动草稿能力。
 - **离线浏览**：查看已缓存任务、保留本机草稿，联网后再保存；支持浅色、深色和系统主题。
 
-Windows 客户端为 **0.1.10 未签名预发布版**。早前本机候选（未含发布阶段三份 CSS 修正）已在独立 Codex `26.1021.3705.0` 实装验收；固定标签 CI 包另经载荷、随包运行时和来源证明核验，未对当前普通安装原位重装。新协作需要协议 1 与 0005—0009 迁移；公开独立服务端仍为 `0.1.3-preview.1`，需另行升级才能启用新协作。当前不提供完整离线编辑、自动发送消息、完整聊天同步、历史会话跳转或 GitHub 自动同步。
+Windows 客户端为 **0.1.11 未签名预发布版**，配套独立服务端为 **0.1.5-preview.1**。固定标签最终安装器已实际安装，随包运行时、来源证明及匿名下载已核验，原账号数据保留；用户中心原生故障流程与最终包证据分别见[验收记录](docs/acceptance-0.1.11.md)。协作需要协议 1，用户中心需要 `accountCenter: 1` 和 0001—0011 迁移，客户端安装不会升级服务器。实际 Codex 窗口专项复测保留发布后安排。当前不提供完整离线编辑、自动发送消息、完整聊天同步、历史会话跳转或 GitHub 自动同步。
 
 ## 使用手册
 
@@ -29,7 +30,7 @@ Windows 客户端为 **0.1.10 未签名预发布版**。早前本机候选（未
 
 ### 2. 安装并登录 Windows 客户端
 
-下载 [Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.10/Codex.Taskboard_0.1.10_x64-setup.exe)并核对[校验和](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.10/SHA256SUMS)。安装后打开 **Codex Taskboard**，填写 HTTPS 根地址并点“保存服务器”，再点“登录并继续”。看到“已同步”后再修改任务，无需另装 Node.js、pnpm 或 Codex CLI。
+下载 [Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.11/Codex.Taskboard_0.1.11_x64-setup.exe)并核对[校验和](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.11/SHA256SUMS)。安装后打开 **Codex Taskboard**，填写 HTTPS 根地址并点“保存服务器”，再点“登录并继续”。看到“已同步”后再修改任务，无需另装 Node.js、pnpm 或 Codex CLI。
 
 ### 3. 连接本机项目与 Codex
 
@@ -56,9 +57,9 @@ Windows 客户端为 **0.1.10 未签名预发布版**。早前本机候选（未
 ```bash
 mkdir taskboard-server
 cd taskboard-server
-curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.3-preview.1/compose.openresty.yaml --output compose.yaml
-curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.3-preview.1/deploy/openresty.conf --output openresty.conf
-printf '%s\n' 'TASKBOARD_VERSION=server-0.1.3-preview.1' 'TASKBOARD_IMAGE=ghcr.io/i-am-yimin/codex-taskboard' 'TASKBOARD_PORT=47830' > .env
+curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.5-preview.1/compose.openresty.yaml --output compose.yaml
+curl --fail --location https://raw.githubusercontent.com/i-am-yimin/codex-taskboard/vserver-0.1.5-preview.1/deploy/openresty.conf --output openresty.conf
+printf '%s\n' 'TASKBOARD_VERSION=server-0.1.5-preview.1' 'TASKBOARD_IMAGE=ghcr.io/i-am-yimin/codex-taskboard' 'TASKBOARD_PORT=47830' > .env
 docker compose pull
 docker compose up -d
 docker compose logs --tail=100 app

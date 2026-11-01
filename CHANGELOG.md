@@ -6,9 +6,9 @@
 
 - 官方 UI 合成原型已在独立 Codex 完成 global/thread 界面显示、握手与任务展开验证；仍未接入真实业务账号，不进入 0.1.11 产品运行时，见[原型说明](docs/codex-plugin-ui-probe.md)。
 
-## 0.1.11 — 待发布 · 用户中心、服务器治理与 Codex 窗口恢复
+## 0.1.11 — 2026-11-01 · 用户中心、服务器治理与 Codex 窗口恢复
 
-准备日期：2026-10-31。用户中心与既有窗口恢复修复统一纳入本版；修复后 CI、安装版与配套镜像候选已完成独立验收，发布按固定标签与现有审批门禁执行。
+Windows x64 未签名预发布。用户中心、服务器治理与 Codex 窗口恢复修复统一纳入本版；固定标签最终安装器已实际安装、原账号保留，公开下载与来源证明已核验。[下载 0.1.11](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.11)。
 
 ### 新增与体验
 
@@ -29,7 +29,7 @@
 
 ### 兼容与升级
 
-- 配套服务器候选为 `0.1.5-preview.1`，增加 `accountCenter: 1` 能力声明与 `0010_account_center`、`0011_account_recovery_hardening` 增量迁移；保留历史账号、权限、任务、主题和有效会话，历史邮箱待验证但不阻断登录。
+- 配套服务器已独立发布为 `0.1.5-preview.1`，增加 `accountCenter: 1` 能力声明与 `0010_account_center`、`0011_account_recovery_hardening` 增量迁移；保留历史账号、权限、任务、主题和有效会话，历史邮箱待验证但不阻断登录。
 - SMTP 在管理页配置，环境变量优先；邮件凭据和待发正文使用独立持久加密密钥。备份需同时保留数据库和密钥；客户端安装不会自动升级服务器。
 - 旧服务器继续保留原有主题能力，用户中心与新治理功能提示升级；旧邮箱修改接口不再绕过验证。
 
@@ -37,9 +37,18 @@
 
 - 修复后功能提交 `03eca8a` 的 CI：353 项测试、170 项 E2E、真实 PostgreSQL、TLS/STARTTLS SMTP、生产迁移/主题/离线、完整 Cargo/Tauri 与容器部署门禁通过；1 项平台相关用例跳过，未计为通过。
 - 已用修复后的 CI 安装器实际升级，验证原生后台刷新输入保留、恢复读取、保存重开和权限失效隐藏，并恢复原账号与普通启动。头像、设备、主题与网页入口的阶段实装结果及固定标签产物分别记录；详细证据见验收记录。
-- Codex 窗口恢复的生产 Win32 模块正负回归通过；实际 Codex 安装版复测仍按原安排单列，不以账号界面结果代替。当前未公开发布，外部收件箱投递、生产服务器升级与固定标签公开资产另验。
+- Codex 窗口恢复的生产 Win32 模块正负回归通过；实际 Codex 安装版复测仍按原安排单列，不以账号界面结果代替。固定标签全部资产、严格来源证明、最终 NSIS 实装、随包运行时及匿名下载通过；外部收件箱投递与生产服务器升级不在已验范围。
 
-[0.1.11 发布说明](docs/release-notes.md#codex-taskboard-客户端-0111待发布) · [验收记录](docs/acceptance-0.1.11.md) · [用户中心说明](docs/account-center.md) · [窗口问题诊断](docs/acceptance-codex-window-restore.md)
+[0.1.11 发布说明](docs/release-notes.md#codex-taskboard-客户端-0111未签名预发布) · [验收记录](docs/acceptance-0.1.11.md) · [用户中心说明](docs/account-center.md) · [窗口问题诊断](docs/acceptance-codex-window-restore.md)
+
+## 服务端 0.1.5-preview.1 — 2026-11-01 · 用户中心与实例治理
+
+- 发布 Linux amd64 镜像 `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.5-preview.1`；固定标签 `vserver-0.1.5-preview.1`，源码 `e13d7b341f1a1ce3d990276a4485a67066b27b87`，OCI 索引 `sha256:9bab96d7482d378562fe7b304952cdbffeeeccbb90001e34ff6dfd682417ad72`。
+- 增加协作协议 1、用户中心、邮件安全流程和治理；旧库按顺序执行 0005—0011 增量迁移，保留原账号和有效会话。历史邮箱待验证但不阻断登录。
+- 新增独立持久邮件加密密钥，托管升级先执行 `init`；升级前备份数据库、状态卷和配置。跨版本回退须恢复一致备份，不继承旧版仅新增主题表的回退承诺。
+- 发布工作流完成独立部署演练，匿名镜像元数据、平台、版本、provenance 和 SBOM 已核验；未升级现有生产实例。
+
+[部署与备份](docs/deployment-openresty.md) · [验收记录](docs/acceptance-0.1.11.md)
 
 ## 0.1.10 — 2026-10-30 · 多人任务流与 Codex 兼容
 

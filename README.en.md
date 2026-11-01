@@ -2,12 +2,13 @@
 
 A task board embedded in the Codex sidebar. Share tasks, progress and human review across devices and trusted teams while keeping existing Codex projects and conversations.
 
-[简体中文](README.md) · [Download 0.1.10](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.10) · [User guide](docs/user-guide.md) · [Deployment](docs/deployment-openresty.md) · [Documentation](docs/README.md) · [Changelog](CHANGELOG.md)
+[简体中文](README.md) · [Download 0.1.11](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.11) · [User guide](docs/user-guide.md) · [Deployment](docs/deployment-openresty.md) · [Documentation](docs/README.md) · [Changelog](CHANGELOG.md)
 
 ![Taskboard preview](docs/screenshots/board-0.1.10-synthetic.png)
 
 ## Features and status
 
+- Account settings for avatars, display names, private contact visibility, email security, appearance and device sessions; web-only instance administration.
 - Work and personal spaces, board and list views, priorities, checklists, comments and activity.
 - Role-based access, one accountable owner, multiple contributors and a reviewer; subtasks, dependencies and human-confirmed proposals.
 - Separate claims, real local runs, submissions and human acceptance; personal views, mentions, inbox, reminders and automation rules.
@@ -15,14 +16,14 @@ A task board embedded in the Codex sidebar. Share tasks, progress and human revi
 - Switch between the board and the complete conversation workspace as peer views; selecting the board again keeps it open.
 - Cached read-only browsing and local drafts, with four themes, light/dark modes and optional account appearance sync.
 
-The Windows client is **0.1.10, an unsigned public pre-release**. The earlier local candidate, before three final CSS layout corrections, was installed and tested with independent Codex `26.1021.3705.0`; the final CI package has separate payload, bundled-runtime and provenance verification, without another in-place installation. New collaboration requires protocol 1 and migrations 0005–0009. The public independent server remains **0.1.3-preview.1** and requires a separate upgrade for these features. See the [acceptance index](docs/acceptance.md) for evidence and limits.
+The Windows client is **0.1.11, an unsigned public pre-release**, paired with the independently published **0.1.5-preview.1 server**. The fixed-tag installer was installed and its payload, bundled runtime, provenance and anonymous download verified, preserving original account data. Collaboration requires protocol 1; the account center requires `accountCenter: 1` and migrations 0001–0011. Installing the client does not upgrade the server. Native account behavior and final-package evidence are recorded separately; focused Codex window restoration checks remain scheduled after publication. See the [acceptance record](docs/acceptance-0.1.11.md) for scope and limits.
 
 Daily Codex mode uses manual task copying and sending. Agent task writes require a separate CLI login; automatic unsent draft insertion remains limited to the verified independent test environment. Full offline editing, automatic message sending, complete chat synchronization, historical conversation navigation and GitHub synchronization are not available.
 
 ## Get started
 
 1. Obtain a reachable Taskboard HTTPS server and an account or invitation. The desktop installer does not create a hosted server or account; Taskboard and Codex have separate sign-ins.
-2. Download the [Windows x64 installer](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.10/Codex.Taskboard_0.1.10_x64-setup.exe) and verify [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.10/SHA256SUMS). It bundles its runtime; desktop users do not need system Node.js or pnpm.
+2. Download the [Windows x64 installer](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.11/Codex.Taskboard_0.1.11_x64-setup.exe) and verify [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.11/SHA256SUMS). It bundles its runtime; desktop users do not need system Node.js or pnpm.
 3. Save the server root URL in Taskboard and sign in. Map the repository to an existing local folder, then click “连接 Codex” in the main Taskboard window. If prompted, save your work and normally exit Codex once so Taskboard can continue.
 4. After connection, ordinary Taskboard startup can restore the sidebar. This preference can be disabled in Settings → Connections and devices; “打开 Codex” returns to the original window.
 5. Claim a task, manually copy its requirements to the intended Codex project, review and send, then submit the result in Taskboard for human acceptance. Optional CLI automation requires a separate login and known full task IDs; follow the [CLI instructions](docs/user-guide.md#agent-cli).
