@@ -16,6 +16,9 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   ArrowLeft,
   Check,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
   LoaderCircle,
   LogOut,
   Monitor,
@@ -133,17 +136,34 @@ export function ServerWebsiteLink({
     },
     gcTime: 0,
   });
-  if (!target.data)
-    return <span role="status">{target.error ? '无法读取服务器地址' : '正在读取服务器地址…'}</span>;
+  // Keep the Radix item's element and ref stable while its destination loads.
   return (
     <a
       {...anchorProps}
-      className={className}
-      href={`${target.data}/#${hash}`}
+      className={`${className}${target.error ? ' server-website-unavailable' : ''}`}
+      href={target.data ? `${target.data}/#${hash}` : undefined}
+      aria-disabled={!target.data || undefined}
+      aria-busy={target.isPending || undefined}
+      title={
+        !target.data
+          ? target.error
+            ? '无法读取服务器地址，请重试'
+            : '正在读取服务器地址…'
+          : anchorProps.title
+      }
+      onClick={(event) => {
+        if (!target.data) event.preventDefault();
+        else anchorProps.onClick?.(event);
+      }}
       target="_blank"
       rel="noopener noreferrer"
     >
       {children}
+      {target.error && (
+        <span className="server-website-status" role="status">
+          无法读取服务器地址，请重新打开重试
+        </span>
+      )}
     </a>
   );
 }
@@ -167,6 +187,7 @@ export function AccountMenu({
           <button type="button" className="account-menu-trigger" aria-label="账号菜单">
             <UserAvatar user={user} />
             <span className="account-menu-name">{user.name}</span>
+            <ChevronDown className="account-menu-chevron" size={14} aria-hidden="true" />
           </button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
@@ -176,10 +197,17 @@ export function AccountMenu({
             sideOffset={8}
             collisionPadding={16}
           >
-            <p>{user.email}</p>
+            <DropdownMenu.Label className="account-menu-identity">
+              <UserAvatar user={user} />
+              <span>
+                <strong>{user.name}</strong>
+                <span>{user.email}</span>
+              </span>
+            </DropdownMenu.Label>
+            <DropdownMenu.Separator className="account-menu-separator" />
             <DropdownMenu.Item asChild onSelect={onAccount}>
-              <button>
-                <UserRound size={16} />
+              <button className="account-menu-item">
+                <UserRound size={17} aria-hidden="true" />
                 个人设置
               </button>
             </DropdownMenu.Item>
@@ -187,19 +215,24 @@ export function AccountMenu({
               user.instanceAdmin &&
               (hasLocalCompanion() ? (
                 <DropdownMenu.Item asChild>
-                  <ServerWebsiteLink>服务器管理</ServerWebsiteLink>
+                  <ServerWebsiteLink className="account-menu-item">
+                    <ShieldCheck size={17} aria-hidden="true" />
+                    服务器管理
+                    <ExternalLink className="account-menu-external" size={14} aria-hidden="true" />
+                  </ServerWebsiteLink>
                 </DropdownMenu.Item>
               ) : (
                 <DropdownMenu.Item asChild onSelect={onAdmin}>
-                  <button>
-                    <ShieldCheck size={16} />
+                  <button className="account-menu-item">
+                    <ShieldCheck size={17} aria-hidden="true" />
                     服务器管理
                   </button>
                 </DropdownMenu.Item>
               ))}
+            <DropdownMenu.Separator className="account-menu-separator" />
             <DropdownMenu.Item asChild onSelect={onLogout}>
-              <button>
-                <LogOut size={16} />
+              <button className="account-menu-item">
+                <LogOut size={17} aria-hidden="true" />
                 退出登录
               </button>
             </DropdownMenu.Item>
@@ -272,11 +305,11 @@ export function MemberProfile({ user }: { user: User }) {
 }
 
 type Section = 'profile' | 'security' | 'appearance' | 'devices';
-const sections: [Section, string, typeof UserRound][] = [
-  ['profile', '个人资料', UserRound],
-  ['security', '账号安全', ShieldCheck],
-  ['appearance', '外观与主题', Sparkles],
-  ['devices', '设备与会话', Monitor],
+const sections: [Section, string, typeof UserRound, string][] = [
+  ['profile', '个人资料', UserRound, '头像、显示名称与联系方式'],
+  ['security', '账号安全', ShieldCheck, '邮箱验证与登录密码'],
+  ['appearance', '外观与主题', Sparkles, '主题、明暗模式与布局'],
+  ['devices', '设备与会话', Monitor, '查看与退出登录设备'],
 ];
 export function AccountCenter({
   user,
@@ -295,6 +328,19 @@ export function AccountCenter({
     sections.some(([key]) => key === initial) ? initial : 'profile',
   );
   const [mobileDetail, setMobileDetail] = useState(Boolean(initial));
+  const navigationRef = useRef<HTMLElement>(null);
+  const mobileBackRef = useRef<HTMLButtonElement>(null);
+  const navigationState = useRef(`${section}:${mobileDetail}`);
+  useEffect(() => {
+    const nextState = `${section}:${mobileDetail}`;
+    if (navigationState.current === nextState) return;
+    navigationState.current = nextState;
+    if (!matchMedia('(max-width: 759px)').matches) return;
+    const target = mobileDetail
+      ? mobileBackRef.current
+      : navigationRef.current?.querySelector<HTMLButtonElement>('[aria-current="page"]');
+    target?.focus();
+  }, [section, mobileDetail]);
   const [dirty, setDirty] = useState(false);
   const dirtyForms = useRef(new Set<string>());
   const reportDirty = useCallback((id: string, value: boolean) => {
@@ -379,8 +425,10 @@ export function AccountCenter({
       value={server.data ? { origin: server.data, userId: user.id } : undefined}
     >
       <DirtyForms.Provider value={reportDirty}>
-        <main className={`account-center ${mobileDetail ? 'account-detail-open' : ''}`}>
-          <header className="account-header">
+        <main
+          className={`account-center console-shell ${mobileDetail ? 'account-detail-open' : ''}`}
+        >
+          <header className="account-header console-header">
             <button
               className="button ghost"
               onClick={() => {
@@ -394,27 +442,39 @@ export function AccountCenter({
               返回看板
             </button>
             <h1>个人设置</h1>
-            <span className="muted account-header-user">{user.name}</span>
+            <div className="console-identity">
+              <UserAvatar user={user} />
+              <span>
+                <strong>{user.name}</strong>
+                <span>{user.email}</span>
+              </span>
+            </div>
           </header>
-          <div className="account-layout">
-            <nav className="account-nav" aria-label="个人设置分类">
-              {sections.map(([key, label, Icon]) => (
+          <div className="account-layout console-layout">
+            <nav ref={navigationRef} className="account-nav console-nav" aria-label="个人设置分类">
+              {sections.map(([key, label, Icon, description]) => (
                 <button
                   key={key}
+                  aria-label={label}
                   aria-current={section === key ? 'page' : undefined}
                   onClick={() => choose(key)}
                 >
-                  <Icon size={18} />
-                  {label}
+                  <Icon size={18} aria-hidden="true" />
+                  <span>
+                    <strong>{label}</strong>
+                    <small>{description}</small>
+                  </span>
+                  <ChevronRight className="console-nav-chevron" size={16} aria-hidden="true" />
                 </button>
               ))}
             </nav>
             <section
-              className="account-content"
+              className="account-content console-content"
               aria-label={sections.find(([key]) => key === section)?.[1]}
             >
               <button
                 className="button ghost account-mobile-back"
+                ref={mobileBackRef}
                 onClick={() => {
                   if (confirmLeave()) {
                     appearance.cancel();

@@ -1,0 +1,302 @@
+/* Space navigation, task controls and task content have separate visual weight. */
+:root .app-shell .topbar {
+  gap: 24px;
+  min-height: 64px;
+  height: auto;
+  padding-block: 8px;
+}
+:root .app-shell .space-switcher-wrap {
+  flex: 1;
+  min-width: 0;
+}
+:root .app-shell .space-switcher {
+  min-width: 0;
+  min-height: 44px;
+}
+.space-switcher > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.space-switcher > :is(i, svg) {
+  flex-shrink: 0;
+}
+:root .app-shell .topbar-right {
+  gap: 4px;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+}
+:root .app-shell .topbar-tool {
+  min-height: 44px;
+  padding-inline: 12px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+:root .app-shell .topbar-tool:hover {
+  background: var(--tint);
+}
+:root .app-shell .topbar-right > .icon-button {
+  width: 44px;
+  height: 44px;
+}
+.topbar-right .connection {
+  margin-inline: 12px;
+  white-space: nowrap;
+}
+.topbar-right .account-menu {
+  padding-left: 8px;
+  margin-left: 4px;
+  border-left: 1px solid var(--divider);
+}
+.account-menu-trigger:hover,
+.account-menu-trigger[data-state='open'] {
+  background: var(--tint);
+}
+.account-menu-chevron {
+  color: var(--muted);
+}
+.rail-account {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+}
+.rail-account:hover {
+  background: var(--tint);
+}
+.app-shell .banner > .button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+:root .app-shell .page-head {
+  padding: 28px var(--page-gutter) 20px;
+  align-items: center;
+  gap: 16px;
+}
+.page-head > div:first-child {
+  min-width: 0;
+}
+.page-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+:root .page-title h1 {
+  font-size: 28px;
+  letter-spacing: -0.03em;
+}
+.page-title .result-count {
+  flex-basis: auto;
+  margin: 0;
+  white-space: nowrap;
+}
+.workspace-description {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  max-width: 65ch;
+}
+:root .app-shell .toolbar {
+  gap: 8px;
+  padding: 0 var(--page-gutter) 16px;
+  border: 0;
+}
+:root .app-shell .search {
+  flex: 1 1 240px;
+  width: auto;
+  min-width: 160px;
+  max-width: 480px;
+  height: 44px;
+}
+:root .app-shell .toolbar select {
+  min-height: 44px;
+  max-width: 200px;
+  min-width: 120px;
+}
+.app-shell .my-tasks {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  padding: 0 var(--page-gutter) 20px;
+}
+.my-tasks .quick-views {
+  padding: 0;
+  gap: 4px;
+}
+.my-tasks .quick-views button {
+  min-height: 44px;
+  font-size: 13px;
+}
+.my-tasks > details {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+.my-tasks > details > summary {
+  cursor: pointer;
+  padding-block: 12px;
+}
+.my-tasks > details[open],
+.my-tasks > p {
+  flex-basis: 100%;
+  margin: 0;
+}
+@media (min-width: 760px) {
+  :root[data-layout='rail'] .app-shell:not(.embedded) .topbar-brand {
+    display: none;
+  }
+}
+@media (max-width: 1100px) {
+  .app-shell .toolbar-word,
+  .app-shell .account-menu-name,
+  .app-shell .account-menu-chevron {
+    display: none;
+  }
+  :root .app-shell .topbar-tool {
+    min-width: 44px;
+    padding-inline: 10px;
+  }
+}
+@media (max-width: 800px) {
+  :root .app-shell .toolbar .search {
+    flex-basis: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+  :root .app-shell .toolbar select {
+    flex: 1 1 120px;
+    width: 120px;
+    max-width: none;
+    min-width: min(120px, 100%);
+    padding-inline: 8px;
+  }
+}
+@media (max-width: 319px) {
+  :root .app-shell .topbar {
+    flex-wrap: wrap;
+  }
+  :root .app-shell .topbar-right {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .my-tasks .quick-views {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .my-tasks .quick-views button {
+    padding-inline: 8px;
+  }
+}
+@media (max-width: 759px) {
+  :root .app-shell {
+    --page-gutter: 20px;
+  }
+  :root .app-shell .topbar {
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin: 12px var(--page-gutter) 0;
+    padding: 4px 8px;
+    min-height: 56px;
+  }
+  .app-shell .topbar-brand {
+    display: none;
+  }
+  .topbar-right .connection {
+    margin-inline: 4px;
+  }
+  .topbar-right .connection > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .topbar-right .account-menu {
+    padding-left: 4px;
+    margin-left: 0;
+  }
+  :root .app-shell .space-switcher {
+    gap: 6px;
+    padding-inline: 0;
+  }
+  :root .app-shell .page-head {
+    flex-wrap: wrap;
+    padding-block: 20px 16px;
+  }
+  :root .app-shell .head-actions {
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    margin: 0;
+  }
+  :root .app-shell .head-actions .button {
+    min-height: 44px;
+    width: auto;
+    padding-inline: 12px;
+    font-size: 13px;
+  }
+  .app-shell .my-tasks {
+    gap: 4px;
+    padding-bottom: 16px;
+  }
+  .my-tasks .quick-views {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0;
+    width: 100%;
+  }
+  .my-tasks .quick-views button {
+    padding-inline: 2px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .my-tasks > details {
+    margin-left: 0;
+  }
+  .app-shell .banner,
+  .app-shell .codex-connection-notice {
+    flex-wrap: wrap;
+  }
+  .app-shell .banner > div,
+  .app-shell .codex-connection-notice > div {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+}
+@media (max-width: 479px) {
+  :root .app-shell {
+    --page-gutter: 12px;
+  }
+  :root .app-shell .topbar {
+    margin-inline: 8px;
+    padding-inline: 6px;
+    gap: 4px;
+  }
+  :root .app-shell .topbar-right {
+    gap: 0;
+  }
+  :root .app-shell .space-switcher {
+    font-size: 13px;
+  }
+  :root .app-shell .page-title h1 {
+    font-size: 24px;
+  }
+  :root .app-shell .page-head .head-actions {
+    width: 100%;
+  }
+  :root .app-shell .head-actions .button.primary {
+    margin-left: auto;
+  }
+  :root .app-shell .board {
+    padding-inline: var(--page-gutter);
+  }
+}

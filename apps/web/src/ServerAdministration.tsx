@@ -1,6 +1,20 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Database, LoaderCircle, RefreshCw, Server, ShieldCheck } from 'lucide-react';
+import {
+  ArrowLeft,
+  ChevronRight,
+  Database,
+  FileText,
+  FolderCog,
+  LoaderCircle,
+  Mail,
+  RefreshCw,
+  ScrollText,
+  Server,
+  ShieldCheck,
+  UserRound,
+  Users,
+} from 'lucide-react';
 import { api, ApiError, request as apiRequest, type RequestOptions } from './api';
 import type { User } from './types';
 import './serverAdministration.css';
@@ -205,6 +219,20 @@ export function ServerAdministration({
     });
   const client = useQueryClient();
   const [tab, setTab] = useState<Tab>('overview');
+  const [mobileDetail, setMobileDetail] = useState(false);
+  const navigationRef = useRef<HTMLElement>(null);
+  const mobileBackRef = useRef<HTMLButtonElement>(null);
+  const navigationState = useRef(`${tab}:${mobileDetail}`);
+  useEffect(() => {
+    const nextState = `${tab}:${mobileDetail}`;
+    if (navigationState.current === nextState) return;
+    navigationState.current = nextState;
+    if (!matchMedia('(max-width: 759px)').matches) return;
+    const target = mobileDetail
+      ? mobileBackRef.current
+      : navigationRef.current?.querySelector<HTMLButtonElement>('[aria-current="page"]');
+    target?.focus();
+  }, [tab, mobileDetail]);
   const accountCapability = useQuery({
     queryKey: ['server-account-capability', location.origin, user.id],
     queryFn: () => request<{ capabilities?: { accountCenter?: number } }>('/health'),
@@ -252,56 +280,85 @@ export function ServerAdministration({
       setBusy(false);
     }
   };
-  const allTabs: [Tab, string][] = [
-    ['overview', '运行与设置'],
-    ['users', '用户与邀请'],
-    ['spaces', '空间治理'],
-    ['mail', '邮件服务'],
-    ['audit', '审计日志'],
-    ['secrets', '数据库与密钥'],
-    ['logs', '运行日志'],
+  const allTabs: [Tab, string, typeof Server, string][] = [
+    ['overview', '运行与设置', Server, '运行状态、访问地址与日志级别'],
+    ['users', '用户与邀请', Users, '账号、邀请与最高管理员'],
+    ['spaces', '空间治理', FolderCog, '空间接管与所有权转移'],
+    ['mail', '邮件服务', Mail, 'SMTP 配置与发件状态'],
+    ['audit', '审计日志', ScrollText, '查询管理操作记录'],
+    ['secrets', '数据库与密钥', Database, '连接信息与受保护的密钥'],
+    ['logs', '运行日志', FileText, '查看最近的应用日志'],
   ];
   const tabs = allTabs.filter(
     ([key]) => hasAccountCenter || !['users', 'spaces', 'mail', 'audit'].includes(key),
   );
   const data = info.data;
   return (
-    <main className="server-admin">
-      <header className="server-admin-header">
+    <main
+      className={`server-admin console-shell ${mobileDetail ? 'server-admin-detail-open' : ''}`}
+    >
+      <header className="server-admin-header console-header">
         <button className="button ghost" onClick={onClose}>
           <ArrowLeft size={16} />
           返回看板
         </button>
-        <div>
+        <div className="console-title">
           <Server size={20} aria-hidden="true" />
           <h1>服务器管理</h1>
         </div>
-        <span className="muted">{user.name}</span>
-        <button className="button ghost" onClick={onAccount}>
-          个人设置
-        </button>
+        <div className="console-header-actions">
+          <span className="console-admin-name" title={user.name}>
+            {user.name}
+          </span>
+          <button className="button ghost" onClick={onAccount} aria-label="个人设置">
+            <UserRound size={17} aria-hidden="true" />
+            <span>个人设置</span>
+          </button>
+        </div>
       </header>
-      <div className="server-admin-layout">
-        <nav className="server-admin-nav" aria-label="服务器管理分类">
-          {tabs.map(([key, label]) => (
+      <div className="server-admin-layout console-layout">
+        <nav
+          ref={navigationRef}
+          className="server-admin-nav console-nav"
+          aria-label="服务器管理分类"
+        >
+          {tabs.map(([key, label, Icon, description]) => (
             <button
               key={key}
+              aria-label={label}
               aria-current={tab === key ? 'page' : undefined}
               onClick={() => {
                 setTab(key);
+                setMobileDetail(true);
                 setError('');
                 setMessage('');
                 setRevealed(null);
               }}
             >
-              {label}
+              <Icon size={18} aria-hidden="true" />
+              <span>
+                <strong>{label}</strong>
+                <small>{description}</small>
+              </span>
+              <ChevronRight className="console-nav-chevron" size={16} aria-hidden="true" />
             </button>
           ))}
         </nav>
         <section
-          className="server-admin-content"
+          className="server-admin-content console-content"
           aria-label={tabs.find(([key]) => key === tab)?.[1]}
         >
+          <button
+            className="button ghost server-admin-mobile-back"
+            ref={mobileBackRef}
+            onClick={() => {
+              setRevealed(null);
+              setMobileDetail(false);
+            }}
+          >
+            <ArrowLeft size={16} aria-hidden="true" />
+            管理分类
+          </button>
           {(error || info.error) && (
             <p className="form-error" role="alert">
               {error || failure(info.error)}

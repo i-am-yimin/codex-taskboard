@@ -111,7 +111,7 @@ test.describe('0.1.11 account center with PostgreSQL and production web', () => 
     await page.getByRole('button', { name: '保存头像', exact: true }).click();
     await expect(page.getByRole('status')).toContainText('头像已保存');
     await expect(page.locator('.account-large-avatar img')).toBeVisible();
-    const output = resolve('.artifacts/acceptance-0.1.11');
+    const output = resolve(process.env.ACCOUNT_ACCEPTANCE_OUTPUT ?? '.artifacts/acceptance-0.1.11');
     await mkdir(output, { recursive: true });
     if (test.info().project.name === 'desktop') {
       for (const theme of ['glass', 'paper', 'studio', 'island'])
