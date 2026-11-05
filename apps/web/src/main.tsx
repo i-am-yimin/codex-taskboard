@@ -92,6 +92,8 @@ import './collaboration.css';
 import './workflow.css';
 import './glass.css';
 import './themes.css';
+import './consoleLayout.css';
+import './workspaceLayout.css';
 import {
   AccountCenter,
   AccountMenu,
@@ -771,8 +773,9 @@ function App() {
         </button>
         <div className="rail-fill" />
         <button
-          className="avatar mine"
+          className="rail-account"
           title="个人设置"
+          aria-label="个人设置"
           onClick={() => {
             setAccountOpen(true);
             history.replaceState(null, '', '#account/profile');
@@ -835,6 +838,58 @@ function App() {
             )}
           </div>
           <div className="topbar-right">
+            <button
+              className="button ghost topbar-tool"
+              title="收件箱"
+              aria-label={`收件箱${unreadNotifications ? `，已加载 ${unreadNotifications} 条未读` : ''}`}
+              onClick={() => setInboxOpen(true)}
+            >
+              <Bell size={17} />
+              <span className="toolbar-word">收件箱</span>
+              {unreadNotifications > 0 && (
+                <span className="inbox-count">{unreadNotifications}</span>
+              )}
+            </button>
+            <button
+              className="button ghost topbar-tool"
+              title="规则与统计"
+              aria-label="规则与统计"
+              onClick={() => setAutomationOpen(true)}
+            >
+              <GitBranch size={17} />
+              <span className="toolbar-word">规则与统计</span>
+            </button>
+            <span
+              className={sync === 'offline' ? 'connection offline' : 'connection'}
+              role="status"
+              title={
+                sync === 'offline'
+                  ? '离线缓存'
+                  : isDemo
+                    ? '演示模式'
+                    : sync === 'connecting'
+                      ? '正在同步'
+                      : '已同步'
+              }
+            >
+              {sync === 'offline' ? (
+                <CloudOff size={14} aria-hidden="true" />
+              ) : (
+                <Cloud size={14} aria-hidden="true" />
+              )}
+              <span>
+                {sync === 'offline'
+                  ? '离线缓存'
+                  : isDemo
+                    ? '演示模式'
+                    : sync === 'connecting'
+                      ? '正在同步'
+                      : '已同步'}
+              </span>
+            </span>
+            <button className="icon-button" title="设置" onClick={() => setSettings(true)}>
+              <Settings size={18} />
+            </button>
             <AccountMenu
               user={user!}
               demo={isDemo}
@@ -848,38 +903,6 @@ function App() {
               }}
               onLogout={logout}
             />
-            <button
-              className="button ghost"
-              aria-label={`收件箱${unreadNotifications ? `，已加载 ${unreadNotifications} 条未读` : ''}`}
-              onClick={() => setInboxOpen(true)}
-            >
-              <Bell size={17} />
-              <span className="toolbar-word">收件箱</span>
-              {unreadNotifications > 0 && (
-                <span className="inbox-count">{unreadNotifications}</span>
-              )}
-            </button>
-            <button
-              className="button ghost"
-              aria-label="规则与统计"
-              onClick={() => setAutomationOpen(true)}
-            >
-              <GitBranch size={17} />
-              <span className="toolbar-word">规则与统计</span>
-            </button>
-            <span className={sync === 'offline' ? 'connection offline' : 'connection'}>
-              {sync === 'offline' ? <CloudOff size={14} /> : <Cloud size={14} />}{' '}
-              {sync === 'offline'
-                ? '离线缓存'
-                : isDemo
-                  ? '演示模式'
-                  : sync === 'connecting'
-                    ? '正在同步'
-                    : '已同步'}
-            </span>
-            <button className="icon-button" title="设置" onClick={() => setSettings(true)}>
-              <Settings size={18} />
-            </button>
           </div>
         </header>
         {board.takeover && (
@@ -910,10 +933,13 @@ function App() {
         )}
         <div className="page-head">
           <div>
-            <p className="eyebrow">
-              {isDemo ? '可点击产品演示' : board.space.description || '任务空间'}
-            </p>
-            <h1>任务看板</h1>
+            <div className="page-title">
+              <h1>{view === 'board' ? '任务看板' : '任务列表'}</h1>
+              <span className="result-count">{visible.length} 个任务</span>
+            </div>
+            {board.space.description && (
+              <p className="workspace-description">{board.space.description}</p>
+            )}
           </div>
           <div className="head-actions">
             <CodexConnectionAction />
@@ -941,6 +967,7 @@ function App() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              aria-label="搜索任务"
               placeholder="搜索任务、标签…"
             />
           </label>
@@ -983,7 +1010,6 @@ function App() {
               </option>
             ))}
           </select>
-          <span className="result-count">{visible.length} 个任务</span>
         </div>
         <MyTaskViews
           userId={user!.id}

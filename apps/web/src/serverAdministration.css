@@ -82,65 +82,12 @@
   overflow-wrap: anywhere;
   min-width: 0;
 }
-.server-admin {
-  min-height: 100dvh;
-  background: var(--canvas);
-}
-.server-admin-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  border-bottom: 1px solid var(--divider);
-  padding: 20px 32px;
-}
-.server-admin-header > div {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.server-admin h1 {
-  font-size: 20px;
-  margin: 0;
-}
 .server-admin h2 {
   font-size: 22px;
   margin: 0 0 18px;
   display: flex;
   align-items: center;
   gap: 10px;
-}
-.server-admin-layout {
-  max-width: 1200px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  gap: 48px;
-  padding: 40px 32px;
-}
-.server-admin-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: stretch;
-}
-.server-admin-nav button {
-  text-align: left;
-  padding: 12px 16px;
-  border-radius: 8px;
-  min-height: 44px;
-}
-.server-admin-nav button:hover {
-  background: var(--hover);
-}
-.server-admin-nav button[aria-current] {
-  background: var(--tint);
-  color: var(--accent);
-  font-weight: 650;
-}
-.server-admin-content {
-  min-width: 0;
-  max-width: 800px;
 }
 .server-admin-content form,
 .server-secret-values {
@@ -204,29 +151,6 @@
   }
   .server-setup-form {
     padding: 22px 18px;
-  }
-  .server-admin-header {
-    padding: 16px;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-  .server-admin-header > .muted {
-    display: none;
-  }
-  .server-admin-layout {
-    grid-template-columns: 1fr;
-    padding: 20px 16px;
-    gap: 28px;
-  }
-  .server-admin-nav {
-    flex-direction: row;
-    overflow-x: auto;
-    gap: 4px;
-    padding-bottom: 4px;
-  }
-  .server-admin-nav button {
-    flex-shrink: 0;
-    padding: 10px 12px;
   }
   .server-log-line {
     grid-template-columns: 1fr 54px;

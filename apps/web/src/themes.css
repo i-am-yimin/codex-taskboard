@@ -82,8 +82,7 @@
     .execution-card,
     .onboard-card,
     .desktop-server-setup,
-    .server-setup-form,
-    .server-admin section
+    .server-setup-form
   ) {
   border-radius: var(--radius);
   box-shadow: var(--surface-shadow);
