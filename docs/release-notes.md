@@ -2,7 +2,11 @@
 
 ## Codex Taskboard 客户端 0.1.12（未签名预发布）
 
-2026-11-05 发布准备。固定标签构建、最终产物与公开下载仍须按发布流程验收。
+发布日期：2026-11-05。Windows x64 未签名预发布，固定标签工作流、最终载荷、随包运行时、严格来源证明及匿名下载已核验。
+
+[下载安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.12/Codex.Taskboard_0.1.12_x64-setup.exe) · [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.12/SHA256SUMS)
+
+固定来源 `a0d96b68240ab3938fa589b0de5b878485465283`；安装器 SHA-256 `660de5cbd02e0fb2bd7e165bec59e34bb14286e2058266958890adbba5c57380`。配套镜像 `ghcr.io/i-am-yimin/codex-taskboard:server-0.1.5-preview.2`，OCI 摘要 `sha256:ff4f2134cac34f8c885415c7eed13b39245366c489678e0e5abea95ba6e27a66`。本机普通 0.1.11 安装和账号保留，未执行新包原位安装；Windows 随包 Node/伴随服务/CLI 实际运行与 NSIS 载荷验证分别记录。未升级生产服务器。
 
 - 看板顶部按空间、协作工具、同步状态和账号分组；账号入口放在末端，侧栏布局减少重复品牌。
 - 标题区显示当前看板或列表及筛选后的任务数量；搜索、筛选和个人任务视图排列更紧凑。
