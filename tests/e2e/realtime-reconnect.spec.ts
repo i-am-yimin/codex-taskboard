@@ -192,8 +192,8 @@ test('switching space retires old callbacks before cache actions and waits for t
   await page.getByRole('textbox', { name: '评论', exact: true }).fill('第一空间的私有评论草稿');
   const key = `tb:comment:${demoUser.id}:t-27`;
   const count = await page.evaluate<number>('window.realtimeFixture.streams.length');
-  await page.getByRole('button', { name: /产品工作室/ }).click();
-  await page.getByRole('button', { name: /独立第二空间/ }).click();
+  await page.getByRole('button', { name: /^空间菜单：/ }).click();
+  await page.getByRole('menuitem', { name: /独立第二空间/ }).click();
   await expect(page.locator('.space-switcher')).toContainText('独立第二空间');
   await expect
     .poll(() => page.evaluate<number>('window.realtimeFixture.streams.length'))
@@ -234,16 +234,13 @@ for (const closing of [false, true]) {
     await page.keyboard.press('Escape');
     await expect(drawer).toHaveCount(0);
     // Populate B before creating A drafts: the tested switch must not rely on a loading unmount.
-    await page.locator('.space-switcher').click();
-    await page.getByRole('button', { name: /独立第二空间/ }).click();
+    await page.getByRole('button', { name: /^空间菜单：/ }).click();
+    await page.getByRole('menuitem', { name: /独立第二空间/ }).click();
     await expect(page.locator('.space-switcher')).toContainText('独立第二空间');
     await page.evaluate(`window.realtimeFixture.streams.at(-1).dispatchEvent(new Event('ready'))`);
     await expect(page.getByRole('button', { name: '新建任务', exact: true })).toBeEnabled();
-    await page.locator('.space-switcher').click();
-    await page
-      .locator('.space-menu')
-      .getByRole('button', { name: /产品工作室/ })
-      .click();
+    await page.getByRole('button', { name: /^空间菜单：/ }).click();
+    await page.getByRole('menuitem', { name: /产品工作室/ }).click();
     await expect(page.locator('.space-switcher')).toContainText('产品工作室');
     await page.evaluate(`window.realtimeFixture.streams.at(-1).dispatchEvent(new Event('ready'))`);
     await page.locator('[data-motion-id="t-27"]').click();
@@ -277,8 +274,8 @@ for (const closing of [false, true]) {
         element.getAnimations().forEach((animation) => animation.pause()),
       );
     }
-    await page.locator('.space-switcher').click();
-    await page.getByRole('button', { name: /独立第二空间/ }).click();
+    await page.getByRole('button', { name: /^空间菜单：/ }).click();
+    await page.getByRole('menuitem', { name: /独立第二空间/ }).click();
     await expect(page.locator('.space-switcher')).toContainText('独立第二空间');
     await expect(drawer).toHaveCount(0);
     if (closing) await page.clock.resume();
@@ -312,7 +309,10 @@ test('a real inbox cross-space open waits for its target board without losing th
 }) => {
   const server = await fixture(page, true, true);
   await page.getByRole('textbox', { name: '评论', exact: true }).fill('通知导航前A空间草稿');
-  await page.getByRole('dialog', { name: '任务详情', exact: true }).getByRole('button', { name: '关闭', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: '任务详情', exact: true })
+    .getByRole('button', { name: '关闭', exact: true })
+    .click();
   await expect(page.getByRole('dialog', { name: '任务详情', exact: true })).toHaveCount(0);
   server.holdSecondBoard();
   await page.getByRole('button', { name: /^收件箱/ }).click();

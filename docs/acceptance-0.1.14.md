@@ -14,6 +14,14 @@
 
 上述证据证明实施阶段的源码与浏览器布局，不证明 0.1.14 固定标签的完整 CI、Windows 原生窗口、真实 Codex 宿主或最终安装包。
 
+## 发布前 CI 失败与修正
+
+2026-11-14，提交 `f7853e609b039260e3598602fb3f277e1b813c1c` 的[首次 push CI](https://github.com/i-am-yimin/codex-taskboard/actions/runs/43553448633)完整浏览器测试为 220 项通过、6 项失败，该轮未通过。失败均来自 `realtime-reconnect.spec.ts` 的跨空间切换：测试仍按旧 `button` 角色查找空间选项，而现有 Radix 空间菜单的选项角色为 `menuitem`，点击等待超时。
+
+修正覆盖进入第二空间和返回第一空间的全部相关选择器，空间菜单触发器按具名按钮定位；保留迟到事件隔离、确认前禁写、缓存切换和草稿归属撤权的原行为断言，没有跳过用例、放宽断言或修改产品代码。
+
+同日使用本机 Chrome 执行 `pnpm exec playwright test tests/e2e/realtime-reconnect.spec.ts --project=desktop --project=compact`，整个文件的 12 个项目用例全部通过（两项目各 6 项），没有跳过。测试使用独立浏览器上下文、合成空间/任务和受控 API/事件流，运行进程清除数据库环境变量，不连接生产数据库、真实账号或日常 Codex。日志留在本机忽略目录 `.artifacts/release/2026-11-14-v0.1.14/`；此定向结果不代表后续完整 CI、原生或最终包通过。
+
 ## 固定来源与交付验收
 
 | 检查                     | 实际状态与待补证据                                                                                                                                                           |
