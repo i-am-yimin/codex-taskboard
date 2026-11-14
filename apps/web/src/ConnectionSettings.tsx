@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { request } from './api';
 import { connectionError, localConnection as local, useCodexConnection } from './codexConnection';
-import { CodexPreferenceWarning } from './CodexConnectionAction';
+import { CodexPreferenceWarning, CodexRestartSteps } from './CodexConnectionAction';
+import { codexConnectionView } from './codexConnectionView';
 
 type Device = {
   id: string;
@@ -21,13 +22,13 @@ export function ConnectionSettings({
   onLogout: () => void;
 }) {
   const codex = useCodexConnection();
+  const view = codexConnectionView(codex);
   const [diagnosis, setDiagnosis] = useState<string>();
   const [launching, setLaunching] = useState(false);
-  const [installing, setInstalling] = useState(false);
   const checking = codex.phase === 'checking';
   const connection = codex.connection;
   const invoke = window.__TAURI__?.core?.invoke;
-  const busy = launching || installing || codex.busy;
+  const busy = launching || codex.busy;
   const [repository, setRepository] = useState('');
   const [directory, setDirectory] = useState('');
   const devices = useQuery({
@@ -56,103 +57,122 @@ export function ConnectionSettings({
     setLaunching(true);
     try {
       setDiagnosis(await invoke<string>('start_managed_codex'));
+      await codex.detect();
     } catch (error) {
       setDiagnosis(connectionError(error, '独立测试环境启动失败'));
     } finally {
       setLaunching(false);
     }
   }
-  async function installCodexBoard(daily: boolean) {
+  async function installCodexBoard() {
     setDiagnosis(undefined);
-    if (daily) {
-      await codex.connect();
+    const current = await codex.detect();
+    if (current?.state !== 'connected' || current.mode !== 'managed') {
+      setDiagnosis('请先启动并确认独立测试 Codex，当前连接不会按测试环境安装。');
       return;
     }
-    setInstalling(true);
-    try {
-      const result = await local<{ embedded: boolean; reason?: string }>('/v1/codex/install', {});
-      setDiagnosis(
-        result.embedded
-          ? daily
-            ? '已接入日常 Codex 侧栏，原登录、项目和会话保持不变。'
-            : '独立测试环境的侧栏看板已接入。'
-          : (result.reason ?? '看板接入未确认'),
-      );
-    } catch (error) {
-      setDiagnosis(connectionError(error, '看板接入失败'));
-    } finally {
-      setInstalling(false);
-    }
+    await codex.installSidebar();
   }
   return (
     <>
       <h3>连接与设备</h3>
-      <div className="connection-card">
-        <div>
-          <b>Codex 桌面接入</b>
+      <section
+        className="connection-card codex-daily-card"
+        data-connection-tone={view.tone}
+        aria-label="Codex 桌面接入"
+      >
+        <div className="codex-card-heading">
+          <b>{view.title}</b>
           <p role="status" aria-live="polite">
-            {checking ? '正在检测 Codex 连接…' : (diagnosis ?? codex.diagnosis)}
+            {view.summary}
           </p>
-          {connection?.version && <p>Codex {connection.version}</p>}
-          <small>日常接入沿用原有数据；任务草稿可复制到当前项目，由你确认发送。</small>
         </div>
+        <dl className="codex-connection-facts" aria-label="当前接入能力">
+          <div>
+            <dt>Codex 桌面</dt>
+            <dd>{invoke ? view.native : '请在 Windows Taskboard 中连接'}</dd>
+          </div>
+          <div>
+            <dt>侧栏看板</dt>
+            <dd>{view.sidebar}</dd>
+          </div>
+          <div>
+            <dt>任务草稿</dt>
+            <dd>
+              {connection?.mode === 'managed' && codex.capabilities?.draft
+                ? '独立环境需再核对项目与空编辑器'
+                : '手动复制，由你确认发送'}
+            </dd>
+          </div>
+        </dl>
+        {view.restart && <CodexRestartSteps />}
         <div className="row-actions">
           {invoke && (
             <button
               className="button primary"
               disabled={busy}
-              onClick={() => installCodexBoard(true)}
+              onClick={() => void codex[view.action]()}
             >
-              {codex.phase === 'waiting'
-                ? '等待 Codex 退出…'
-                : installing || codex.phase === 'connecting'
-                  ? '接入中…'
-                  : '接入日常 Codex'}
+              {view.label === '连接 Codex' ? '接入日常 Codex' : view.label}
             </button>
           )}
-          <button className="button ghost" disabled={busy} onClick={diagnose}>
-            {checking ? '检测中…' : '检测连接'}
-          </button>
+          {view.action !== 'detect' && (
+            <button className="button ghost" disabled={busy} onClick={diagnose}>
+              {checking ? '检测中…' : '检测连接'}
+            </button>
+          )}
           {codex.phase === 'waiting' && (
             <button className="button ghost" onClick={codex.cancelWait}>
               取消等待
             </button>
           )}
         </div>
-      </div>
+        {invoke && (
+          <div className="codex-connection-options codex-card-footer">
+            <label className="codex-auto-connect">
+              <input
+                type="checkbox"
+                checked={codex.autoConnect}
+                aria-describedby={codex.preferenceError ? 'codex-auto-connect-error' : undefined}
+                onChange={(event) => codex.setAutoConnect(event.target.checked)}
+              />
+              <span>
+                <b>启动 Taskboard 时自动连接日常 Codex</b>
+                <small>
+                  首次接入成功后记住。若当前窗口尚未启用连接，仍需保存工作并正常退出一次。
+                </small>
+              </span>
+            </label>
+            <CodexPreferenceWarning id="codex-auto-connect-error" />
+          </div>
+        )}
+        <details
+          className="codex-diagnostic-details"
+          open={codex.phase === 'error' || Boolean(diagnosis)}
+        >
+          <summary>诊断详情</summary>
+          {connection?.version && <p>Codex {connection.version}</p>}
+          {codex.capabilities?.sidebar?.contractId && (
+            <p>结构契约：{codex.capabilities.sidebar.contractId}</p>
+          )}
+          <p className="codex-diagnosis-text">{diagnosis ?? codex.diagnosis}</p>
+          <p className="muted">
+            只为当前页面确认侧栏能力；未知结构会停止接入。Codex 升级后将重新检查。
+          </p>
+        </details>
+      </section>
       {invoke && (
         <div className="codex-connection-options">
-          <p className="muted">
-            主界面的“连接 Codex”可直接打开或接入日常环境。首次未启用连接时，保存工作并正常退出
-            Codex，Taskboard 会等待后自动接入。
-          </p>
-          <label className="codex-auto-connect">
-            <input
-              type="checkbox"
-              checked={codex.autoConnect}
-              aria-describedby={codex.preferenceError ? 'codex-auto-connect-error' : undefined}
-              onChange={(event) => codex.setAutoConnect(event.target.checked)}
-            />
-            启动 Taskboard 时自动连接日常 Codex
-          </label>
-          <CodexPreferenceWarning id="codex-auto-connect-error" />
-          <p className="muted">
-            首次接入成功后自动记住。以后直接打开 Taskboard，无需单独的连接快捷方式。
-          </p>
           <details>
             <summary>独立测试环境</summary>
             <p className="muted">
-              使用单独的数据目录，需要单独登录。用于兼容测试；日常使用请选上方接入。
+              使用专用数据目录，需要单独登录；已有测试登录与项目会保留。用于兼容测试，日常使用请选上方接入。
             </p>
             <div className="row-actions">
               <button className="button ghost" disabled={busy} onClick={launchManagedCodex}>
                 {launching ? '启动中…' : '启动独立测试 Codex'}
               </button>
-              <button
-                className="button ghost"
-                disabled={busy}
-                onClick={() => installCodexBoard(false)}
-              >
+              <button className="button ghost" disabled={busy} onClick={installCodexBoard}>
                 接入独立测试侧栏
               </button>
             </div>

@@ -1,72 +1,75 @@
 import { Check, LoaderCircle, Monitor, X } from 'lucide-react';
 import { useCodexConnection } from './codexConnection';
+import { codexConnectionView } from './codexConnectionView';
 
 export function CodexConnectionAction() {
   const codex = useCodexConnection();
+  const view = codexConnectionView(codex);
   if (!codex.available) return null;
   return (
     <button
       className="button ghost codex-connect-action"
+      data-connection-tone={view.tone}
       disabled={codex.busy}
       aria-describedby={
-        ['waiting', 'connecting', 'error'].includes(codex.phase) || codex.preferenceError
-          ? 'codex-connection-notice'
-          : undefined
+        view.notice || codex.preferenceError ? 'codex-connection-notice' : undefined
       }
-      onClick={() => void codex.connect()}
+      onClick={() => void codex[view.action]()}
     >
-      {codex.busy ? <LoaderCircle className="spin" size={16} /> : <Monitor size={16} />}
-      {codex.phase === 'waiting'
-        ? '等待 Codex 退出…'
-        : codex.busy
-          ? '连接中…'
-          : codex.phase === 'connected'
-            ? '打开 Codex'
-            : '连接 Codex'}
+      {codex.busy ? (
+        <LoaderCircle className="spin" size={16} />
+      ) : view.tone === 'connected' ? (
+        <Check size={16} />
+      ) : (
+        <Monitor size={16} />
+      )}
+      <span>{view.label}</span>
     </button>
   );
 }
-export function CodexConnectionNotice() {
+export function CodexRestartSteps() {
+  return (
+    <ol className="codex-restart-steps" aria-label="接入步骤">
+      <li>保存工作并正常退出 Codex</li>
+      <li>自动打开原环境，保留登录与会话</li>
+      <li>检查侧栏并接入任务看板</li>
+    </ol>
+  );
+}
+export function CodexConnectionNotice({ onOpenSettings }: { onOpenSettings: () => void }) {
   const codex = useCodexConnection();
-  const needsRestart = codex.phase === 'idle' && codex.connection?.state === 'restart-required';
+  const view = codexConnectionView(codex);
   if (!codex.available) return null;
-  if (!needsRestart && !['waiting', 'connecting', 'error'].includes(codex.phase))
-    return codex.phase === 'checking' ? null : <CodexPreferenceWarning />;
+  if (!view.notice) return codex.phase === 'checking' ? null : <CodexPreferenceWarning />;
   return (
     <div
       className="codex-connection-notice"
       id="codex-connection-notice"
-      role={codex.phase === 'error' ? 'alert' : 'status'}
+      data-connection-tone={view.tone}
+      role={view.tone === 'error' ? 'alert' : 'status'}
     >
       <div>
-        <b>
-          {needsRestart
-            ? '首次连接需要正常重开 Codex'
-            : codex.phase === 'waiting'
-              ? '退出后自动接入'
-              : codex.phase === 'error'
-                ? 'Codex 尚未接入'
-                : '正在接入 Codex'}
-        </b>
-        <p>{codex.diagnosis}</p>
+        <b>{view.title}</b>
+        <p>{view.summary}</p>
+        {view.restart && <CodexRestartSteps />}
       </div>
-      {codex.phase === 'waiting' && (
-        <button className="button ghost" onClick={codex.cancelWait}>
-          <X size={15} />
-          取消等待
+      <div className="codex-notice-actions">
+        {codex.phase === 'waiting' ? (
+          <button className="button ghost" onClick={codex.cancelWait}>
+            <X size={15} />
+            取消等待
+          </button>
+        ) : (
+          !codex.busy && (
+            <button className="button ghost" onClick={() => void codex[view.action]()}>
+              {view.restart ? '退出后自动接入' : view.label}
+            </button>
+          )
+        )}
+        <button className="button ghost" onClick={onOpenSettings}>
+          连接详情
         </button>
-      )}
-      {codex.phase === 'error' && (
-        <button className="button ghost" onClick={() => void codex.connect()}>
-          <Check size={15} />
-          重新连接
-        </button>
-      )}
-      {needsRestart && (
-        <button className="button ghost" onClick={() => void codex.connect()}>
-          退出后自动接入
-        </button>
-      )}
+      </div>
     </div>
   );
 }

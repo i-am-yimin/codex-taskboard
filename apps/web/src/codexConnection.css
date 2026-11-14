@@ -1,0 +1,167 @@
+.app-shell .codex-connect-action {
+  min-height: 44px;
+  gap: 8px;
+  white-space: nowrap;
+}
+.codex-connect-action[data-connection-tone='connected'] {
+  color: var(--accent);
+}
+.codex-connect-action[data-connection-tone='partial'],
+.codex-connection-notice[data-connection-tone='partial'] > div > b {
+  color: var(--warning);
+}
+.codex-connect-action[data-connection-tone='error'],
+.codex-connection-notice[data-connection-tone='error'] > div > b {
+  color: var(--danger);
+}
+:root .codex-connection-notice {
+  align-items: flex-start;
+  gap: 16px;
+  border: 1px solid var(--divider);
+  background: var(--glass-solid);
+  box-shadow: none;
+}
+.codex-connection-notice .codex-notice-actions {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-self: center;
+  gap: 8px;
+}
+.codex-notice-actions .button {
+  min-height: 44px;
+}
+.codex-restart-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 24px;
+  margin: 16px 0 0;
+  padding-inline-start: 20px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.codex-restart-steps li {
+  padding-inline-start: 2px;
+}
+.codex-restart-steps li::marker {
+  color: var(--ink);
+  font-weight: 600;
+}
+:root .connection-card.codex-daily-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 20px;
+  padding: 20px;
+  border: 1px solid var(--divider);
+  border-radius: min(var(--radius), 16px);
+  background: var(--glass-solid);
+  box-shadow: none;
+}
+:root .codex-daily-card .codex-card-heading {
+  flex: none;
+}
+:root .codex-daily-card b {
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.5;
+}
+:root .codex-daily-card p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.codex-connection-facts {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+.codex-connection-facts > div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 12px;
+}
+.codex-connection-facts dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+.codex-connection-facts dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.codex-daily-card .row-actions {
+  flex: none;
+  margin: 0;
+  justify-content: flex-start;
+}
+.codex-daily-card .row-actions .button {
+  min-height: 44px;
+}
+.codex-daily-card .codex-card-footer {
+  margin: 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--divider);
+}
+.codex-daily-card .codex-auto-connect {
+  align-items: flex-start;
+}
+.codex-daily-card .codex-auto-connect input {
+  margin-top: 3px;
+}
+:root .codex-daily-card .codex-auto-connect b {
+  font-size: 14px;
+  font-weight: 500;
+}
+:root .codex-daily-card .codex-auto-connect small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.codex-daily-card .codex-connection-notice {
+  margin: 16px 0 0;
+  padding: 12px;
+  background: var(--tint);
+}
+.codex-diagnostic-details {
+  padding-top: 16px;
+  border-top: 1px solid var(--divider);
+}
+.codex-diagnostic-details summary,
+.codex-connection-options summary {
+  min-height: 44px;
+  padding-block: 10px;
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+.codex-diagnostic-details summary:focus-visible,
+.codex-connection-options summary:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (max-width: 760px) {
+  .codex-restart-steps {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 560px) {
+  :root .connection-card.codex-daily-card {
+    padding: 16px;
+  }
+  .codex-connection-facts > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .codex-connection-notice .codex-notice-actions {
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+}
