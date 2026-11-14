@@ -38,6 +38,7 @@ const capabilitiesSchema = z.object({
     })
     .optional(),
 });
+const criticalSidebarStates = ['ownership-failed', 'target-mismatch', 'restoration-unconfirmed'];
 function readCapabilities(value: unknown): AdapterCapabilities {
   const result = capabilitiesSchema.safeParse(value);
   if (!result.success || (result.data.embedded && result.data.sidebar?.state !== 'installed'))
@@ -233,6 +234,17 @@ export function connectDailyCodex(waitForExit = true, sidebarOnly = false): Prom
         }
       }
       controller.signal.throwIfAborted();
+      if (connection.state === 'connected') {
+        // The visible action can outlive a native state change. Verify the
+        // current sidebar before the native command can restore its window.
+        update({ stage: 'sidebar', diagnosis: '正在复核当前 Codex 的侧栏状态…' });
+        const current = await probe();
+        if (criticalSidebarStates.includes(current.sidebar?.state ?? '')) {
+          update({ phase: 'error', diagnosis: current.reason ?? 'Codex 接入核验未通过。' });
+          return;
+        }
+        update({ stage: 'native' });
+      }
       update({ phase: 'connecting', diagnosis: '正在打开或连接日常 Codex，并接入任务看板…' });
       if (!sidebarOnly) await window.__TAURI__!.core!.invoke<string>('connect_daily_codex');
       // Native attachment and sidebar installation are separate facts. Keep
@@ -307,11 +319,7 @@ export function openCodex(): Promise<void> {
       const connection = await status();
       if (connection.state === 'connected') {
         const current = await probe();
-        if (
-          ['ownership-failed', 'target-mismatch', 'restoration-unconfirmed'].includes(
-            current.sidebar?.state ?? '',
-          )
-        )
+        if (criticalSidebarStates.includes(current.sidebar?.state ?? ''))
           throw new Error(current.reason ?? 'Codex 接入核验未通过，请先重新检测连接。');
       }
       await window.__TAURI__!.core!.invoke<string>(
@@ -349,9 +357,7 @@ function initialize() {
       snapshot.autoConnect &&
       connection &&
       connection.mode !== 'managed' &&
-      !['ownership-failed', 'target-mismatch', 'restoration-unconfirmed'].includes(
-        snapshot.capabilities?.sidebar?.state ?? '',
-      ) &&
+      !criticalSidebarStates.includes(snapshot.capabilities?.sidebar?.state ?? '') &&
       ['connected', 'connectable', 'not-running'].includes(connection.state)
     ) {
       await connectDailyCodex(false);

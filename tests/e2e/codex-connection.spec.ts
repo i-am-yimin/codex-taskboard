@@ -499,6 +499,44 @@ for (const [state, title] of [
   });
 }
 
+for (const state of ['ownership-failed', 'target-mismatch', 'restoration-unconfirmed'])
+  test(`a stale connect action rechecks a now connected ${state} before any native invoke`, async ({
+    page,
+  }) => {
+    const installs = await desktop(page);
+    await setState(page, 'connected');
+    await page.route('http://127.0.0.1:47831/v1/codex/probe', (route) =>
+      route.fulfill({
+        contentType: 'application/json',
+        headers: { 'access-control-allow-origin': '*' },
+        body: JSON.stringify({
+          data: {
+            embedded: false,
+            projects: false,
+            draft: false,
+            thread: false,
+            sidebar: { state },
+            reason: '当前侧栏核验拒绝，停止接入',
+          },
+        }),
+      }),
+    );
+    await page
+      .locator('.head-actions')
+      .getByRole('button', { name: '连接 Codex', exact: true })
+      .click();
+    await expect(page.locator('.codex-connect-action')).toHaveAttribute(
+      'data-connection-tone',
+      'error',
+    );
+    await expect(
+      page.locator('.head-actions').getByRole('button', { name: '重新检测', exact: true }),
+    ).toBeEnabled();
+    expect(await calls(page)).not.toContain('connect_daily_codex');
+    expect(await calls(page)).not.toContain('start_managed_codex');
+    expect(installs()).toBe(0);
+  });
+
 test('automatic startup stops after a critical sidebar refusal without issuing native connection', async ({
   page,
 }) => {
