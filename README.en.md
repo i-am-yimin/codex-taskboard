@@ -2,11 +2,11 @@
 
 A task board embedded in the Codex sidebar. Share tasks, progress and human review across devices and trusted teams while keeping existing Codex projects and conversations.
 
-[简体中文](README.md) · [Download 0.1.13](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.13) · [User guide](docs/user-guide.md) · [Deployment](docs/deployment-openresty.md) · [Documentation](docs/README.md) · [Changelog](CHANGELOG.md)
+[简体中文](README.md) · [Download 0.1.14](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.14) · [User guide](docs/user-guide.md) · [Deployment](docs/deployment-openresty.md) · [Documentation](docs/README.md) · [Changelog](CHANGELOG.md)
 
 ![Taskboard preview](docs/images/console-layout-preview.png)
 
-Version **0.1.14 is being prepared** to consolidate desktop navigation, separate space settings from local connections, and reflow five status columns within the default window. [Source and browser acceptance](docs/acceptance-desktop-shell.md) is complete; fixed-tag CI, final packages, native installation and public downloads remain pending in the [0.1.14 record](docs/acceptance-0.1.14.md). Public downloads remain on 0.1.13 and the independent server remains on 0.1.5-preview.2.
+Version **0.1.14 was published on November 14, 2026 as an unsigned pre-release**. It consolidates desktop navigation, separates space settings from local connections, and reflows five status columns within the default window. Fixed-tag CI, final payload and bundled runtime checks, strict provenance, the installed upgrade, default-window checks and anonymous full downloads passed. Native narrow-window behavior remains unverified; browser layout evidence is recorded separately. This version does not change the connection recovery lifecycle. See the [0.1.14 record](docs/acceptance-0.1.14.md). The independent server remains on 0.1.5-preview.2.
 
 ## Features and status
 
@@ -18,16 +18,16 @@ Version **0.1.14 is being prepared** to consolidate desktop navigation, separate
 - Switch between the board and the complete conversation workspace as peer views; selecting the board again keeps it open.
 - Cached read-only browsing and local drafts, with four themes, light/dark modes and optional account appearance sync.
 
-The Windows client is **0.1.13, an unsigned public pre-release**, paired with the independently published **0.1.5-preview.2 server**. This release redesigns Codex connection setup, separates desktop, sidebar and draft capabilities, and fixes duplicate connection requests and stale status. The final fixed-tag installer was upgraded locally from 0.1.12 and its connection flow verified, preserving the original account and daily Codex process. Payloads, bundled runtime, provenance and anonymous downloads were verified. The production server was not upgraded. Collaboration requires protocol 1; the account center requires `accountCenter: 1` and migrations 0001–0011. Installing the client does not upgrade the server. See the [acceptance record](docs/acceptance-0.1.13.md).
+The Windows client is **0.1.14, an unsigned public pre-release**, paired with the independently published **0.1.5-preview.2 server**. The final fixed-tag installer was upgraded locally from 0.1.13. The default dark 1320px window passed navigation, five-state layout, connection and repeat-detection checks; the original account, selected companion data and daily Codex process were preserved. Payloads, bundled runtime, strict provenance and anonymous full downloads were verified. The [acceptance record](docs/acceptance-0.1.14.md) preserves the earlier restoration refusal and the limits on native narrow windows, long-duration stability and future hosts. The production server was not upgraded. Collaboration requires protocol 1; the account center requires `accountCenter: 1` and migrations 0001–0011. Installing the client does not upgrade the server.
 
 Daily Codex mode uses manual task copying and sending. Agent task writes require a separate CLI login; automatic unsent draft insertion remains limited to the verified independent test environment. Full offline editing, automatic message sending, complete chat synchronization, historical conversation navigation and GitHub synchronization are not available.
 
 ## Get started
 
 1. Obtain a reachable Taskboard HTTPS server and an account or invitation. The desktop installer does not create a hosted server or account; Taskboard and Codex have separate sign-ins.
-2. Download the [Windows x64 installer](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.13/Codex.Taskboard_0.1.13_x64-setup.exe) and verify [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.13/SHA256SUMS). It bundles its runtime; desktop users do not need system Node.js or pnpm.
-3. Save the server root URL in Taskboard and sign in. Map the repository to an existing local folder, then click “连接 Codex” in the main Taskboard window. If prompted, save your work and normally exit Codex once so Taskboard can continue.
-4. After connection, ordinary Taskboard startup can restore the sidebar. This preference can be disabled in Settings → Connections and devices; “打开 Codex” returns to the original window.
+2. Download the [Windows x64 installer](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.14/Codex.Taskboard_0.1.14_x64-setup.exe) and verify [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.14/SHA256SUMS). It bundles its runtime; desktop users do not need system Node.js or pnpm.
+3. Save the server root URL in Taskboard and sign in. Under Account menu → Connections and this device (“账号菜单 → 连接与本机”), map the repository to an existing local folder, then click “连接 Codex” in the main Taskboard window. If prompted, save your work and normally exit Codex once so Taskboard can continue.
+4. After connection, ordinary Taskboard startup can restore the sidebar. This preference can be disabled in the same connection panel; “打开 Codex” returns to the original window.
 5. Claim a task, manually copy its requirements to the intended Codex project, review and send, then submit the result in Taskboard for human acceptance. Optional CLI automation requires a separate login and known full task IDs; follow the [CLI instructions](docs/user-guide.md#agent-cli).
 
 The [user guide (Chinese)](docs/user-guide.md) covers upgrades, tray exit, local backups, multiple devices and troubleshooting. For new self-hosted instances, use the published Linux amd64 image with [Docker Compose and OpenResty HTTPS](docs/deployment-openresty.md). Existing Caddy deployments are documented [separately](docs/deployment.md).

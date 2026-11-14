@@ -2,11 +2,11 @@
 
 嵌入 Codex 侧栏的任务看板。共享待办、进度和验收，保留原有项目与聊天，适合个人多设备和可信团队协作。
 
-[下载 0.1.13](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.13) · [使用手册](docs/user-guide.md) · [服务端部署](docs/deployment-openresty.md) · [文档索引](docs/README.md) · [更新日志](CHANGELOG.md) · [English](README.en.md)
+[下载 0.1.14](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.14) · [使用手册](docs/user-guide.md) · [服务端部署](docs/deployment-openresty.md) · [文档索引](docs/README.md) · [更新日志](CHANGELOG.md) · [English](README.en.md)
 
 ![看板预览](docs/images/console-layout-preview.png)
 
-> 0.1.14 正在准备发布：整合桌面导航、区分空间设置与本机连接入口，并修复默认窗口五状态列横向滚动。[实施验收](docs/acceptance-desktop-shell.md)已完成；固定标签 CI、最终安装包、实机与下载状态见[本版验收](docs/acceptance-0.1.14.md)。当前公开下载仍为 0.1.13，独立服务器保持 0.1.5-preview.2。
+> 0.1.14 已于 2026-11-14 公开为未签名预发布：整合桌面导航、区分空间设置与本机连接入口，并修复默认窗口五状态列横向滚动。固定标签 CI、最终载荷、随包运行时、严格来源证明、原位升级与默认窗口检查及匿名下载均已验证，见[本版验收](docs/acceptance-0.1.14.md)。原生窄窗未验，浏览器布局证据单列；本版不包含连接恢复生命周期修复。独立服务器保持 0.1.5-preview.2。
 
 > 0.1.13 已发布：重新设计 Codex 接入，分别展示桌面、侧栏和草稿能力；修复重复连接、状态滞留及恢复窗口前的检查竞态。已在本机从 0.1.12 原位升级验证。见[版本验收](docs/acceptance-0.1.13.md)。
 
@@ -20,7 +20,7 @@
 - **任务执行**：日常模式手动复制需求到 Codex；随包 CLI 可另行登录后读取、领取和回写。独立测试环境保留自动草稿能力。
 - **离线浏览**：查看已缓存任务、保留本机草稿，联网后再保存；支持浅色、深色和系统主题。
 
-Windows 客户端为 **0.1.13 未签名预发布版**，配套独立服务端为 **0.1.5-preview.2**。固定标签、最终安装包、随包运行时、来源证明与匿名下载已核验；本机已从 0.1.12 原位升级并验证接入，原账号及日常 Codex 保留，生产服务器未升级，见[验收记录](docs/acceptance-0.1.13.md)。协作需要协议 1，用户中心需要 `accountCenter: 1` 和 0001—0011 迁移，安装客户端不会升级服务器。当前不提供完整离线编辑、自动发送消息、完整聊天同步、历史会话跳转或 GitHub 自动同步。
+Windows 客户端为 **0.1.14 未签名预发布版**，配套独立服务端为 **0.1.5-preview.2**。本机已用最终固定包从 0.1.13 原位升级，默认深色 1320px 导航、五状态、连接与再次检测通过；原账号、选定伴随服务数据及日常 Codex 原进程保留。来源证明和匿名完整下载已核验，原生窄窗、旧恢复拒绝与长期稳定性限制见[验收记录](docs/acceptance-0.1.14.md)。生产服务器未升级。协作需要协议 1，用户中心需要 `accountCenter: 1` 和 0001—0011 迁移，安装客户端不会升级服务器。当前不提供完整离线编辑、自动发送消息、完整聊天同步、历史会话跳转或 GitHub 自动同步。
 
 ## 使用手册
 
@@ -32,11 +32,11 @@ Windows 客户端为 **0.1.13 未签名预发布版**，配套独立服务端为
 
 ### 2. 安装并登录 Windows 客户端
 
-下载 [Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.13/Codex.Taskboard_0.1.13_x64-setup.exe)并核对[校验和](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.13/SHA256SUMS)。安装后打开 **Codex Taskboard**，填写 HTTPS 根地址并点“保存服务器”，再点“登录并继续”。看到“已同步”后再修改任务，无需另装 Node.js、pnpm 或 Codex CLI。
+下载 [Windows x64 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.14/Codex.Taskboard_0.1.14_x64-setup.exe)并核对[校验和](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.14/SHA256SUMS)。安装后打开 **Codex Taskboard**，填写 HTTPS 根地址并点“保存服务器”，再点“登录并继续”。看到“已同步”后再修改任务，无需另装 Node.js、pnpm 或 Codex CLI。
 
 ### 3. 连接本机项目与 Codex
 
-在“设置 → 连接与设备”保存已有项目的仓库映射，再从主界面点击 **“连接 Codex”**。已运行但未启用连接时，保存工作并正常退出 Codex 一次，Taskboard 等待后自动继续。看到 Codex 侧栏的“任务看板”即接入成功，无需专用快捷方式。
+在“账号菜单 → 连接与本机”保存已有项目的仓库映射，再从主界面点击 **“连接 Codex”**。已运行但未启用连接时，保存工作并正常退出 Codex 一次，Taskboard 等待后自动继续。看到 Codex 侧栏的“任务看板”即接入成功，无需专用快捷方式。
 
 首次成功后普通启动 Taskboard 可恢复侧栏；设置中可关闭自动连接。主界面的 **“打开 Codex”** 可返回原窗口。
 
