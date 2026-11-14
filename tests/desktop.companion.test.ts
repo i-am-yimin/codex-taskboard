@@ -238,7 +238,7 @@ describe('companion loopback boundary', () => {
         expect(probe.json().data).toMatchObject({
           embedded: false,
           reason:
-            '尚未连接 Codex；请在连接与设备中选择“接入日常 Codex”。已打开且未启用连接的窗口需先正常退出一次。',
+            '尚未连接 Codex；请在账号菜单的连接与本机中选择“接入日常 Codex”。已打开且未启用连接的窗口需先正常退出一次。',
         });
         const install = await runtime.app.inject({
           method: 'POST',

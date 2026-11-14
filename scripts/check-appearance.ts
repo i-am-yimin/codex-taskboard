@@ -27,7 +27,8 @@ const observations: string[] = [];
 let browser: Browser | undefined;
 let companion: CompanionRuntime | undefined;
 async function themes(page: Page) {
-  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('button', { name: /^空间菜单：/ }).click();
+  await page.getByRole('menuitem', { name: '空间设置', exact: true }).click();
   await page.getByRole('button', { name: '外观与主题', exact: true }).click();
 }
 try {

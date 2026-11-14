@@ -37,7 +37,7 @@ fn install_codex_board_at(address: SocketAddr, bridge_key: &str, timeout: Durati
         return Ok("日常 Codex 侧栏看板已接入；任务草稿可在原项目中手动粘贴。".into());
     }
     Err(value["error"]["message"].as_str().or_else(|| value["data"]["reason"].as_str())
-        .unwrap_or("侧栏接入未确认，请在连接与设备中检测连接").into())
+        .unwrap_or("侧栏接入未确认，请在连接与本机中检测连接").into())
 }
 
 pub fn health_request(bridge_key: &str) -> String {
