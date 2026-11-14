@@ -1,18 +1,18 @@
 # 使用手册
 
-**0.1.13 接入改造候选**将日常 Codex 应用与侧栏能力分别展示，并提供当前状态对应的检测、接入和恢复操作。工作区暂未就绪时先有界检查，连接中共享已有请求，不重复启动。实际交付状态见 [0.1.13 验收](acceptance-0.1.13.md)，完整流程见[应用内接入](in-app-codex-connection.md)。
+**0.1.13** 将日常 Codex 应用与侧栏能力分别展示，并提供当前状态对应的检测、接入和恢复操作。工作区暂未就绪时先有界检查，连接中共享已有请求，不重复启动。实际交付状态见 [0.1.13 验收](acceptance-0.1.13.md)，完整流程见[应用内接入](in-app-codex-connection.md)。
 
-**0.1.12** 优化账号菜单、看板工具区和设置导航；窄屏后台先展示完整分类，进入详情后可返回。配套 0.1.5-preview.2 更新服务器网页，无新迁移；现有 0.1.5-preview.1 的账号能力继续兼容。新固定标签的验证与原位安装范围见 [0.1.12 验收](acceptance-0.1.12.md)。
+**0.1.12** 优化账号菜单、看板工具区和设置导航；窄屏后台先展示完整分类，进入详情后可返回。配套 0.1.5-preview.2 更新服务器网页，无新迁移；现有 0.1.5-preview.1 的账号能力继续兼容。该版固定标签的验证与原位安装范围见 [0.1.12 验收](acceptance-0.1.12.md)。
 
 **0.1.11** 新增[用户中心与服务器治理](account-center.md)：右上角账号菜单进入个人设置，维护头像、名称、联系方式、邮箱、密码、主题与设备。配套服务器 `0.1.5-preview.1` 已独立发布；固定标签产物与实装证据见 [0.1.11 验收](acceptance-0.1.11.md)。
 
-适用客户端 **0.1.12 未签名预发布**，配套公开独立服务端 **0.1.5-preview.2**。客户端与服务器分别升级。更新日期：2026-11-05。
+适用客户端 **0.1.13 未签名预发布**，配套公开独立服务端 **0.1.5-preview.2**。客户端与服务器分别升级。更新日期：2026-11-14。
 
-[下载](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.12) · [服务端部署](deployment-openresty.md) · [更新日志](../CHANGELOG.md)
+[下载](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.13) · [服务端部署](deployment-openresty.md) · [更新日志](../CHANGELOG.md)
 
 ## 多人协作与服务器兼容
 
-本节适用于 **0.1.12 客户端**。公开服务端 `0.1.5-preview.2` 沿用协作协议 1 和用户中心能力；历史客户端及镜像仍保持原固定来源。当前证据与限制见 [0.1.12 验收](acceptance-0.1.12.md)。
+本节适用于 **0.1.13 客户端**。公开服务端 `0.1.5-preview.2` 沿用协作协议 1 和用户中心能力；历史客户端及镜像仍保持原固定来源。当前证据与限制见 [0.1.13 验收](acceptance-0.1.13.md)。
 
 **0.1.10**改善 Codex 缓存会话的看板切换与刷新恢复：已识别的编辑器短暂加载时，入口会暂不可用，完整检查恢复后才可打开；隐藏页草稿也会阻止需要重载的操作。本机已完成授权原位安装与原账号恢复，实际产品入口、缓存页、刷新和冷草稿均已核验；诊断方式和配置调查限制见 [0.1.10 记录](acceptance-0.1.10.md)。
 
@@ -78,17 +78,17 @@ Taskboard 保存共享任务，Codex 保留本机项目和聊天。安装客户�
 - 自己部署：按[部署文档](deployment-openresty.md)启动服务，配置 HTTPS，并在网页创建首个管理员。
 - 只用浏览器：登录同一 HTTPS 地址即可管理任务；浏览器不负责打开或接入本机 Codex。
 
-Windows 包为未签名预发布版。0.1.12 固定标签的载荷、随包运行时、来源证明与匿名下载均已核验，本轮未执行原位安装，见[当前验收](acceptance-0.1.12.md)。0.1.11 历史实装、原账号保留和 Codex 窗口专项范围见[历史记录](acceptance-0.1.11.md)。Taskboard 与 Codex 分别登录，普通使用无需另装 Node.js、pnpm 或 Codex CLI。
+Windows 包为未签名预发布版。0.1.13 固定标签的载荷、随包运行时、来源证明与匿名下载均已核验，并已在本机从 0.1.12 原位升级验证接入，见[当前验收](acceptance-0.1.13.md)。0.1.11 历史实装、原账号保留和 Codex 窗口专项范围见[历史记录](acceptance-0.1.11.md)。Taskboard 与 Codex 分别登录，普通使用无需另装 Node.js、pnpm 或 Codex CLI。
 
 ## 安装与登录
 
-1. 下载 [Windows x64 0.1.12 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.12/Codex.Taskboard_0.1.12_x64-setup.exe)和 [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.12/SHA256SUMS)，核对摘要后安装，无需登录 GitHub。
+1. 下载 [Windows x64 0.1.13 安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.13/Codex.Taskboard_0.1.13_x64-setup.exe)和 [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.13/SHA256SUMS)，核对摘要后安装，无需登录 GitHub。
 2. 打开 **Codex Taskboard**，填写服务器根地址，点击 **“保存服务器”**。
 3. 输入 Taskboard 邮箱与密码，点击 **“登录并继续”**。选择或创建空间，确认 **“已同步”** 后再修改任务；团队成员由管理员邀请加入。
 
 服务器地址形如 `https://board.example.com`，不加 `/api/v1`、子路径、查询参数或片段。本机开发允许 `http://127.0.0.1:47830`；其他设备不能用这个地址访问你的电脑。保存地址不代表已联网成功。
 
-安装器摘要以同一版本的 `SHA256SUMS` 与[版本验收](acceptance-0.1.12.md)为准。可用 PowerShell 的 `Get-FileHash -Algorithm SHA256 -LiteralPath '下载文件的完整路径'` 核对；签名状态为 `NotSigned`。
+安装器摘要以同一版本的 `SHA256SUMS` 与[版本验收](acceptance-0.1.13.md)为准。可用 PowerShell 的 `Get-FileHash -Algorithm SHA256 -LiteralPath '下载文件的完整路径'` 核对；签名状态为 `NotSigned`。
 
 ## 连接 Codex
 
