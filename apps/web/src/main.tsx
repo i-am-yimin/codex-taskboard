@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useLayoutEffect, useMemo, useRef, useState } fro
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Dialog from '@radix-ui/react-dialog';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   DndContext,
   DragOverlay,
@@ -43,7 +44,6 @@ import {
   Signal,
   Sparkles,
   Users,
-  Wifi,
   X,
 } from 'lucide-react';
 import { ServerCompatibilityNotice } from './ServerCompatibilityNotice';
@@ -155,9 +155,11 @@ function App() {
     navigator.onLine ? 'connecting' : 'offline',
   );
   const [view, setView] = useState<'board' | 'list'>('board');
-  const [spaceMenu, setSpaceMenu] = useState(false);
   const [settings, setSettings] = useState(false);
   const [settingsSection, setSettingsSection] = useState<'space' | 'connection'>('space');
+  const accountMenuTrigger = useRef<HTMLButtonElement>(null);
+  const spaceMenuTrigger = useRef<HTMLButtonElement>(null);
+  const settingsReturnFocus = useRef<HTMLElement | null>(null);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [automationOpen, setAutomationOpen] = useState(false);
   const [serverAdmin, setServerAdmin] = useState(location.hash === '#admin');
@@ -765,26 +767,6 @@ function App() {
         >
           <List size={19} />
         </button>
-        <button
-          className="rail-icon"
-          title="打开设置"
-          aria-label="打开设置"
-          onClick={() => setSettings(true)}
-        >
-          <Settings size={19} />
-        </button>
-        <div className="rail-fill" />
-        <button
-          className="rail-account"
-          title="个人设置"
-          aria-label="个人设置"
-          onClick={() => {
-            setAccountOpen(true);
-            history.replaceState(null, '', '#account/profile');
-          }}
-        >
-          <UserAvatar user={user!} />
-        </button>
       </aside>
       <section className="workspace">
         <header className="topbar">
@@ -792,52 +774,69 @@ function App() {
             <span className="topbar-brand">
               <TaskboardBrand compact />
             </span>
-            <button className="space-switcher" onClick={() => setSpaceMenu(!spaceMenu)}>
-              <i style={{ background: board.space.color }}>{board.space.icon}</i>
-              <span>
-                {board.space.name}
-                {board.space.archived ? '（已归档）' : ''}
-              </span>
-              <ChevronDown size={15} />
-            </button>
-            {spaceMenu && (
-              <div className="menu space-menu">
-                {spacesQuery.data?.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => {
-                      setSpaceId(s.id);
-                      setSpaceMenu(false);
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  ref={spaceMenuTrigger}
+                  className="space-switcher"
+                  aria-label={`空间菜单：${board.space.name}`}
+                >
+                  <i style={{ background: board.space.color }}>{board.space.icon}</i>
+                  <span>
+                    {board.space.name}
+                    {board.space.archived ? '（已归档）' : ''}
+                  </span>
+                  <ChevronDown size={15} />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  className="menu space-menu"
+                  align="start"
+                  sideOffset={10}
+                  collisionPadding={12}
+                >
+                  {spacesQuery.data?.map((s) => (
+                    <DropdownMenu.Item asChild key={s.id} onSelect={() => setSpaceId(s.id)}>
+                      <button aria-current={s.id === spaceId ? 'page' : undefined}>
+                        <i style={{ background: s.color }}>{s.icon}</i>
+                        <span>
+                          {s.name}
+                          {s.archived ? '（已归档）' : ''}
+                        </span>
+                        {s.id === spaceId && <Check size={15} />}
+                      </button>
+                    </DropdownMenu.Item>
+                  ))}
+                  <DropdownMenu.Separator asChild>
+                    <hr />
+                  </DropdownMenu.Separator>
+                  <DropdownMenu.Item
+                    asChild
+                    disabled={taskReadOnly}
+                    onSelect={() => setNewSpace(true)}
+                  >
+                    <button disabled={taskReadOnly}>
+                      <Plus size={15} />
+                      新建空间
+                    </button>
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    asChild
+                    onSelect={() => {
+                      settingsReturnFocus.current = spaceMenuTrigger.current;
+                      setSettingsSection('space');
+                      setSettings(true);
                     }}
                   >
-                    <i style={{ background: s.color }}>{s.icon}</i>
-                    {s.name}
-                    {s.archived ? '（已归档）' : ''}
-                    {s.id === spaceId && <Check size={15} />}
-                  </button>
-                ))}
-                <hr />
-                <button
-                  disabled={taskReadOnly}
-                  onClick={() => {
-                    setNewSpace(true);
-                    setSpaceMenu(false);
-                  }}
-                >
-                  <Plus size={15} />
-                  新建空间
-                </button>
-                <button
-                  onClick={() => {
-                    setSettings(true);
-                    setSpaceMenu(false);
-                  }}
-                >
-                  <Settings size={15} />
-                  管理当前空间
-                </button>
-              </div>
-            )}
+                    <button>
+                      <Settings size={15} />
+                      空间设置
+                    </button>
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </div>
           <div className="topbar-right">
             <button
@@ -889,9 +888,6 @@ function App() {
                       : '已同步'}
               </span>
             </span>
-            <button className="icon-button" title="设置" onClick={() => setSettings(true)}>
-              <Settings size={18} />
-            </button>
             <AccountMenu
               user={user!}
               demo={isDemo}
@@ -899,6 +895,12 @@ function App() {
                 setAccountOpen(true);
                 history.replaceState(null, '', '#account/profile');
               }}
+              onConnection={() => {
+                settingsReturnFocus.current = accountMenuTrigger.current;
+                setSettingsSection('connection');
+                setSettings(true);
+              }}
+              triggerRef={accountMenuTrigger}
               onAdmin={() => {
                 setServerAdmin(true);
                 history.replaceState(null, '', '#admin');
@@ -946,7 +948,7 @@ function App() {
           <div className="head-actions">
             <CodexConnectionAction />
             <button
-              className="button ghost"
+              className="button ghost head-view-switch"
               onClick={() => setView(view === 'board' ? 'list' : 'board')}
             >
               {view === 'board' ? <List size={16} /> : <LayoutGrid size={16} />}{' '}
@@ -963,7 +965,8 @@ function App() {
           </div>
         </div>
         <CodexConnectionNotice
-          onOpenSettings={() => {
+          onOpenSettings={(trigger) => {
+            settingsReturnFocus.current = trigger;
             setSettingsSection('connection');
             setSettings(true);
           }}
@@ -1143,7 +1146,12 @@ function App() {
       )}
       {settings && (
         <SettingsPanel
-          initialSection={settingsSection}
+          scope={settingsSection}
+          onReturnFocus={() => {
+            const trigger = settingsReturnFocus.current;
+            if (trigger?.isConnected) trigger.focus();
+            else accountMenuTrigger.current?.focus();
+          }}
           onAccountAppearance={() => {
             setSettings(false);
             setAccountOpen(true);
@@ -1707,7 +1715,8 @@ function NewTask({
 }
 
 function SettingsPanel({
-  initialSection,
+  scope,
+  onReturnFocus,
   onAccountAppearance,
   onServerAdmin,
   board,
@@ -1718,7 +1727,8 @@ function SettingsPanel({
   onNotice,
   onLogout,
 }: {
-  initialSection: 'space' | 'connection';
+  scope: 'space' | 'connection';
+  onReturnFocus: () => void;
   onAccountAppearance: () => void;
   onServerAdmin?: () => void;
   board: Board;
@@ -1729,9 +1739,7 @@ function SettingsPanel({
   onNotice: (s: string) => void;
   onLogout: () => void;
 }) {
-  const [section, setSection] = useState<'space' | 'members' | 'statuses' | 'connection'>(
-    initialSection,
-  );
+  const [section, setSection] = useState<'space' | 'members' | 'statuses'>('space');
   const [name, setName] = useState(board.space.name);
   const [icon, setIcon] = useState(board.space.icon);
   const [color, setColor] = useState(board.space.color);
@@ -1750,141 +1758,162 @@ function SettingsPanel({
     }
   };
   return (
-    <div className="settings-overlay">
-      <aside className="settings">
-        <header>
-          <div>
-            <p className="eyebrow">{board.space.name}</p>
-            <h2>空间设置</h2>
-          </div>
-          <button className="icon-button" aria-label="关闭" onClick={onClose}>
-            <X />
-          </button>
-        </header>
-        <div className="settings-body">
-          <nav className="settings-nav">
-            <button onClick={onAccountAppearance}>
-              <Sparkles size={16} />
-              外观与主题
+    <Dialog.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay className="settings-overlay" />
+        <Dialog.Content
+          className="settings"
+          aria-describedby={undefined}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            onReturnFocus();
+          }}
+        >
+          <header>
+            <div>
+              <Dialog.Title asChild>
+                <h2>{scope === 'connection' ? '连接与本机' : '空间设置'}</h2>
+              </Dialog.Title>
+              {scope === 'space' && <p className="settings-context">{board.space.name}</p>}
+            </div>
+            <button className="icon-button" aria-label="关闭" onClick={onClose}>
+              <X />
             </button>
-            {onServerAdmin && (
-              <button onClick={onServerAdmin}>
-                <Settings size={16} />
-                服务器管理
-              </button>
-            )}
-            <button
-              className={section === 'space' ? 'active' : ''}
-              onClick={() => setSection('space')}
-            >
-              <Sparkles size={16} />
-              空间概览
-            </button>
-            <button
-              className={section === 'members' ? 'active' : ''}
-              onClick={() => setSection('members')}
-            >
-              <Users size={16} />
-              成员与权限
-            </button>
-            <button
-              className={section === 'statuses' ? 'active' : ''}
-              onClick={() => setSection('statuses')}
-            >
-              <CircleDot size={16} />
-              状态列
-            </button>
-            <button
-              className={section === 'connection' ? 'active' : ''}
-              onClick={() => setSection('connection')}
-            >
-              <Wifi size={16} />
-              连接与设备
-            </button>
-          </nav>
-          <div className="settings-content">
-            {section === 'space' && (
-              <>
-                <h3>空间信息</h3>
-                <p className="muted">任务空间用来隔离工作、个人或团队数据。</p>
-                <label className="form-label">
-                  名称
-                  <input
-                    disabled={!canEditSpace}
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                </label>
-                <div className="field-grid">
-                  <label className="form-label">
-                    图标
-                    <input
-                      disabled={!canEditSpace}
-                      value={icon}
-                      maxLength={8}
-                      onChange={(event) => setIcon(event.target.value)}
-                    />
-                  </label>
-                  <label className="form-label">
-                    颜色
-                    <input
-                      type="color"
-                      disabled={!canEditSpace}
-                      value={color}
-                      onChange={(event) => setColor(event.target.value)}
-                    />
-                  </label>
-                </div>
-                <label className="form-label">
-                  空间说明
-                  <textarea
-                    disabled={!canEditSpace}
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                  />
-                </label>
-                <button className="button primary" disabled={!canEditSpace} onClick={saveSpace}>
-                  保存更改
+          </header>
+          <div
+            className={`settings-body${scope === 'connection' ? ' settings-body-connection' : ''}`}
+          >
+            {scope === 'space' && (
+              <nav className="settings-nav" aria-label="空间设置分类">
+                <button onClick={onAccountAppearance}>
+                  <Sparkles size={16} />
+                  外观与主题
                 </button>
-                {!offline && (
-                  <SpaceActions
-                    key={`${board.space.version}-${board.statuses.map((status) => status.id).join('-')}`}
-                    board={board}
-                    demo={demo}
-                    onRefresh={onRefresh}
-                    onNotice={onNotice}
-                  />
+                {onServerAdmin && (
+                  <button onClick={onServerAdmin}>
+                    <Settings size={16} />
+                    服务器管理
+                  </button>
                 )}
-              </>
+                <button
+                  className={section === 'space' ? 'active' : ''}
+                  onClick={() => setSection('space')}
+                >
+                  <Sparkles size={16} />
+                  空间概览
+                </button>
+                <button
+                  className={section === 'members' ? 'active' : ''}
+                  onClick={() => setSection('members')}
+                >
+                  <Users size={16} />
+                  成员与权限
+                </button>
+                <button
+                  className={section === 'statuses' ? 'active' : ''}
+                  onClick={() => setSection('statuses')}
+                >
+                  <CircleDot size={16} />
+                  状态列
+                </button>
+              </nav>
             )}
-            {section === 'members' && !offline && (
-              <Members
-                members={board.members}
-                spaceId={board.space.id}
-                currentRole={board.space.role}
-                onRefresh={onRefresh}
-                onNotice={onNotice}
-                demo={demo}
-              />
-            )}{' '}
-            {section === 'statuses' && !offline && (
-              <Statuses
-                key={`${board.space.version}-${board.statuses.map((s) => s.id).join('-')}`}
-                board={board}
-                demo={demo}
-                adding={adding}
-                setAdding={setAdding}
-                onNotice={onNotice}
-                onRefresh={onRefresh}
-              />
-            )}{' '}
-            {section === 'connection' && (
-              <ConnectionSettings demo={demo} onNotice={onNotice} onLogout={onLogout} />
-            )}
+            <div className="settings-content">
+              {scope === 'connection' ? (
+                <ConnectionSettings demo={demo} onNotice={onNotice} onLogout={onLogout} />
+              ) : (
+                <>
+                  {section === 'space' && (
+                    <>
+                      <h3>空间信息</h3>
+                      <p className="muted">任务空间用来隔离工作、个人或团队数据。</p>
+                      <label className="form-label">
+                        名称
+                        <input
+                          disabled={!canEditSpace}
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                        />
+                      </label>
+                      <div className="field-grid">
+                        <label className="form-label">
+                          图标
+                          <input
+                            disabled={!canEditSpace}
+                            value={icon}
+                            maxLength={8}
+                            onChange={(event) => setIcon(event.target.value)}
+                          />
+                        </label>
+                        <label className="form-label">
+                          颜色
+                          <input
+                            type="color"
+                            disabled={!canEditSpace}
+                            value={color}
+                            onChange={(event) => setColor(event.target.value)}
+                          />
+                        </label>
+                      </div>
+                      <label className="form-label">
+                        空间说明
+                        <textarea
+                          disabled={!canEditSpace}
+                          value={description}
+                          onChange={(event) => setDescription(event.target.value)}
+                        />
+                      </label>
+                      <button
+                        className="button primary"
+                        disabled={!canEditSpace}
+                        onClick={saveSpace}
+                      >
+                        保存更改
+                      </button>
+                      {!offline && (
+                        <SpaceActions
+                          key={`${board.space.version}-${board.statuses.map((status) => status.id).join('-')}`}
+                          board={board}
+                          demo={demo}
+                          onRefresh={onRefresh}
+                          onNotice={onNotice}
+                        />
+                      )}
+                    </>
+                  )}
+                  {section === 'members' && !offline && (
+                    <Members
+                      members={board.members}
+                      spaceId={board.space.id}
+                      currentRole={board.space.role}
+                      onRefresh={onRefresh}
+                      onNotice={onNotice}
+                      demo={demo}
+                    />
+                  )}{' '}
+                  {section === 'statuses' && !offline && (
+                    <Statuses
+                      key={`${board.space.version}-${board.statuses.map((s) => s.id).join('-')}`}
+                      board={board}
+                      demo={demo}
+                      adding={adding}
+                      setAdding={setAdding}
+                      onNotice={onNotice}
+                      onRefresh={onRefresh}
+                    />
+                  )}{' '}
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      </aside>
-    </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 function Members({

@@ -16,7 +16,8 @@ test('demo supports search, task inspection and view changes without server', as
 test('onboarding is reachable and demonstration is explicitly labelled', async ({ page }) => {
   await page.goto('/?demo=1');
   await expect(page.getByText('演示模式', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('button', { name: /^空间菜单：/ }).click();
+  await page.getByRole('menuitem', { name: '空间设置', exact: true }).click();
   await expect(page.getByText('空间设置', { exact: true })).toBeVisible();
 });
 

@@ -36,7 +36,11 @@ export function CodexRestartSteps() {
     </ol>
   );
 }
-export function CodexConnectionNotice({ onOpenSettings }: { onOpenSettings: () => void }) {
+export function CodexConnectionNotice({
+  onOpenSettings,
+}: {
+  onOpenSettings: (trigger: HTMLButtonElement) => void;
+}) {
   const codex = useCodexConnection();
   const view = codexConnectionView(codex);
   if (!codex.available) return null;
@@ -66,7 +70,7 @@ export function CodexConnectionNotice({ onOpenSettings }: { onOpenSettings: () =
             </button>
           )
         )}
-        <button className="button ghost" onClick={onOpenSettings}>
+        <button className="button ghost" onClick={(event) => onOpenSettings(event.currentTarget)}>
           连接详情
         </button>
       </div>

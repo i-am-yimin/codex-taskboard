@@ -75,7 +75,7 @@ export function ConnectionSettings({
   }
   return (
     <>
-      <h3>连接与设备</h3>
+      <h3>Codex 与设备</h3>
       <section
         className="connection-card codex-daily-card"
         data-connection-tone={view.tone}

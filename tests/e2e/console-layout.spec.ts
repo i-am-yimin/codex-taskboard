@@ -62,7 +62,7 @@ for (const desktop of [false, true]) {
     await expect(menu.getByText(user.name, { exact: true })).toBeVisible();
     await expect(menu.getByText(user.email, { exact: true })).toBeVisible();
     const rows = menu.getByRole('menuitem');
-    await expect(rows).toHaveCount(3);
+    await expect(rows).toHaveCount(4);
     await expect(rows.first()).toBeFocused();
     const server = menu.getByRole('menuitem', { name: '服务器管理', exact: true });
     if (desktop) {
@@ -93,6 +93,8 @@ for (const desktop of [false, true]) {
       expect(row.align).toBe(metrics[0].align);
       expect(row.radius).toBe(metrics[0].radius);
     }
+    await page.keyboard.press('ArrowDown');
+    await expect(menu.getByRole('menuitem', { name: '连接与本机', exact: true })).toBeFocused();
     await page.keyboard.press('ArrowDown');
     await expect(server).toBeFocused();
     await page.keyboard.press('Escape');

@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type FormEvent,
   type ComponentProps,
+  type Ref,
 } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -25,6 +26,7 @@ import {
   ShieldCheck,
   Sparkles,
   UserRound,
+  Wifi,
 } from 'lucide-react';
 import type { AccountProfile, PublicProfile, User, Contacts } from '@taskboard/core';
 import { MAX_AVATAR_BYTES } from '@taskboard/core';
@@ -171,12 +173,16 @@ export function AccountMenu({
   user,
   demo = false,
   onAccount,
+  onConnection,
+  triggerRef,
   onAdmin,
   onLogout,
 }: {
   user: User;
   demo?: boolean;
   onAccount: () => void;
+  onConnection?: () => void;
+  triggerRef?: Ref<HTMLButtonElement>;
   onAdmin: () => void;
   onLogout: () => void;
 }) {
@@ -184,7 +190,12 @@ export function AccountMenu({
     <div className="account-menu">
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
-          <button type="button" className="account-menu-trigger" aria-label="账号菜单">
+          <button
+            ref={triggerRef}
+            type="button"
+            className="account-menu-trigger"
+            aria-label="账号菜单"
+          >
             <UserAvatar user={user} />
             <span className="account-menu-name">{user.name}</span>
             <ChevronDown className="account-menu-chevron" size={14} aria-hidden="true" />
@@ -211,6 +222,14 @@ export function AccountMenu({
                 个人设置
               </button>
             </DropdownMenu.Item>
+            {onConnection && (
+              <DropdownMenu.Item asChild onSelect={onConnection}>
+                <button className="account-menu-item">
+                  <Wifi size={17} aria-hidden="true" />
+                  连接与本机
+                </button>
+              </DropdownMenu.Item>
+            )}
             {!demo &&
               user.instanceAdmin &&
               (hasLocalCompanion() ? (
