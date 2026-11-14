@@ -1,8 +1,10 @@
 # 发布记录
 
-## Codex Taskboard 客户端 0.1.14（准备发布，未签名预发布）
+## Codex Taskboard 客户端 0.1.14（未签名预发布）
 
-状态：准备发布，发布日期待固定标签产物验证后填写。当前没有确认可供下载的 0.1.14 公开资产。
+发布日期：2026-11-14。Windows x64 未签名预发布已公开。固定标签 CI、最终载荷、随包运行时、Linux 归档、严格来源证明及最终包原位升级和默认窗口检查已通过；Astra 发布前独立验收通过，公开 Release/API 与匿名完整下载安装器、校验和另验通过。
+
+[下载安装包](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.14/Codex.Taskboard_0.1.14_x64-setup.exe) · [SHA256SUMS](https://github.com/i-am-yimin/codex-taskboard/releases/download/v0.1.14/SHA256SUMS) · [公开 Release](https://github.com/i-am-yimin/codex-taskboard/releases/tag/v0.1.14)
 
 - 侧栏只保留品牌、任务看板和任务列表；顶栏统一账号菜单，移除重复的齿轮、头像与视图切换。侧栏收起时，页头仍可切换看板与列表。
 - 空间菜单中的“空间设置”管理当前空间；账号菜单中的“连接与本机”直接打开原有 Codex 接入、仓库映射及设备面板，分类与标题符合操作范围。
@@ -13,7 +15,13 @@
 
 客户端与独立服务器分别发布，继续使用 `0.1.5-preview.2`；没有 API、数据库迁移或生产服务器升级。既有 0.1.13 标签和发布资产保持固定。
 
-[0.1.14 验收](acceptance-0.1.14.md)分别记录后续固定标签 CI、安装器、载荷、随包运行时、来源证明、实机与公开下载；本版的[源码与浏览器实施验收](acceptance-desktop-shell.md)已完成，不能替代最终包验收。标签源码、工作流链接、安装器摘要、资产与下载链接待实际验证后补齐。
+[PR #30](https://github.com/i-am-yimin/codex-taskboard/pull/30) 合并来源与 `v0.1.14` 固定为 `2c90376ed65e8695f290f723664deea0bcac6c38`；[合并提交 CI](https://github.com/i-am-yimin/codex-taskboard/actions/runs/43556442189) 与[固定标签发布工作流](https://github.com/i-am-yimin/codex-taskboard/actions/runs/43556448712) attempt 1 全部通过。源码/集成测试 353 项通过、1 项平台测试跳过，浏览器 226 项通过，Rust 47 项通过、4 项忽略。依赖审计通过 high 门槛，仍报告 5 low、7 moderate。
+
+最终 NSIS 版本 0.1.14，签名 `NotSigned`，安装器 SHA-256 为 `ca0897ba61f929f6f023c50d9942acbb3bba916eed9fa4ce98ed56f0266740a3`；原生程序、16 个 runtime 文件和提取后的随包 Node/伴随服务/CLI 已核对与运行验证。Linux amd64 归档的配置、层摘要、diffId、固定版本与 SPDX 静态核对通过。五个发布资产的校验和一致，四个唯一摘要均通过精确源码、标签、工作流、run/attempt、GitHub OIDC 与托管 runner 的严格来源证明。公开后匿名完整下载 24,978,842 字节安装器及 SHA256SUMS，摘要与已验最终包一致；所有五个资产元数据及既有标签/资产保持。
+
+最终包已从本机 0.1.13 原位升级，安装字节与载荷一致，原账号、设备、服务器、映射、伴随服务草稿及日常 Codex 原进程保持。真实深色 1320px 主窗口通过五状态 4+1、看板/列表、空间与账号菜单、独立连接面板及 Esc 焦点返回检查；连接面板三项能力与再次检测通过，诊断为 Codex `26.1027.3384.0` / `active-page-cache-shell-v1`。原生窗口调整尺寸的尝试未改变尺寸，原生窄窗未验；窄窗、浅色、长内容和内嵌证据来自浏览器测试及 8 张实施截图。数据保护不等于所有 WebView 存储字节完全不变。
+
+[0.1.14 验收](acceptance-0.1.14.md)保留首次 CI 的 220 项通过、6 项旧选择器失败和修正后 12 项定向通过，并区分后续完整 CI、最终载荷的验证范围与限制。安装前 0.1.13 曾出现连接恢复未确认且重新检测未解除，原因未定位；最终包新会话成功不证明旧 DOM/CSP 清理成功，也不证明长期稳定或未来版本兼容。本版不修改该生命周期逻辑，也不宣称修复。此前[源码与浏览器实施验收](acceptance-desktop-shell.md)继续保持原证据范围。
 
 ## Codex Taskboard 客户端 0.1.13（未签名预发布）
 
