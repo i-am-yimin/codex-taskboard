@@ -18,8 +18,9 @@ try {
   await page.getByRole('textbox', { name: '任务标题' }).waitFor();
   await page.screenshot({ path: resolve(output, 'task-detail.png') });
   await page.getByTitle('关闭', { exact: true }).click();
-  await page.getByRole('button', { name: '设置', exact: true }).click();
-  await page.getByText('空间设置', { exact: true }).waitFor();
+  await page.getByRole('button', { name: /^空间菜单：/ }).click();
+  await page.getByRole('menuitem', { name: '空间设置', exact: true }).click();
+  await page.getByRole('dialog', { name: '空间设置', exact: true }).waitFor();
   await page.screenshot({ path: resolve(output, 'space-settings.png') });
   await page.getByRole('button', { name: '关闭', exact: true }).click();
   await page.emulateMedia({ colorScheme: 'dark' });

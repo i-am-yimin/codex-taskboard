@@ -6,6 +6,8 @@ A task board embedded in the Codex sidebar. Share tasks, progress and human revi
 
 ![Taskboard preview](docs/images/console-layout-preview.png)
 
+Version **0.1.14 is being prepared** to consolidate desktop navigation, separate space settings from local connections, and reflow five status columns within the default window. [Source and browser acceptance](docs/acceptance-desktop-shell.md) is complete; fixed-tag CI, final packages, native installation and public downloads remain pending in the [0.1.14 record](docs/acceptance-0.1.14.md). Public downloads remain on 0.1.13 and the independent server remains on 0.1.5-preview.2.
+
 ## Features and status
 
 - Account settings for avatars, display names, private contact visibility, email security, appearance and device sessions; web-only instance administration.

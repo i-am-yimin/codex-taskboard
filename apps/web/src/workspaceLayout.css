@@ -58,16 +58,49 @@
 .account-menu-chevron {
   color: var(--muted);
 }
-.rail-account {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border-radius: 50%;
+.menu.space-menu {
+  position: relative;
+  inset: auto;
+  z-index: 30;
+  width: min(280px, calc(100vw - 24px));
+  max-height: var(--radix-dropdown-menu-content-available-height);
+  overflow-y: auto;
 }
-.rail-account:hover {
+.space-menu button {
+  min-height: 44px;
+}
+.space-menu button > :is(i, svg) {
+  flex-shrink: 0;
+}
+.space-menu button > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.space-menu button[data-highlighted] {
   background: var(--tint);
+}
+:root .settings {
+  position: fixed;
+  z-index: 21;
+  top: 0;
+  right: 0;
+}
+.settings-context {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.settings > header > div {
+  min-width: 0;
+}
+.settings > header > button {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+}
+.settings-body.settings-body-connection {
+  grid-template-columns: minmax(0, 1fr);
 }
 .app-shell .banner > .button {
   flex-shrink: 0;
@@ -77,6 +110,9 @@
   padding: 28px var(--page-gutter) 20px;
   align-items: center;
   gap: 16px;
+}
+:root .app-shell .head-actions .button {
+  min-height: 44px;
 }
 .page-head > div:first-child {
   min-width: 0;
@@ -149,8 +185,8 @@
   flex-basis: 100%;
   margin: 0;
 }
-@media (min-width: 760px) {
-  :root[data-layout='rail'] .app-shell:not(.embedded) .topbar-brand {
+@media (min-width: 761px) {
+  :root[data-layout='rail'] .app-shell:not(.embedded) :is(.topbar-brand, .head-view-switch) {
     display: none;
   }
 }

@@ -86,9 +86,30 @@ async function setState(page: Page, state: string) {
   }, state);
 }
 async function settings(page: Page) {
-  await page.getByRole('button', { name: '设置', exact: true }).click();
-  await page.getByRole('button', { name: '连接与设备', exact: true }).click();
+  await page.getByRole('button', { name: '账号菜单', exact: true }).click();
+  await page.getByRole('menuitem', { name: '连接与本机', exact: true }).click();
 }
+test('connection details return focus to their notice trigger and fall back when it disappears', async ({
+  page,
+}) => {
+  await desktop(page, 'restart-required');
+  const trigger = page
+    .locator('#codex-connection-notice')
+    .getByRole('button', { name: '连接详情', exact: true });
+  await trigger.click();
+  const dialog = page.getByRole('dialog', { name: '连接与本机', exact: true });
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await setState(page, 'connectable');
+  await dialog.getByRole('button', { name: '检测连接', exact: true }).click();
+  await expect(page.locator('#codex-connection-notice')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '账号菜单', exact: true })).toBeFocused();
+});
 test('main board connects once and shares its state with settings without a shortcut', async ({
   page,
 }, info) => {

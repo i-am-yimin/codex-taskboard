@@ -14,7 +14,8 @@ async function openThemes(page: Page) {
     await category.click();
     return;
   }
-  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('button', { name: /^空间菜单：/ }).click();
+  await page.getByRole('menuitem', { name: '空间设置', exact: true }).click();
   await page.getByRole('button', { name: '外观与主题', exact: true }).click();
 }
 test('four themes support both modes, reversible previews, layouts and narrow embedded screens', async ({

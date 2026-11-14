@@ -12,7 +12,7 @@ export async function consoleFixture(
     name: '用于验证多端显示效果的很长中文账号名称',
     email: 'long-account-name-for-layout@example.test',
   };
-  const board = makeDemoBoard();
+  const board = structuredClone(makeDemoBoard());
   board.members = board.members.map((m) => (m.id === user.id ? { ...m, ...user } : m));
   // Plain JS keeps tsx's name-preservation helpers out of the browser realm.
   await page.addInitScript(`
@@ -20,6 +20,30 @@ export async function consoleFixture(
       window.__TAURI__ = { core: { invoke: async (command) =>
         command === 'bridge_capability' ? 'synthetic-layout-key' :
         { state: 'not-running', reason: '合成验收环境未启动 Codex' } } };
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const url = new URL(input instanceof Request ? input.url : String(input), location.origin);
+        if (url.origin !== 'http://127.0.0.1:47831' ||
+            !/^\\/api\\/v1\\/spaces\\/[^/]+\\/events$/.test(url.pathname))
+          return originalFetch(input, init);
+        let timer;
+        let stopped = false;
+        return Promise.resolve(new Response(new ReadableStream({
+          start(controller) {
+            const ready = () => controller.enqueue(new TextEncoder().encode('event: ready\\ndata: {}\\n\\n'));
+            const stop = () => {
+              if (stopped) return;
+              stopped = true;
+              clearInterval(timer);
+              controller.close();
+            };
+            ready();
+            timer = setInterval(ready, 10000);
+            init?.signal?.addEventListener('abort', stop, { once: true });
+          },
+          cancel() { stopped = true; clearInterval(timer); },
+        }), { headers: { 'content-type': 'text/event-stream' } }));
+      };
     }
     class LayoutEvents extends EventTarget {
       readyState = 1;
