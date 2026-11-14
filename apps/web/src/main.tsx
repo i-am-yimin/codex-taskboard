@@ -94,6 +94,7 @@ import './glass.css';
 import './themes.css';
 import './consoleLayout.css';
 import './workspaceLayout.css';
+import './codexConnection.css';
 import {
   AccountCenter,
   AccountMenu,
@@ -156,6 +157,7 @@ function App() {
   const [view, setView] = useState<'board' | 'list'>('board');
   const [spaceMenu, setSpaceMenu] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<'space' | 'connection'>('space');
   const [inboxOpen, setInboxOpen] = useState(false);
   const [automationOpen, setAutomationOpen] = useState(false);
   const [serverAdmin, setServerAdmin] = useState(location.hash === '#admin');
@@ -960,7 +962,12 @@ function App() {
             </button>
           </div>
         </div>
-        <CodexConnectionNotice />
+        <CodexConnectionNotice
+          onOpenSettings={() => {
+            setSettingsSection('connection');
+            setSettings(true);
+          }}
+        />
         <div className="toolbar">
           <label className="search">
             <Search size={16} />
@@ -1136,6 +1143,7 @@ function App() {
       )}
       {settings && (
         <SettingsPanel
+          initialSection={settingsSection}
           onAccountAppearance={() => {
             setSettings(false);
             setAccountOpen(true);
@@ -1699,6 +1707,7 @@ function NewTask({
 }
 
 function SettingsPanel({
+  initialSection,
   onAccountAppearance,
   onServerAdmin,
   board,
@@ -1709,6 +1718,7 @@ function SettingsPanel({
   onNotice,
   onLogout,
 }: {
+  initialSection: 'space' | 'connection';
   onAccountAppearance: () => void;
   onServerAdmin?: () => void;
   board: Board;
@@ -1719,7 +1729,9 @@ function SettingsPanel({
   onNotice: (s: string) => void;
   onLogout: () => void;
 }) {
-  const [section, setSection] = useState<'space' | 'members' | 'statuses' | 'connection'>('space');
+  const [section, setSection] = useState<'space' | 'members' | 'statuses' | 'connection'>(
+    initialSection,
+  );
   const [name, setName] = useState(board.space.name);
   const [icon, setIcon] = useState(board.space.icon);
   const [color, setColor] = useState(board.space.color);
